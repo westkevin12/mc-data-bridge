@@ -2,6 +2,8 @@ package com.digitalserverhost.plugins;
 
 import com.digitalserverhost.plugins.listeners.PlayerListener;
 import com.digitalserverhost.plugins.managers.DatabaseManager;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.Connection;
@@ -11,6 +13,7 @@ public class MCDataBridge extends JavaPlugin {
 
     private DatabaseManager databaseManager;
     private boolean debugMode;
+    private static final Gson GSON = new GsonBuilder().create();
 
     @Override
     public void onEnable() {
@@ -59,12 +62,16 @@ public class MCDataBridge extends JavaPlugin {
 
         } catch (Exception e) {
             getLogger().severe("CRITICAL: Error creating or updating player_data table: " + e.getMessage());
-            // Optionally, disable the plugin if the database is essential and not set up correctly
-            // getServer().getPluginManager().disablePlugin(this);
+            getLogger().severe("Disabling mc-data-bridge! The database is not in a usable state.");
+            getServer().getPluginManager().disablePlugin(this);
         }
     }
 
     public boolean isDebugMode() {
         return debugMode;
+    }
+
+    public static Gson getGson() {
+        return GSON;
     }
 }

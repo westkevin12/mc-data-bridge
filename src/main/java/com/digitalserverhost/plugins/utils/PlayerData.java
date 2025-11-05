@@ -1,5 +1,6 @@
 package com.digitalserverhost.plugins.utils;
 
+import com.digitalserverhost.plugins.MCDataBridge;
 import com.google.gson.Gson;
 import de.tr7zw.changeme.nbtapi.NBTContainer;
 import de.tr7zw.changeme.nbtapi.NBTItem;
@@ -12,13 +13,14 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.logging.Logger;
 
 public class PlayerData {
 
-    // Transient fields are not serialized by Gson
-    private transient boolean deserializationError = false;
-    private transient Logger logger;
+    public static class ItemDeserializationException extends RuntimeException {
+        public ItemDeserializationException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
 
     private double health;
     private int foodLevel;
@@ -47,13 +49,9 @@ public class PlayerData {
         this.potionEffects = convertPotionEffectArrayToSerializable(potionEffects);
     }
 
-    public void setLogger(Logger logger) {
-        this.logger = logger;
-    }
-
     private List<String> serializeItemStackArray(ItemStack[] items) {
         List<String> serializedItems = new ArrayList<>();
-        Gson gson = new Gson();
+        Gson gson = MCDataBridge.getGson();
         if (items == null) {
             return serializedItems;
         }
@@ -73,7 +71,7 @@ public class PlayerData {
             return new ItemStack[0];
         }
         ItemStack[] items = new ItemStack[serializedItems.size()];
-        Gson gson = new Gson();
+        Gson gson = MCDataBridge.getGson();
         for (int i = 0; i < serializedItems.size(); i++) {
             String itemJson = serializedItems.get(i);
             if (itemJson != null && !itemJson.isEmpty()) {
@@ -86,21 +84,13 @@ public class PlayerData {
                     SerializableItemStack serializableItem = gson.fromJson(itemJson, SerializableItemStack.class);
                     items[i] = serializableItem.toItemStack();
                 } catch (Exception e) {
-                    if (logger != null) {
-                        logger.severe("Failed to deserialize item from JSON: " + itemJson + " | Error: " + e.getMessage());
-                    }
-                    deserializationError = true;
-                    items[i] = null;
+                    throw new ItemDeserializationException("Failed to deserialize item from JSON: " + itemJson, e);
                 }
             } else {
                 items[i] = null;
             }
         }
         return items;
-    }
-
-    public boolean hasDeserializationError() {
-        return deserializationError;
     }
 
     public double getHealth() {

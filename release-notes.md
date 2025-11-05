@@ -1,25 +1,23 @@
-# Release Notes - MC Data Bridge `1.21.10.2`
+# Release Notes - MC Data Bridge `1.21.10.3`
 
-This is a critical stability and performance update. This version refactors the core data handling to be fully asynchronous, preventing server lag and ensuring data integrity across servers. We strongly recommend all users update.
+This is a key performance and stability patch. This update refactors the player data saving process to be fully asynchronous, significantly reducing main-thread work and improving data integrity.
 
-## ✅ Fixes & Improvements
+## ⚡ Performance Improvements
 
-### Stability & Data Integrity (High Priority)
+* **Fully Asynchronous Player Saving:** The entire player data save process, including NBT item serialization and JSON conversion, has been moved off the main server thread and onto an asynchronous task.
+* **Reduced Main-Thread Work:** This change prevents the `PlayerQuitEvent` from performing heavy serialization operations. This solves potential server lag spikes that could occur during events with mass player logouts (e.g., during a server restart).
 
-* **Asynchronous Database Operations:** All database calls (loading/saving data, table creation) are now performed asynchronously. This resolves major performance issues and prevents server lag or crashes from database-related delays.
-* **Race Condition Fix:** A database-level locking mechanism (`is_locked` flag) has been implemented. This prevents data loss when players switch servers quickly, ensuring the most recent data is always loaded.
-* **Version-Independent Item Serialization:** Replaced the fragile `BukkitObjectOutputStream` with a robust, version-independent NBT-based system. This is a critical fix to **prevent inventories from being wiped after a Minecraft version update.**
-* **Robust Error Handling:** If a player's data cannot be loaded on join, they will be safely kicked with an error message. This prevents a player's valid data from being accidentally overwritten by an empty inventory.
+## ✅ Stability & Robustness
 
-### Performance & Configuration
+* **Database Startup Guard:** A new safety check has been added. The plugin will now safely disable itself on startup if it fails to create or update the required `player_data` tables, preventing it from running in a broken state.
+* **Improved Deserialization Handling:** Refactored the data loading logic to use a custom `ItemDeserializationException`. This makes the existing error-handling (kicking a player with corrupt data) more robust and reliable.
 
-* **Upgraded Connection Pooling:** The database connection manager now uses HikariCP with a full set of advanced, configurable settings for optimal performance and resilience.
-* **Updated `config.yml`:** The configuration file has been expanded to include new options for fine-tuning the HikariCP connection pool and MySQL JDBC driver.
-* **Dependency & Build Updates:**
-    * Updated core dependencies, including `mysql-connector-j` (9.5.0), `spigot-api` (1.21.10), and `item-nbt-api`.
-    * Corrected the plugin shading process. `gson` is now correctly set as `provided` to prevent conflicts with other plugins, and `item-nbt-api` is properly relocated.
+## ⚙️ Internal Refactoring
+
+* **Centralized Gson Instance:** Consolidated the `Gson` instance into a single static object within the main plugin class for better code management.
+* **Code Cleanup:** Removed unused classes (`PluginManager.java`, `Utils.java`) to streamline the codebase.
 
 ## ⚠️ Important Notes for Upgrading
 
-* **Database Schema Update:** On startup, the plugin will automatically add `is_locked` and `last_updated` columns to your `player_data` table. This is required for the new data-locking feature.
-* **Configuration Update:** Your `config.yml` will be updated with the new connection pool settings. It is recommended to review these new options, though the defaults are optimized for most servers.
+* There are **no configuration or database schema changes** in this update.
+* This version is a drop-in replacement for `v1.21.10.2`.

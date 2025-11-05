@@ -1,5 +1,5 @@
 main: com.digitalserverhost.plugins.MCDataBridge
-version: 1.21.10.2
+version: 1.21.10.3
 name: mc-data-bridge
 author: west
 api-version: 1.21

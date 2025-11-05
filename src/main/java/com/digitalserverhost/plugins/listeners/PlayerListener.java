@@ -4,7 +4,6 @@ import com.digitalserverhost.plugins.MCDataBridge;
 import com.digitalserverhost.plugins.managers.DatabaseManager;
 import com.digitalserverhost.plugins.utils.PlayerData;
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -27,7 +26,7 @@ public class PlayerListener implements Listener {
     public PlayerListener(DatabaseManager databaseManager, MCDataBridge plugin) {
         this.databaseManager = databaseManager;
         this.plugin = plugin;
-        this.gson = new GsonBuilder().create();
+        this.gson = MCDataBridge.getGson();
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -51,7 +50,6 @@ public class PlayerListener implements Listener {
                             return;
                         }
                         PlayerData data = gson.fromJson(json, PlayerData.class);
-                        data.setLogger(plugin.getLogger());
 
                         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                             applyPlayerData(player, data);
@@ -70,44 +68,59 @@ public class PlayerListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
-        final PlayerData data;
-        try {
-            data = new PlayerData(
-                    player.getHealth(),
-                    player.getFoodLevel(),
-                    player.getSaturation(),
-                    player.getExhaustion(),
-                    player.getTotalExperience(),
-                    player.getExp(),
-                    player.getLevel(),
-                    player.getInventory().getContents(),
-                    player.getInventory().getArmorContents(),
-                    player.getActivePotionEffects().toArray(new PotionEffect[0])
-            );
-        } catch (Exception e) {
-            plugin.getLogger().severe("Failed to capture player data for " + player.getName() + ". Data will not be saved. Error: " + e.getMessage());
-            return;
-        }
 
+        // --- MAIN THREAD ---
+        // Quickly grab *copies* of all data. These are just references or primitives.
+        // This is very fast.
+        final String uuid = player.getUniqueId().toString();
+        final double health = player.getHealth();
+        final int foodLevel = player.getFoodLevel();
+        final float saturation = player.getSaturation();
+        final float exhaustion = player.getExhaustion();
+        final int totalExperience = player.getTotalExperience();
+        final float exp = player.getExp();
+        final int level = player.getLevel();
+        // getContents() and getArmorContents() return *copies*, which is safe.
+        final ItemStack[] inventoryContents = player.getInventory().getContents();
+        final ItemStack[] armorContents = player.getInventory().getArmorContents();
+        final PotionEffect[] potionEffects = player.getActivePotionEffects().toArray(new PotionEffect[0]);
+
+        // --- ASYNC THREAD ---
+        // Now, do all the heavy lifting off the main thread.
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            try (Connection connection = databaseManager.getConnection()) {
-                PreparedStatement lockStatement = connection.prepareStatement(
-                        "INSERT INTO player_data (uuid, data, is_locked) VALUES (?, '', 1) " +
-                        "ON DUPLICATE KEY UPDATE is_locked = 1"
+            try {
+                // Create PlayerData (this now does the slow NBT serialization async)
+                PlayerData data = new PlayerData(
+                        health, foodLevel, saturation, exhaustion,
+                        totalExperience, exp, level,
+                        inventoryContents, armorContents, potionEffects
                 );
-                lockStatement.setString(1, player.getUniqueId().toString());
-                lockStatement.executeUpdate();
 
+                // Serialize PlayerData to JSON (also async)
                 String json = gson.toJson(data);
-                PreparedStatement saveStatement = connection.prepareStatement(
-                        "UPDATE player_data SET data = ?, is_locked = 0 WHERE uuid = ?"
-                );
-                saveStatement.setString(1, json);
-                saveStatement.setString(2, player.getUniqueId().toString());
-                saveStatement.executeUpdate();
+
+                try (Connection connection = databaseManager.getConnection()) {
+                    PreparedStatement lockStatement = connection.prepareStatement(
+                            "INSERT INTO player_data (uuid, data, is_locked) VALUES (?, '', 1) " +
+                            "ON DUPLICATE KEY UPDATE is_locked = 1"
+                    );
+                    lockStatement.setString(1, uuid);
+                    lockStatement.executeUpdate();
+
+                    PreparedStatement saveStatement = connection.prepareStatement(
+                            "UPDATE player_data SET data = ?, is_locked = 0 WHERE uuid = ?"
+                    );
+                    saveStatement.setString(1, json);
+                    saveStatement.setString(2, uuid);
+                    saveStatement.executeUpdate();
+
+                } catch (Exception e) {
+                    plugin.getLogger().severe("Error saving data for player " + player.getName() + ": " + e.getMessage());
+                }
 
             } catch (Exception e) {
-                plugin.getLogger().severe("Error saving data for player " + player.getName() + ": " + e.getMessage());
+                // This will catch errors from the PlayerData constructor (e.g., NBT-API issues)
+                plugin.getLogger().severe("Failed to serialize player data for " + player.getName() + ". Data was NOT saved. Error: " + e.getMessage());
             }
         });
     }
@@ -139,37 +152,33 @@ public class PlayerListener implements Listener {
     }
 
     private void applyPlayerData(Player player, PlayerData data) {
-        ItemStack[] inventoryContents = data.getInventoryContents();
-        ItemStack[] armorContents = data.getArmorContents();
+        try {
+            player.setHealth(data.getHealth());
+            player.setFoodLevel(data.getFoodLevel());
+            player.setSaturation(data.getSaturation());
+            player.setExhaustion(data.getExhaustion());
+            player.setTotalExperience(data.getTotalExperience());
+            player.setExp(data.getExp());
+            player.setLevel(data.getLevel());
 
-        if (data.hasDeserializationError()) {
-            kickPlayerForError(player, "A critical error occurred while deserializing your inventory. Please contact an administrator.");
-            return;
-        }
+            player.getInventory().setContents(data.getInventoryContents());
+            player.getInventory().setArmorContents(data.getArmorContents());
 
-        player.setHealth(data.getHealth());
-        player.setFoodLevel(data.getFoodLevel());
-        player.setSaturation(data.getSaturation());
-        player.setExhaustion(data.getExhaustion());
-        player.setTotalExperience(data.getTotalExperience());
-        player.setExp(data.getExp());
-        player.setLevel(data.getLevel());
+            for (PotionEffect effect : player.getActivePotionEffects()) {
+                player.removePotionEffect(effect.getType());
+            }
 
-        player.getInventory().setContents(inventoryContents);
-        player.getInventory().setArmorContents(armorContents);
-
-        for (PotionEffect effect : player.getActivePotionEffects()) {
-            player.removePotionEffect(effect.getType());
-        }
-
-        if (data.getPotionEffects() != null) {
-            for (PotionEffect effect : data.getPotionEffects()) {
-                if (effect != null) {
-                    player.addPotionEffect(effect);
+            if (data.getPotionEffects() != null) {
+                for (PotionEffect effect : data.getPotionEffects()) {
+                    if (effect != null) {
+                        player.addPotionEffect(effect);
+                    }
                 }
             }
+            plugin.getLogger().info("Successfully applied data to player " + player.getName());
+        } catch (PlayerData.ItemDeserializationException e) {
+            plugin.getLogger().severe("A critical error occurred while deserializing inventory for player " + player.getName() + ". " + e.getMessage());
+            kickPlayerForError(player, "A critical error occurred while deserializing your inventory. Please contact an administrator.");
         }
-
-        plugin.getLogger().info("Successfully applied data to player " + player.getName());
     }
 }
