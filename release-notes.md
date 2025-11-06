@@ -1,4 +1,4 @@
-# Release Notes - MC Data Bridge `1.21.10.3`
+# Release Notes - MC Data Bridge `1.21.8.3`
 
 This is a key performance and stability patch. This update refactors both the player saving and loading processes to be more robust, performant, and secure.
 
@@ -23,4 +23,4 @@ This is a key performance and stability patch. This update refactors both the pl
 ## ⚠️ Important Notes for Upgrading
 
 * **Configuration Change:** A new `database.properties` section has been added to `config.yml` to support custom JDBC settings. Your existing config file will be updated automatically with the new settings. No manual changes are required *unless* you need to customize your connection (e.g., to **enable SSL** for a secure database).
-* This version is a drop-in replacement for `v1.21.10.2`.
+* This version is a drop-in replacement for `v1.21.8.2`.

@@ -22,9 +22,9 @@ MC Data Bridge is a robust, high-performance Spigot/Paper plugin designed to sea
 1.  **Build the Plugin:**
       * Navigate to the plugin's root directory in your terminal.
       * Run `mvn clean package` to build the plugin.
-      * The compiled JAR file (`mc-data-bridge-1.21.10.*.jar`) will be located in the `target/` directory.
+      * The compiled JAR file (`mc-data-bridge-1.21.8.*.jar`) will be located in the `target/` directory.
 2.  **Deploy to Servers:**
-      * Copy the `mc-data-bridge-1.21.10.*.jar` file into the `plugins/` folder of each PaperMC server you wish to synchronize.
+      * Copy the `mc-data-bridge-1.21.8.*.jar` file into the `plugins/` folder of each PaperMC server you wish to synchronize.
 
 ## Configuration
 
@@ -116,7 +116,7 @@ To sync player data between specific groups of servers (e.g., a Towny server and
 
 ## Usage
 
-1.  **Add the JAR:** Place the `mc-data-bridge-1.21.10.*.jar` file into the `plugins/` folder of all your PaperMC servers.
+1.  **Add the JAR:** Place the `mc-data-bridge-1.21.8.*.jar` file into the `plugins/` folder of all your PaperMC servers.
 2.  **Configure:** Edit the `config.yml` in each server's `plugins/mc-data-bridge/` folder with the appropriate database credentials.
 3.  **Restart Servers:** Restart your Minecraft servers to apply the plugin and configuration changes.
 4.  **Enjoy\!** Players can now seamlessly switch between your linked servers, and their data will be synchronized automatically and safely.
