@@ -5,6 +5,7 @@ import com.google.gson.Gson;
 import de.tr7zw.changeme.nbtapi.NBTContainer;
 import de.tr7zw.changeme.nbtapi.NBTItem;
 import org.bukkit.Material;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -13,6 +14,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Base64;
 
 public class PlayerData {
 
@@ -33,20 +35,21 @@ public class PlayerData {
     private List<String> armorContentsNBT;
     private SerializablePotionEffect[] potionEffects;
 
-    public PlayerData(double health, int foodLevel, float saturation, float exhaustion, int totalExperience, float exp, int level,
-                      ItemStack[] inventoryContents,
-                      ItemStack[] armorContents,
-                      PotionEffect[] potionEffects) {
-        this.health = health;
-        this.foodLevel = foodLevel;
-        this.saturation = saturation;
-        this.exhaustion = exhaustion;
-        this.totalExperience = totalExperience;
-        this.exp = exp;
-        this.level = level;
-        this.inventoryContentsNBT = serializeItemStackArray(inventoryContents);
-        this.armorContentsNBT = serializeItemStackArray(armorContents);
-        this.potionEffects = convertPotionEffectArrayToSerializable(potionEffects);
+    /**
+     * ★★★ NEW CONSTRUCTOR ★★★
+     * Snapshots a live player's data.
+     */
+    public PlayerData(Player player) {
+        this.health = player.getHealth();
+        this.foodLevel = player.getFoodLevel();
+        this.saturation = player.getSaturation();
+        this.exhaustion = player.getExhaustion();
+        this.totalExperience = player.getTotalExperience();
+        this.exp = player.getExp();
+        this.level = player.getLevel();
+        this.inventoryContentsNBT = serializeItemStackArray(player.getInventory().getContents());
+        this.armorContentsNBT = serializeItemStackArray(player.getInventory().getArmorContents());
+        this.potionEffects = convertPotionEffectArrayToSerializable(player.getActivePotionEffects().toArray(new PotionEffect[0]));
     }
 
     private List<String> serializeItemStackArray(ItemStack[] items) {
@@ -75,9 +78,8 @@ public class PlayerData {
         for (int i = 0; i < serializedItems.size(); i++) {
             String itemJson = serializedItems.get(i);
             if (itemJson != null && !itemJson.isEmpty()) {
-                // Handle old, invalid data
                 if (itemJson.equals("{}")) {
-                    items[i] = null;
+                    items[i] = new ItemStack(Material.AIR);
                     continue;
                 }
                 try {
@@ -87,51 +89,23 @@ public class PlayerData {
                     throw new ItemDeserializationException("Failed to deserialize item from JSON: " + itemJson, e);
                 }
             } else {
-                items[i] = null;
+                items[i] = new ItemStack(Material.AIR);
             }
         }
         return items;
     }
 
-    public double getHealth() {
-        return health;
-    }
+    public double getHealth() { return health; }
+    public int getFoodLevel() { return foodLevel; }
+    public float getSaturation() { return saturation; }
+    public float getExhaustion() { return exhaustion; }
+    public int getTotalExperience() { return totalExperience; }
+    public float getExp() { return exp; }
+    public int getLevel() { return level; }
+    public ItemStack[] getInventoryContents() { return deserializeItemStackArray(inventoryContentsNBT); }
+    public ItemStack[] getArmorContents() { return deserializeItemStackArray(armorContentsNBT); }
+    public PotionEffect[] getPotionEffects() { return convertSerializablePotionEffectArrayToPotionEffect(potionEffects); }
 
-    public int getFoodLevel() {
-        return foodLevel;
-    }
-
-    public float getSaturation() {
-        return saturation;
-    }
-
-    public float getExhaustion() {
-        return exhaustion;
-    }
-
-    public int getTotalExperience() {
-        return totalExperience;
-    }
-
-    public float getExp() {
-        return exp;
-    }
-
-    public int getLevel() {
-        return level;
-    }
-
-    public ItemStack[] getInventoryContents() {
-        return deserializeItemStackArray(inventoryContentsNBT);
-    }
-
-    public ItemStack[] getArmorContents() {
-        return deserializeItemStackArray(armorContentsNBT);
-    }
-
-    public PotionEffect[] getPotionEffects() {
-        return convertSerializablePotionEffectArrayToPotionEffect(potionEffects);
-    }
 
     private SerializablePotionEffect[] convertPotionEffectArrayToSerializable(PotionEffect[] effects) {
         if (effects == null) {
@@ -174,29 +148,48 @@ public class PlayerData {
     }
 
     private static class SerializableItemStack {
+        private final String itemAsBase64;
         private final String material;
         private final int amount;
         private final String nbt;
 
         public SerializableItemStack(ItemStack item) {
-            this.material = item.getType().name();
-            this.amount = item.getAmount();
-            String nbtString = new NBTItem(item).toString();
-            if (nbtString.equals("{}")) {
-                this.nbt = null;
+            if (item == null || item.getType().isAir()) {
+                this.itemAsBase64 = null;
             } else {
-                this.nbt = nbtString;
+                this.itemAsBase64 = Base64.getEncoder().encodeToString(item.serializeAsBytes());
             }
+            this.material = null;
+            this.amount = 0;
+            this.nbt = null;
         }
 
         public ItemStack toItemStack() {
-            ItemStack item = new ItemStack(Material.valueOf(material), amount);
-            if (nbt != null) {
-                NBTItem nbtItem = new NBTItem(item);
-                nbtItem.mergeCompound(new NBTContainer(nbt));
-                return nbtItem.getItem();
+            if (this.itemAsBase64 != null) {
+                try {
+                    byte[] itemBytes = Base64.getDecoder().decode(this.itemAsBase64);
+                    return ItemStack.deserializeBytes(itemBytes);
+                } catch (Exception e) {
+                    System.err.println("[mc-data-bridge] Failed to deserialize item from Base64! Data: " + this.itemAsBase64);
+                    return new ItemStack(Material.AIR);
+                }
             }
-            return item;
+
+            if (this.material != null) {
+                try {
+                    ItemStack item = new ItemStack(Material.valueOf(material), amount);
+                    if (nbt != null) {
+                        NBTItem nbtItem = new NBTItem(item);
+                        nbtItem.mergeCompound(new NBTContainer(nbt));
+                        return nbtItem.getItem();
+                    }
+                    return item;
+                } catch (Exception e) {
+                    System.err.println("[mc-data-bridge] Failed to deserialize OLD (NBT) item data! Material: " + this.material);
+                    return new ItemStack(Material.AIR);
+                }
+            }
+            return new ItemStack(Material.AIR);
         }
     }
 
@@ -229,13 +222,13 @@ public class PlayerData {
         @Override
         public String toString() {
             return "SerializablePotionEffect{" +
-                    "type='" + type + "\'" +
+                    "type='" + type + "'" +
                     ", duration=" + duration +
                     ", amplifier=" + amplifier +
                     ", ambient=" + ambient +
                     ", particles=" + particles +
                     ", icon=" + icon +
-                    '}';
+                    '}' ;
         }
     }
 }

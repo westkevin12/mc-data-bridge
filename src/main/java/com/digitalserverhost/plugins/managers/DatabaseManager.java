@@ -5,22 +5,24 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.UUID;
 
 public class DatabaseManager {
 
     private final HikariDataSource dataSource;
+    private final long lockTimeout;
 
     public DatabaseManager(FileConfiguration config) {
         HikariConfig hikariConfig = new HikariConfig();
 
-        // Standard connection details
         String jdbcUrl = "jdbc:mysql://" + config.getString("database.host") + ":" + config.getInt("database.port") + "/" + config.getString("database.database");
         hikariConfig.setJdbcUrl(jdbcUrl);
         hikariConfig.setUsername(config.getString("database.username"));
         hikariConfig.setPassword(config.getString("database.password"));
 
-        // Add all properties from the config
         if (config.isConfigurationSection("database.properties")) {
             for (String key : config.getConfigurationSection("database.properties").getKeys(false)) {
                 String value = config.getString("database.properties." + key);
@@ -28,26 +30,21 @@ public class DatabaseManager {
             }
         }
 
-        // Pool settings from config
         hikariConfig.setMaximumPoolSize(config.getInt("database.pool-settings.maximum-pool-size", 10));
         hikariConfig.setMinimumIdle(config.getInt("database.pool-settings.minimum-idle", 10));
-        hikariConfig.setMaxLifetime(config.getInt("database.pool-settings.max-lifetime", 1800000)); // 30 minutes
-        hikariConfig.setConnectionTimeout(config.getInt("database.pool-settings.connection-timeout", 5000)); // 5 seconds
-        hikariConfig.setIdleTimeout(config.getInt("database.pool-settings.idle-timeout", 600000)); // 10 minutes
+        hikariConfig.setMaxLifetime(config.getInt("database.pool-settings.max-lifetime", 1800000));
+        hikariConfig.setConnectionTimeout(config.getInt("database.pool-settings.connection-timeout", 5000));
+        hikariConfig.setIdleTimeout(config.getInt("database.pool-settings.idle-timeout", 600000));
 
-        // MySQL-specific optimizations
-        hikariConfig.addDataSourceProperty("cachePrepStmts", config.getBoolean("database.optimizations.cache-prep-stmts", true));
-        hikariConfig.addDataSourceProperty("prepStmtCacheSize", config.getInt("database.optimizations.prep-stmt-cache-size", 250));
-        hikariConfig.addDataSourceProperty("prepStmtCacheSqlLimit", config.getInt("database.optimizations.prep-stmt-cache-sql-limit", 2048));
-        hikariConfig.addDataSourceProperty("useServerPrepStmts", config.getBoolean("database.optimizations.use-server-prep-stmts", true));
-        hikariConfig.addDataSourceProperty("useLocalSessionState", config.getBoolean("database.optimizations.use-local-session-state", true));
-        hikariConfig.addDataSourceProperty("rewriteBatchedStatements", config.getBoolean("database.optimizations.rewrite-batched-statements", true));
-        hikariConfig.addDataSourceProperty("cacheResultSetMetadata", config.getBoolean("database.optimizations.cache-result-set-metadata", true));
-        hikariConfig.addDataSourceProperty("cacheServerConfiguration", config.getBoolean("database.optimizations.cache-server-configuration", true));
-        hikariConfig.addDataSourceProperty("elideSetAutoCommits", config.getBoolean("database.optimizations.elide-set-auto-commits", true));
-        hikariConfig.addDataSourceProperty("maintainTimeStats", config.getBoolean("database.optimizations.maintain-time-stats", false));
+        if (config.isConfigurationSection("database.optimizations")) {
+            for (String key : config.getConfigurationSection("database.optimizations").getKeys(false)) {
+                Object value = config.get("database.optimizations." + key);
+                hikariConfig.addDataSourceProperty(key, value);
+            }
+        }
 
-        dataSource = new HikariDataSource(hikariConfig);
+        this.dataSource = new HikariDataSource(hikariConfig);
+        this.lockTimeout = config.getLong("lock-timeout", 60000); // 60 seconds default
     }
 
     public Connection getConnection() throws SQLException {
@@ -57,6 +54,80 @@ public class DatabaseManager {
     public void close() {
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
+        }
+    }
+
+    public boolean acquireLock(UUID uuid, String serverId) throws SQLException {
+        long currentTime = System.currentTimeMillis();
+        long expirationTime = currentTime - lockTimeout;
+
+        try (Connection connection = getConnection()) {
+            PreparedStatement updateStmt = connection.prepareStatement(
+                    "UPDATE player_data SET is_locked = 1, locking_server = ?, lock_timestamp = ? WHERE uuid = ? AND (is_locked = 0 OR is_locked IS NULL OR lock_timestamp < ?)");
+            updateStmt.setString(1, serverId);
+            updateStmt.setLong(2, currentTime);
+            updateStmt.setString(3, uuid.toString());
+            updateStmt.setLong(4, expirationTime);
+
+            if (updateStmt.executeUpdate() > 0) {
+                return true; // Lock acquired on existing row
+            }
+
+            try {
+                PreparedStatement insertStmt = connection.prepareStatement(
+                        "INSERT INTO player_data (uuid, data, is_locked, locking_server, lock_timestamp) VALUES (?, NULL, 1, ?, ?)");
+                insertStmt.setString(1, uuid.toString());
+                insertStmt.setString(2, serverId);
+                insertStmt.setLong(3, currentTime);
+                insertStmt.executeUpdate();
+                return true; // Lock acquired via new row
+            } catch (SQLException e) {
+                // This is expected if a race condition occurred and another server inserted the row first.
+            }
+
+            return false;
+        }
+    }
+    
+    public boolean saveAndReleaseLock(String json, UUID uuid, String serverId) throws SQLException {
+        String sql = "UPDATE player_data SET data = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, json);
+            statement.setString(2, uuid.toString());
+            statement.setString(3, serverId);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    public void releaseLock(UUID uuid, String serverId) {
+        if (serverId == null || serverId.isEmpty()) {
+            System.err.println("[mc-data-bridge] CRITICAL: releaseLock was called with a null or empty serverId for UUID: " + uuid);
+            return;
+        }
+        
+        String sql = "UPDATE player_data SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement releaseStatement = connection.prepareStatement(sql)) {
+            releaseStatement.setString(1, uuid.toString());
+            releaseStatement.setString(2, serverId);
+            releaseStatement.executeUpdate();
+        } catch (Exception e) {
+             System.err.println("[mc-data-bridge] Failed to release lock for " + uuid + " on server " + serverId + ": " + e.getMessage());
+        }
+    }
+
+    public void updateLock(UUID uuid, String serverId) {
+        long currentTime = System.currentTimeMillis();
+        String sql = "UPDATE player_data SET lock_timestamp = ? WHERE uuid = ? AND locking_server = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, currentTime);
+            statement.setString(2, uuid.toString());
+            statement.setString(3, serverId);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("[mc-data-bridge] Failed to update lock for " + uuid + ": " + e.getMessage());
         }
     }
 }

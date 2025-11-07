@@ -40,3 +40,14 @@ database:
 # Set to true to enable verbose debugging messages in the server console.
 # This can be useful for diagnosing issues, but should be false for normal operation.
 debug: false
+
+# A unique name for this server. This is CRITICAL for data locking.
+# Each server connected to the same database MUST have a unique name.
+# Example: "survival-1", "creative", "lobby"
+server-id: "default-server"
+
+# The duration in milliseconds after which a player data lock is considered expired.
+# This prevents players from being permanently locked out if a server crashes.
+# Default: 60000 (1 minute)
+lock-timeout: 60000
+
