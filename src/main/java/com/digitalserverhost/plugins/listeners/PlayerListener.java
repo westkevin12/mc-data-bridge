@@ -17,13 +17,8 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.ByteArrayDataInput;
-import com.google.common.io.ByteArrayDataOutput;
-import com.google.common.collect.Iterables;
 import org.bukkit.scheduler.BukkitTask;
-
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
-import java.io.IOException;
+import net.kyori.adventure.text.Component;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -103,7 +98,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
             }
 
             if (!isLockOwner(uuid, serverId)) {
-                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, "§c[DataBridge] Your data is still being saved by another server. Please try again.");
+                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, Component.text("§c[DataBridge] Your data is still being saved by another server. Please try again."));
                 plugin.getLogger().warning("Player " + name + " was disallowed due to a persistent data lock.");
                 return;
             }
@@ -135,11 +130,11 @@ public class PlayerListener implements Listener, PluginMessageListener {
             }
         } catch (PlayerData.ItemDeserializationException e) {
             plugin.getLogger().severe("A critical error occurred while deserializing inventory for player " + name + ". " + e.getMessage());
-            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, "§c[DataBridge] A critical error occurred while deserializing your inventory. Please contact an administrator.");
+            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, Component.text("§c[DataBridge] A critical error occurred while deserializing your inventory. Please contact an administrator."));
             databaseManager.releaseLock(uuid, serverId); // Release the lock we acquired
         } catch (Exception e) {
             plugin.getLogger().severe("Critical error during pre-login for player " + name + ": " + e.getMessage());
-            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, "§c[DataBridge] Could not process your player data. Please relog.");
+            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, Component.text("§c[DataBridge] Could not process your player data. Please relog."));
             databaseManager.releaseLock(uuid, serverId); // Release the lock we acquired
         }
     }
@@ -312,8 +307,10 @@ public class PlayerListener implements Listener, PluginMessageListener {
             }
             plugin.getLogger().info("Successfully applied data to player " + player.getName());
         } catch (Exception e) {
-            plugin.getLogger().severe("A critical error occurred while applying data to player " + player.getName() + ". " + e.getMessage());
-            player.kickPlayer("§c[DataBridge] An error occurred applying your data.");
+            plugin.getLogger().severe("A critical error occurred while applying data to player " + (player != null ? player.getName() : "null") + ". " + e.getMessage());
+            if (player != null) {
+                player.kick(Component.text("§c[DataBridge] An error occurred applying your data."));
+            }
         }
     }
 }

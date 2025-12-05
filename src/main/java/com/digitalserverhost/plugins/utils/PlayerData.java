@@ -175,12 +175,16 @@ public class PlayerData {
                 }
             }
 
+            // Legacy NBT handling for old data formats
             if (this.material != null) {
                 try {
                     ItemStack item = new ItemStack(Material.valueOf(material), amount);
                     if (nbt != null) {
-                        NBTItem nbtItem = new NBTItem(item);
-                        nbtItem.mergeCompound(new NBTContainer(nbt));
+                        @SuppressWarnings("deprecation")
+                        NBTItem nbtItem = new NBTItem(item); // Deprecated: NBTItem is legacy, but required for this legacy data path
+                        @SuppressWarnings("deprecation")
+                        de.tr7zw.changeme.nbtapi.NBTCompound compound = new NBTContainer(nbt); // Deprecated: NBTContainer is legacy
+                        nbtItem.mergeCompound(compound);
                         return nbtItem.getItem();
                     }
                     return item;
@@ -203,7 +207,13 @@ public class PlayerData {
         private final boolean icon;
 
         public SerializablePotionEffect(PotionEffect effect) {
-            this.type = effect.getType().getName();
+            // Using deprecated getName() to maintain compatibility with existing database data
+            // that stores effect types as UPPERCASE names (e.g., "SPEED").
+            // Switching to getKey() would break compatibility without a database migration.
+            @SuppressWarnings("deprecation")
+            String name = effect.getType().getName();
+            this.type = name;
+            
             this.duration = effect.getDuration();
             this.amplifier = effect.getAmplifier();
             this.ambient = effect.isAmbient();
@@ -212,6 +222,8 @@ public class PlayerData {
         }
 
         public PotionEffect toPotionEffect() {
+            // Using deprecated getByName() to read legacy uppercase names from database
+            @SuppressWarnings("deprecation")
             PotionEffectType effectType = PotionEffectType.getByName(type);
             if (effectType == null) {
                 return null;
