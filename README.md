@@ -24,7 +24,11 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
       * Inventory Contents
       * Armor Contents
       * Active Potion Effects
+      * **Ender Chest Contents**
+      * **Advancements & Recipes**
   * **Resilient Connection Pooling:** Uses HikariCP with optimized settings to ensure that the database connection is resilient to network issues and database restarts.
+  * **Granular Sync Control**: Enable or disable synchronization for any specific data type via `config.yml`.
+  * **Server/World Blacklist**: Prevent synchronization on specific servers or worlds.
   * **Configurable & Flexible:** Easily connect to your MySQL database and configure settings for your server environment.
 
 ## Installation
@@ -89,12 +93,41 @@ server-id: "default-server"
 # This prevents players from being permanently locked out if a server crashes.
 # Default: 60000 (1 minute)
 lock-timeout: 60000
+
+# Heartbeat interval for lock updates (seconds)
+lock-heartbeat-seconds: 30
+
+# Toggle specific data to sync
+sync-data:
+  health: true
+  food-level: true
+  experience: true
+  inventory: true
+  armor: true
+  potion-effects: true
+  ender-chest: false
+  location: false # Logging only
+  advancements: false
+
+# Blacklist servers/worlds from syncing
+sync-blacklist:
+  servers:
+    - "example-server"
+  worlds:
+    - "example_nether"
 ```
 
   * **`database.*`**: Standard configuration for your MySQL database connection.
   * **`debug`**: Set to `true` to enable verbose debugging messages in the server console. Set to `false` for normal operation.
   * **`server-id` (Required):** You **must** set a unique name for each of your PaperMC/Spigot servers. This is critical for the data locking system to work correctly. The proxy server does not need this configuration.
+  * **`server-id` (Required):** You **must** set a unique name for each of your PaperMC/Spigot servers. This is critical for the data locking system to work correctly. The proxy server does not need this configuration.
   * **`lock-timeout`**: The time in milliseconds after which a data lock is considered expired. This prevents a player from being permanently locked if a server crashes while saving their data.
+  * **`sync-data`**: Toggle specific features on/off. New features like `ender-chest` and `advancements` are disabled by default.
+  * **`sync-blacklist`**: Define servers or worlds where synchronization should be skipped.
+
+## Commands
+
+*   `/databridge unlock <player>` - Manually release a lock for a specific player (Permission: `databridge.admin`).
 
 ## Usage
 

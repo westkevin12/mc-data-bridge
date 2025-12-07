@@ -1,4 +1,4 @@
 name: mc-data-bridge
-version: 2.0.2
+version: 2.0.3
 main: com.digitalserverhost.plugins.proxy.bungee.BungeeMCDataBridge
 author: DigitalServerHost

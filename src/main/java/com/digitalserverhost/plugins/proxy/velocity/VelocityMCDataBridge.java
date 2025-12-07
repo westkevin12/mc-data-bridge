@@ -8,13 +8,8 @@ import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 
-@Plugin(
-    id = "mc-data-bridge",
-    name = "mc-data-bridge",
-    version = "2.0.1",
-    description = "A data bridge for Minecraft servers.",
-    authors = {"DigitalServerHost"}
-)
+@Plugin(id = "mc-data-bridge", name = "mc-data-bridge", version = "2.0.3", description = "A data bridge for Minecraft servers.", authors = {
+        "DigitalServerHost" })
 public class VelocityMCDataBridge {
 
     private final ProxyServer server;

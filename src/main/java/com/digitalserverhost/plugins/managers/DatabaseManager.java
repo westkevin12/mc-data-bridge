@@ -17,7 +17,8 @@ public class DatabaseManager {
     public DatabaseManager(FileConfiguration config) {
         HikariConfig hikariConfig = new HikariConfig();
 
-        String jdbcUrl = "jdbc:mysql://" + config.getString("database.host") + ":" + config.getInt("database.port") + "/" + config.getString("database.database");
+        String jdbcUrl = "jdbc:mysql://" + config.getString("database.host") + ":" + config.getInt("database.port")
+                + "/" + config.getString("database.database");
         hikariConfig.setJdbcUrl(jdbcUrl);
         hikariConfig.setUsername(config.getString("database.username"));
         hikariConfig.setPassword(config.getString("database.password"));
@@ -81,18 +82,19 @@ public class DatabaseManager {
                 insertStmt.executeUpdate();
                 return true; // Lock acquired via new row
             } catch (SQLException e) {
-                // This is expected if a race condition occurred and another server inserted the row first.
+                // This is expected if a race condition occurred and another server inserted the
+                // row first.
             }
 
             return false;
         }
     }
-    
+
     public boolean saveAndReleaseLock(String json, UUID uuid, String serverId) throws SQLException {
         String sql = "UPDATE player_data SET data = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, json);
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setBytes(1, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             statement.setString(2, uuid.toString());
             statement.setString(3, serverId);
             return statement.executeUpdate() > 0;
@@ -101,18 +103,40 @@ public class DatabaseManager {
 
     public void releaseLock(UUID uuid, String serverId) {
         if (serverId == null || serverId.isEmpty()) {
-            System.err.println("[mc-data-bridge] CRITICAL: releaseLock was called with a null or empty serverId for UUID: " + uuid);
+            System.err.println(
+                    "[mc-data-bridge] CRITICAL: releaseLock was called with a null or empty serverId for UUID: "
+                            + uuid);
             return;
         }
-        
+
         String sql = "UPDATE player_data SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
-             PreparedStatement releaseStatement = connection.prepareStatement(sql)) {
+                PreparedStatement releaseStatement = connection.prepareStatement(sql)) {
             releaseStatement.setString(1, uuid.toString());
             releaseStatement.setString(2, serverId);
             releaseStatement.executeUpdate();
         } catch (Exception e) {
-             System.err.println("[mc-data-bridge] Failed to release lock for " + uuid + " on server " + serverId + ": " + e.getMessage());
+            System.err.println("[mc-data-bridge] Failed to release lock for " + uuid + " on server " + serverId + ": "
+                    + e.getMessage());
+        }
+    }
+
+    /**
+     * Forcefully releases the lock for a player, regardless of which server holds
+     * it.
+     * Used by the admin unlock command.
+     */
+    public boolean releaseLock(UUID uuid) {
+        String sql = "UPDATE player_data SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ?";
+        try (Connection connection = getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, uuid.toString());
+            int rows = statement.executeUpdate();
+            return rows > 0; // Return true if a row was actually updated (lock released or at least row
+                             // touched)
+        } catch (SQLException e) {
+            System.err.println("[mc-data-bridge] Failed to force release lock for " + uuid + ": " + e.getMessage());
+            return false;
         }
     }
 
@@ -120,7 +144,7 @@ public class DatabaseManager {
         long currentTime = System.currentTimeMillis();
         String sql = "UPDATE player_data SET lock_timestamp = ? WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+                PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, currentTime);
             statement.setString(2, uuid.toString());
             statement.setString(3, serverId);

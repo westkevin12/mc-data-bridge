@@ -51,3 +51,28 @@ server-id: "default-server"
 # Default: 60000 (1 minute)
 lock-timeout: 60000
 
+# The interval in seconds between lock updates (heartbeats) while a player is online.
+# Default: 30
+lock-heartbeat-seconds: 30
+
+# Granular Data Synchronization Toggles
+# Enable or disable synchronization for specific data components.
+sync-data:
+  health: true
+  food-level: true
+  experience: true
+  inventory: true
+  armor: true
+  potion-effects: true
+  ender-chest: false
+  location: false
+  advancements: false
+
+# Server/World Blacklist
+# Data synchronization will be disabled for players on these servers or in these worlds.
+sync-blacklist:
+  servers:
+    - "example-blacklisted-server"
+  worlds:
+    - "example_world_nether"
+
