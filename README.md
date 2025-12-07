@@ -29,6 +29,7 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
   * **Resilient Connection Pooling:** Uses HikariCP with optimized settings to ensure that the database connection is resilient to network issues and database restarts.
   * **Granular Sync Control**: Enable or disable synchronization for any specific data type via `config.yml`.
   * **Server/World Blacklist**: Prevent synchronization on specific servers or worlds.
+  * **Configurable Table Names**: Set a custom prefix for database tables to avoid conflicts.
   * **Configurable & Flexible:** Easily connect to your MySQL database and configure settings for your server environment.
 
 ## Installation
@@ -87,7 +88,11 @@ debug: false
 # A unique name for this server. This is CRITICAL for data locking.
 # Each server connected to the same database MUST have a unique name.
 # Example: "survival-1", "creative", "lobby"
+# Example: "survival-1", "creative", "lobby"
 server-id: "default-server"
+
+# Set to prefix the player_data table (e.g., 'mc_data_bridge_'). Leave empty for default.
+table-prefix: ""
 
 # The duration in milliseconds after which a player data lock is considered expired.
 # This prevents players from being permanently locked out if a server crashes.

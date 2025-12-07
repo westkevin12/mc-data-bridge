@@ -16,6 +16,7 @@ public class MCDataBridge extends JavaPlugin {
     private DatabaseManager databaseManager;
     private boolean debugMode;
     private String serverId;
+    private String tableName;
     private static final Gson GSON = new GsonBuilder().create();
 
     @Override
@@ -29,13 +30,14 @@ public class MCDataBridge extends JavaPlugin {
         updateConfig(); // Check and update config if missing new keys
         this.debugMode = getConfig().getBoolean("debug", false);
         this.serverId = getConfig().getString("server-id", "default-server");
+        this.tableName = getConfig().getString("table-prefix", "") + "player_data";
         if (this.serverId.equals("default-server")) {
             getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
             getLogger().warning("!!! Server-id is not set in config.yml. Using default. !!!");
             getLogger().warning("!!! This is UNSAFE for multi-server setups.           !!!");
             getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         }
-        databaseManager = new DatabaseManager(getConfig());
+        databaseManager = new DatabaseManager(getConfig(), this.tableName);
 
         getServer().getScheduler().runTaskAsynchronously(this, this::createServerTable);
         getServer().getScheduler().runTaskAsynchronously(this, this::releaseOrphanedLocks);
@@ -72,7 +74,8 @@ public class MCDataBridge extends JavaPlugin {
     }
 
     private void createServerTable() {
-        String createTableSQL = "CREATE TABLE IF NOT EXISTS player_data (" +
+        String escapedTableName = "`" + tableName + "`";
+        String createTableSQL = "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
                 "uuid VARCHAR(36) NOT NULL, " +
                 "data LONGTEXT, " +
                 "is_locked BOOLEAN DEFAULT 0, " +
@@ -84,24 +87,49 @@ public class MCDataBridge extends JavaPlugin {
         try (Connection connection = databaseManager.getConnection();
                 Statement statement = connection.createStatement()) {
 
+            // Check for migration from default 'player_data' to prefixed table
+            if (!tableName.equals("player_data")) {
+                try {
+                    ResultSet oldTable = connection.getMetaData().getTables(null, null, "player_data", null);
+                    boolean oldExists = oldTable.next();
+                    oldTable.close();
+
+                    ResultSet newTable = connection.getMetaData().getTables(null, null, tableName, null);
+                    boolean newExists = newTable.next();
+                    newTable.close();
+
+                    if (oldExists && !newExists) {
+                        getLogger().warning("Detected old 'player_data' table and new prefix setting.");
+                        getLogger().warning("Migrating 'player_data' to '" + tableName + "'...");
+                        statement.executeUpdate("RENAME TABLE `player_data` TO " + escapedTableName);
+                        getLogger().info("Migration successful!");
+                    }
+                } catch (Exception e) {
+                    getLogger().severe("Failed to migrate table: " + e.getMessage());
+                }
+            }
+
             statement.executeUpdate(createTableSQL);
-            getLogger().info("Successfully verified or created the 'player_data' table.");
+            getLogger().info("Successfully verified or created the '" + tableName + "' table.");
 
-            if (!connection.getMetaData().getColumns(null, null, "player_data", "is_locked").next()) {
-                statement.executeUpdate("ALTER TABLE player_data ADD COLUMN is_locked BOOLEAN DEFAULT 0");
+            if (!connection.getMetaData().getColumns(null, null, tableName, "is_locked").next()) {
+                statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN is_locked BOOLEAN DEFAULT 0");
             }
-            if (!connection.getMetaData().getColumns(null, null, "player_data", "locking_server").next()) {
-                statement.executeUpdate("ALTER TABLE player_data ADD COLUMN locking_server VARCHAR(255) DEFAULT NULL");
-            }
-            if (!connection.getMetaData().getColumns(null, null, "player_data", "lock_timestamp").next()) {
-                statement.executeUpdate("ALTER TABLE player_data ADD COLUMN lock_timestamp BIGINT DEFAULT 0");
-            }
-            if (!connection.getMetaData().getColumns(null, null, "player_data", "last_updated").next()) {
+            if (!connection.getMetaData().getColumns(null, null, tableName, "locking_server").next()) {
                 statement.executeUpdate(
-                        "ALTER TABLE player_data ADD COLUMN last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+                        "ALTER TABLE " + escapedTableName + " ADD COLUMN locking_server VARCHAR(255) DEFAULT NULL");
+            }
+            if (!connection.getMetaData().getColumns(null, null, tableName, "lock_timestamp").next()) {
+                statement.executeUpdate(
+                        "ALTER TABLE " + escapedTableName + " ADD COLUMN lock_timestamp BIGINT DEFAULT 0");
+            }
+            if (!connection.getMetaData().getColumns(null, null, tableName, "last_updated").next()) {
+                statement.executeUpdate(
+                        "ALTER TABLE " + escapedTableName
+                                + " ADD COLUMN last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
             }
 
-            ResultSet columns = connection.getMetaData().getColumns(null, null, "player_data", "data");
+            ResultSet columns = connection.getMetaData().getColumns(null, null, tableName, "data");
             if (columns.next()) {
                 String typeName = columns.getString("TYPE_NAME");
                 boolean needsMigration = "LONGTEXT".equalsIgnoreCase(typeName) || "TEXT".equalsIgnoreCase(typeName);
@@ -109,7 +137,8 @@ public class MCDataBridge extends JavaPlugin {
                 if (needsMigration) {
                     if (getConfig().getBoolean("auto-update-schema", false)) {
                         getLogger().info("Migrating 'data' column from " + typeName + " to LONGBLOB as requested...");
-                        statement.executeUpdate("ALTER TABLE player_data MODIFY COLUMN data LONGBLOB NULL");
+                        statement
+                                .executeUpdate("ALTER TABLE " + escapedTableName + " MODIFY COLUMN data LONGBLOB NULL");
                         getLogger().info("Migration complete! 'data' is now LONGBLOB.");
                     } else {
                         getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
@@ -121,7 +150,7 @@ public class MCDataBridge extends JavaPlugin {
                 }
 
                 if ("NO".equalsIgnoreCase(columns.getString("IS_NULLABLE"))) {
-                    statement.executeUpdate("ALTER TABLE player_data MODIFY COLUMN data LONGBLOB NULL");
+                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " MODIFY COLUMN data LONGBLOB NULL");
                 }
             }
         } catch (Exception e) {
@@ -131,7 +160,9 @@ public class MCDataBridge extends JavaPlugin {
     }
 
     private void releaseOrphanedLocks() {
-        String releaseSQL = "UPDATE player_data SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE locking_server = ?";
+        String escapedTableName = "`" + tableName + "`";
+        String releaseSQL = "UPDATE " + escapedTableName
+                + " SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE locking_server = ?";
 
         try (Connection connection = databaseManager.getConnection();
                 PreparedStatement statement = connection.prepareStatement(releaseSQL)) {
@@ -205,6 +236,14 @@ public class MCDataBridge extends JavaPlugin {
             newConfigContent.append("\n");
             newConfigContent.append("# Unique identifier for this server (Required).\n");
             newConfigContent.append("server-id: \"default-server\"\n");
+            updated = true;
+        }
+
+        // Check for 'table-prefix'
+        if (!fileConfig.contains("table-prefix")) {
+            newConfigContent.append("\n");
+            newConfigContent.append("# Set to prefix the player_data table (e.g., 'mc_data_bridge_').\n");
+            newConfigContent.append("table-prefix: \"\"\n");
             updated = true;
         }
 

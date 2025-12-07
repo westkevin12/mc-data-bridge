@@ -1,19 +1,14 @@
-# Release Notes - MC Data Bridge v2.0.3
+# Release Notes - MC Data Bridge v2.0.4
 
 ## 🆕 New Features
-*   **Granular Data Synchronization**: You can now toggle exactly what data is synced in `config.yml`. Added `sync-data` section.
-*   **Ender Chest Sync**: Added support for synchronizing Ender Chest contents! (Disabled by default, enable in config).
-*   **Advancements Integration**: Added support for standard Advancements and Recipes! (Disabled by default).
-*   **Admin Unlock Command**: Added `/databridge unlock <player>` to manually release a stuck lock.
-*   **Blacklist**: Added `sync-blacklist` to disable synchronization on specific servers or worlds.
+*   **Configurable Table Prefix**: Added a new `table-prefix` option in `config.yml`.
+    *   This allows you to specify a prefix (e.g., `mc_data_bridge_`) for the database table.
+    *   Useful for avoiding conflicts with other plugins in the same database that use the same table name or running multiple instances of the plugin.
 
-## 🛠 Improvements & Optimizations
-*   **Configurable Heartbeat**: Added `lock-heartbeat-seconds` to control how often the data lock is refreshed.
-*   **Better Messages**: Updated message handling to use Adventure API for full modern chat component support.
-*   **Database Check**: Added a startup check to warn if your database schema for `data` is `LONGTEXT` instead of the recommended `MEDIUMBLOB`.
+## 🛠 Improvements
+*   **Backward Compatibility**: The default behavior remains unchanged. If `table-prefix` is not set or left empty, the plugin continues to use `player_data` as the table name.
+*   **Auto-Configuration**: The new `table-prefix` setting will be automatically added to your existing `config.yml` on startup.
+*   **Smart Migration**: If you set a prefix (e.g., `survival_`) and have an existing `player_data` table, the plugin will **automatically rename** your old table to the new name (e.g., `survival_player_data`) on first startup, preserving all your player data. this is only done once from the default table name to the new prefix. You can manually rename the table if you need to change the prefix after setting it.
 
-## ⚠️ Important Notes
-*   **Configuration Update**: The plugin now features a **Smart Auto-Updater**. On startup, it will detect any missing configuration keys (like the new `sync-data` section) and safely append them to your existing `config.yml`. **You do NOT need to reset your config.**
-*   **Schema Optimization**: The plugin now supports `LONGBLOB` for the `data` column, which is more efficient than `LONGTEXT`.
-    *   **Automatic Migration**: A new check will run on startup. If you are using the old `LONGTEXT` format, the plugin will automatically attempt to migrate your table to `LONGBLOB` if the config option `auto-update-schema` is set to `true` (which is the default for updated configs).
-    *   **Manual**: If you prefer, you can manually run `ALTER TABLE player_data MODIFY COLUMN data LONGBLOB NULL;`.
+## ⚠️ Notes
+*   **No Schema Changes**: This update does not require any database migrations unless you intend to change the table name by setting a prefix.
