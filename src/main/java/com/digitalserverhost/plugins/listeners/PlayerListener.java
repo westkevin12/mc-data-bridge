@@ -125,8 +125,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
             // --- DATA IS LOCKED, PROCEED WITH LOADING ---
             try (Connection connection = databaseManager.getConnection()) {
-                PreparedStatement statement = connection
-                        .prepareStatement("SELECT data FROM player_data WHERE uuid = ?");
+                String query = "SELECT data FROM " + databaseManager.getTableName() + " WHERE uuid = ?";
+                PreparedStatement statement = connection.prepareStatement(query);
                 statement.setString(1, uuid.toString());
                 ResultSet resultSet = statement.executeQuery();
 
@@ -167,8 +167,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
     private boolean isLockOwner(UUID uuid, String serverId) {
         try (Connection connection = databaseManager.getConnection()) {
-            PreparedStatement checkStmt = connection
-                    .prepareStatement("SELECT locking_server FROM player_data WHERE uuid = ?");
+            String query = "SELECT locking_server FROM " + databaseManager.getTableName() + " WHERE uuid = ?";
+            PreparedStatement checkStmt = connection.prepareStatement(query);
             checkStmt.setString(1, uuid.toString());
             ResultSet rs = checkStmt.executeQuery();
             if (rs.next()) {

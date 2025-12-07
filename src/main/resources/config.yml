@@ -46,6 +46,9 @@ debug: false
 # Example: "survival-1", "creative", "lobby"
 server-id: "default-server"
 
+# Set to prefix the player_data table (e.g., 'mc_data_bridge_').
+table-prefix: ""
+
 # The duration in milliseconds after which a player data lock is considered expired.
 # This prevents players from being permanently locked out if a server crashes.
 # Default: 60000 (1 minute)

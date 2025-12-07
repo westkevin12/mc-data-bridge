@@ -13,8 +13,10 @@ public class DatabaseManager {
 
     private final HikariDataSource dataSource;
     private final long lockTimeout;
+    private final String tableName;
 
-    public DatabaseManager(FileConfiguration config) {
+    public DatabaseManager(FileConfiguration config, String tableName) {
+        this.tableName = "`" + tableName.replace("`", "") + "`"; // Escape table name
         HikariConfig hikariConfig = new HikariConfig();
 
         String jdbcUrl = "jdbc:mysql://" + config.getString("database.host") + ":" + config.getInt("database.port")
@@ -63,7 +65,8 @@ public class DatabaseManager {
 
         try (Connection connection = getConnection()) {
             PreparedStatement updateStmt = connection.prepareStatement(
-                    "UPDATE player_data SET is_locked = 1, locking_server = ?, lock_timestamp = ? WHERE uuid = ? AND (is_locked = 0 OR is_locked IS NULL OR lock_timestamp < ?)");
+                    "UPDATE " + tableName
+                            + " SET is_locked = 1, locking_server = ?, lock_timestamp = ? WHERE uuid = ? AND (is_locked = 0 OR is_locked IS NULL OR lock_timestamp < ?)");
             updateStmt.setString(1, serverId);
             updateStmt.setLong(2, currentTime);
             updateStmt.setString(3, uuid.toString());
@@ -75,7 +78,8 @@ public class DatabaseManager {
 
             try {
                 PreparedStatement insertStmt = connection.prepareStatement(
-                        "INSERT INTO player_data (uuid, data, is_locked, locking_server, lock_timestamp) VALUES (?, NULL, 1, ?, ?)");
+                        "INSERT INTO " + tableName
+                                + " (uuid, data, is_locked, locking_server, lock_timestamp) VALUES (?, NULL, 1, ?, ?)");
                 insertStmt.setString(1, uuid.toString());
                 insertStmt.setString(2, serverId);
                 insertStmt.setLong(3, currentTime);
@@ -91,7 +95,8 @@ public class DatabaseManager {
     }
 
     public boolean saveAndReleaseLock(String json, UUID uuid, String serverId) throws SQLException {
-        String sql = "UPDATE player_data SET data = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
+        String sql = "UPDATE " + tableName
+                + " SET data = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setBytes(1, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -109,7 +114,8 @@ public class DatabaseManager {
             return;
         }
 
-        String sql = "UPDATE player_data SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
+        String sql = "UPDATE " + tableName
+                + " SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
                 PreparedStatement releaseStatement = connection.prepareStatement(sql)) {
             releaseStatement.setString(1, uuid.toString());
@@ -127,7 +133,8 @@ public class DatabaseManager {
      * Used by the admin unlock command.
      */
     public boolean releaseLock(UUID uuid) {
-        String sql = "UPDATE player_data SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ?";
+        String sql = "UPDATE " + tableName
+                + " SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ?";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, uuid.toString());
@@ -142,7 +149,7 @@ public class DatabaseManager {
 
     public void updateLock(UUID uuid, String serverId) {
         long currentTime = System.currentTimeMillis();
-        String sql = "UPDATE player_data SET lock_timestamp = ? WHERE uuid = ? AND locking_server = ?";
+        String sql = "UPDATE " + tableName + " SET lock_timestamp = ? WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, currentTime);
@@ -152,5 +159,9 @@ public class DatabaseManager {
         } catch (SQLException e) {
             System.err.println("[mc-data-bridge] Failed to update lock for " + uuid + ": " + e.getMessage());
         }
+    }
+
+    public String getTableName() {
+        return tableName;
     }
 }
