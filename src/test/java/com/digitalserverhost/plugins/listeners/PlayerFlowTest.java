@@ -50,6 +50,9 @@ class PlayerFlowTest {
         doReturn(true).when(mockPlugin).isEnabled();
         lenient().when(mockPlugin.getServer()).thenReturn(server);
         lenient().when(mockPlugin.getLogger()).thenReturn(Logger.getLogger("MCDataBridge"));
+        lenient().when(mockPlugin.getServerId()).thenReturn("test-server");
+        lenient().when(mockPlugin.getLockHeartbeatSeconds()).thenReturn(30);
+        lenient().when(mockPlugin.isDebugMode()).thenReturn(true);
     }
 
     @AfterEach
@@ -96,7 +99,6 @@ class PlayerFlowTest {
     }
 
     @Test
-    @org.junit.jupiter.api.Disabled("Async scheduler verification with MockBukkit is flaky in this environment.")
     void testPlayerJoinSchedulesHeartbeat() throws Exception {
         // Prepare Helper Mocks
         when(mockPlugin.getServerId()).thenReturn("test-server");
@@ -122,11 +124,11 @@ class PlayerFlowTest {
         // Advance time to trigger heartbeat (30s * 20 = 600 ticks)
         server.getScheduler().performTicks(30 * 20L + 5);
 
-        verify(mockDatabaseManager).updateLock(eq(player.getUniqueId()), anyString());
+        // Use timeout to verify async execution managed by MockBukkit's pool
+        verify(mockDatabaseManager, timeout(2000).atLeastOnce()).updateLock(eq(player.getUniqueId()), anyString());
     }
 
     @Test
-    @org.junit.jupiter.api.Disabled("Async scheduler verification with MockBukkit is flaky in this environment.")
     void testSaveOnQuit() throws Exception {
         PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
 
@@ -147,7 +149,104 @@ class PlayerFlowTest {
 
         listener.onPlayerQuit(event);
 
-        verify(mockDatabaseManager, atLeastOnce()).saveAndReleaseLock(anyString(), eq(player.getUniqueId()),
+        // Verify async save call with timeout
+        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), eq(player.getUniqueId()),
                 anyString());
+    }
+
+    @Test
+    void testLockCancellation() throws Exception {
+        // Prepare Helper Mocks
+        when(mockPlugin.getServerId()).thenReturn("test-server");
+        when(mockPlugin.getLockHeartbeatSeconds()).thenReturn(30);
+
+        PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
+
+        // Setup passing checks
+        lenient().when(mockDatabaseManager.acquireLock(any(UUID.class), anyString())).thenReturn(true);
+        lenient().when(mockDatabaseManager.getTableName()).thenReturn("`player_data`");
+        lenient().when(mockDatabaseManager.getConnection()).thenReturn(mockConnection);
+        lenient().when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
+        lenient().when(mockStatement.executeQuery()).thenReturn(mockResultSet);
+
+        PlayerMock player = server.addPlayer();
+        PlayerJoinEvent event = new PlayerJoinEvent(player, net.kyori.adventure.text.Component.text("Joined"));
+
+        listener.onPlayerJoin(event);
+
+        // 1. Advance time -> triggers heartbeat
+        server.getScheduler().performTicks(30 * 20L + 50);
+        verify(mockDatabaseManager, timeout(2000).atLeastOnce()).updateLock(eq(player.getUniqueId()), anyString());
+
+        // Reset invocations to verify future calls cleanly
+        clearInvocations(mockDatabaseManager);
+
+        // 2. Quit -> triggers cancelHeartbeat (and save)
+        @SuppressWarnings("deprecation")
+        PlayerQuitEvent quitEvent = new PlayerQuitEvent(player, "Quit");
+        listener.onPlayerQuit(quitEvent);
+
+        // Wait for save to complete (async)
+        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), eq(player.getUniqueId()),
+                anyString());
+
+        // 3. Advance time again -> Heartbeat should NOT run
+        server.getScheduler().performTicks(30 * 20L + 50);
+
+        // Verify updateLock was NEVER called after quit
+        verify(mockDatabaseManager, never()).updateLock(eq(player.getUniqueId()), anyString());
+    }
+
+    @Test
+    void testBlacklistedServerSkipsLock() throws Exception {
+        // Prepare Helper Mocks
+        when(mockPlugin.getServerId()).thenReturn("test-server");
+        when(mockPlugin.isServerBlacklisted("test-server")).thenReturn(true);
+
+        PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
+
+        UUID uuid = UUID.randomUUID();
+        @SuppressWarnings("deprecation")
+        AsyncPlayerPreLoginEvent event = new AsyncPlayerPreLoginEvent(
+                "TestPlayer", InetAddress.getLoopbackAddress(), uuid);
+
+        listener.onAsyncPlayerPreLogin(event);
+
+        verify(mockDatabaseManager, never()).acquireLock(any(UUID.class), anyString());
+    }
+
+    @Test
+    void testProxyMessageTriggersSaveAndSkipQuit() throws Exception {
+        PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
+
+        // Setup passing checks for save
+        lenient().when(mockDatabaseManager.saveAndReleaseLock(anyString(), any(UUID.class), anyString()))
+                .thenReturn(true);
+
+        PlayerMock player = server.addPlayer();
+        UUID uuid = player.getUniqueId();
+
+        // Construct Plugin Message: "SaveAndRelease" + UUID
+        @SuppressWarnings("UnstableApiUsage")
+        com.google.common.io.ByteArrayDataOutput out = com.google.common.io.ByteStreams.newDataOutput();
+        out.writeUTF("SaveAndRelease");
+        out.writeUTF(uuid.toString());
+        byte[] message = out.toByteArray();
+
+        // 1. Receive Message -> Triggers async save
+        listener.onPluginMessageReceived("mc-data-bridge:main", player, message);
+
+        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), eq(uuid), anyString());
+
+        // Clear invocations to verify Quit behavior
+        clearInvocations(mockDatabaseManager);
+
+        // 2. Quit Event -> Should be ignored due to switchingPlayers flag
+        @SuppressWarnings("deprecation")
+        PlayerQuitEvent quitEvent = new PlayerQuitEvent(player, "Quit");
+        listener.onPlayerQuit(quitEvent);
+
+        // Verify save was NOT called again
+        verify(mockDatabaseManager, never()).saveAndReleaseLock(anyString(), eq(uuid), anyString());
     }
 }
