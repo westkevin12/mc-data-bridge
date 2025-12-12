@@ -52,8 +52,10 @@ public class PlayerData {
      * Snapshots a live player's data.
      */
     public PlayerData(Player player) {
-        MCDataBridge plugin = JavaPlugin.getPlugin(MCDataBridge.class);
+        this(player, JavaPlugin.getPlugin(MCDataBridge.class));
+    }
 
+    public PlayerData(Player player, MCDataBridge plugin) {
         if (plugin.isSyncEnabled("health"))
             this.health = player.getHealth();
         if (plugin.isSyncEnabled("food-level"))
@@ -122,7 +124,8 @@ public class PlayerData {
         return serializedItems;
     }
 
-    private ItemStack[] deserializeItemStackArray(List<String> serializedItems) {
+    // Package-private for testing
+    ItemStack[] deserializeItemStackArray(List<String> serializedItems) {
         if (serializedItems == null) {
             return new ItemStack[0];
         }
@@ -246,7 +249,7 @@ public class PlayerData {
                 "}";
     }
 
-    private static class SerializableItemStack {
+    static class SerializableItemStack {
         private final String itemAsBase64;
         private final String material;
         private final int amount;

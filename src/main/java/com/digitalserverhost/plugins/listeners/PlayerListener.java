@@ -274,7 +274,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
         final PlayerData finalData;
         try {
             // This captures the player's live data at the moment of saving.
-            finalData = new PlayerData(player);
+            finalData = new PlayerData(player, plugin);
         } catch (Exception e) {
             plugin.getLogger().severe("Failed to create final data snapshot for " + name
                     + ". Data will not be saved. Error: " + e.getMessage());
