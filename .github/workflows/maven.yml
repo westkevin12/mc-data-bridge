@@ -7,11 +7,12 @@ on:
     branches: ["main"]
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v3
@@ -20,5 +21,112 @@ jobs:
           distribution: "temurin"
           cache: maven
 
+      - name: Enforce Version Consistency Before Merge
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: |
+          # --- Configuration ---
+          PLUGIN_YML="src/main/resources/plugin.yml"
+          BUNGEE_YML="src/main/resources/bungee.yml"
+          RELEASE_NOTES_FILE="release-notes.md"
+
+          # 1. Get POM Version and Check for SNAPSHOT suffix
+          POM_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+
+          echo "Current POM Version: $POM_VERSION"
+
+          if [[ "$POM_VERSION" == *"-SNAPSHOT" ]]; then
+            echo "::error file=pom.xml::The version in pom.xml is a SNAPSHOT version ($POM_VERSION). Please set the final stable version (e.g., remove -SNAPSHOT) before merging."
+            exit 1
+          fi
+
+          # 1.1 Check if this version tag already exists
+          if git rev-parse "v$POM_VERSION" >/dev/null 2>&1; then
+            echo "::error file=pom.xml::Version v$POM_VERSION already exists. You must increment the version in pom.xml to a release that hasn't been used yet."
+            exit 1
+          fi
+
+          # 2. Check YML files
+          check_yml_version() {
+            local file_path=$1
+            YML_VERSION=$(grep "version:" "$file_path" | awk '{print $2}' | tr -d '"')
+            if [[ "$YML_VERSION" != "$POM_VERSION" ]]; then
+              echo "::error file=$file_path::Version mismatch. POM: $POM_VERSION, $file_path: $YML_VERSION. Must match POM version exactly."
+              exit 1
+            fi
+            echo "✅ $file_path Check: Version matches POM."
+          }
+
+          # Run the checks
+          check_yml_version "$PLUGIN_YML"
+          check_yml_version "$BUNGEE_YML"
+
+          # 3. Check that Release Notes mentions the new version
+          if ! grep -Fq "$POM_VERSION" "$RELEASE_NOTES_FILE"; then
+              echo "::error file=$RELEASE_NOTES_FILE::The release notes file does not contain the version number ($POM_VERSION). Please update it."
+              exit 1
+          fi
+          echo "✅ $RELEASE_NOTES_FILE Check: Contains version $POM_VERSION."
+
+
+          echo "All pre-release metadata checks passed. Ready for final build."
+
       - name: Build with Maven
         run: mvn -B verify --file pom.xml
+
+  release:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+
+      - name: Get Project Version
+        id: version
+        run: echo "VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)" >> $GITHUB_OUTPUT
+
+      - name: Build Final Release JAR
+        run: mvn -B clean package -DskipTests
+
+      - name: Create Git Tag
+        run: |
+          TAG_NAME="v${{ steps.version.outputs.VERSION }}"
+          echo "Creating Git tag $TAG_NAME"
+          # Configure git for pushing
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag $TAG_NAME
+          git push origin $TAG_NAME
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: mc-data-bridge v${{ steps.version.outputs.VERSION }}
+          files: target/mc-data-bridge-${{ steps.version.outputs.VERSION }}.jar
+          body_path: release-notes.md
+
+      - name: Prepare for Next Snapshot
+        run: |
+          CURRENT_VERSION="${{ steps.version.outputs.VERSION }}"
+          SNAPSHOT_VERSION="${CURRENT_VERSION}-SNAPSHOT"
+
+          # Set pom.xml to next SNAPSHOT version
+          echo "Setting pom.xml to $SNAPSHOT_VERSION for next development iteration."
+          mvn versions:set -DnewVersion=$SNAPSHOT_VERSION -DgenerateBackupPoms=false
+
+          # Commit the snapshot change back to main
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git commit -am "Prepare for next development iteration ($SNAPSHOT_VERSION)."
+          git push
