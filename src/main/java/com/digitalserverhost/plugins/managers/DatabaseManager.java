@@ -49,6 +49,16 @@ public class DatabaseManager {
         this.lockTimeout = config.getLong("lock-timeout", 60000); // 60 seconds default
     }
 
+    /**
+     * Constructor for testing purposes.
+     * Allows injection of a mock DataSource.
+     */
+    public DatabaseManager(HikariDataSource dataSource, String tableName, long lockTimeout) {
+        this.dataSource = dataSource;
+        this.tableName = "`" + tableName.replace("`", "") + "`";
+        this.lockTimeout = lockTimeout;
+    }
+
     public Connection getConnection() throws SQLException {
         return dataSource.getConnection();
     }

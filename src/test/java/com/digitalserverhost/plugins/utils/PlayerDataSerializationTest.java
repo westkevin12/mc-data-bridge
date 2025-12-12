@@ -126,4 +126,37 @@ public class PlayerDataSerializationTest {
         assertEquals(Material.AIR, result[2].getType()); // "{}" -> AIR
         assertEquals(Material.STONE, result[3].getType());
     }
+
+    @Test
+    void testItemStackWithCustomNBTAndMetaRoundTrip() {
+        // Create an item with Meta
+        ItemStack item = new ItemStack(Material.DIAMOND_SWORD);
+        org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(net.kyori.adventure.text.Component.text("Excalibur"));
+            meta.lore(Arrays.asList(
+                    net.kyori.adventure.text.Component.text("The legendary sword"),
+                    net.kyori.adventure.text.Component.text("of King Arthur")));
+            meta.addEnchant(org.bukkit.enchantments.Enchantment.SHARPNESS, 5, true);
+            item.setItemMeta(meta);
+        }
+
+        // Serialize
+        SerializableItemStack serializableItem = new SerializableItemStack(item);
+
+        // Deserialize
+        String json = GSON.toJson(serializableItem);
+        SerializableItemStack deserialized = GSON.fromJson(json, SerializableItemStack.class);
+        ItemStack result = deserialized.toItemStack();
+
+        // Verify
+        assertNotNull(result);
+        assertEquals(Material.DIAMOND_SWORD, result.getType());
+        assertTrue(result.hasItemMeta());
+        org.bukkit.inventory.meta.ItemMeta resultMeta = result.getItemMeta();
+        assertEquals(net.kyori.adventure.text.Component.text("Excalibur"), resultMeta.displayName());
+        assertEquals(2, resultMeta.lore().size());
+        assertEquals(net.kyori.adventure.text.Component.text("The legendary sword"), resultMeta.lore().get(0));
+        assertEquals(5, resultMeta.getEnchantLevel(org.bukkit.enchantments.Enchantment.SHARPNESS));
+    }
 }
