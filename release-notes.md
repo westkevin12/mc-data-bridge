@@ -1,4 +1,4 @@
-# Release Notes - v2.0.5
+# Release Notes - v2.0.6
 
 ## 🚀 CI/CD & Process Automation
 
