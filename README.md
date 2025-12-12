@@ -4,43 +4,44 @@ MC Data Bridge is a robust, high-performance hybrid plugin for PaperMC (Spigot),
 
 ## Compatibility
 
-*   **Minecraft Version:** `1.21.x`
-*   **Server Platforms:** PaperMC (or forks like Purpur), Spigot
-*   **Proxy Platforms:** BungeeCord, Velocity
+- **Minecraft Version:** `1.21.x`
+- **Server Platforms:** PaperMC (or forks like Purpur), Spigot
+- **Proxy Platforms:** BungeeCord, Velocity
 
 This plugin is a hybrid build and the same JAR file works on all supported platforms.
 
 ## Features
 
-  * **Hybrid Plugin:** A single JAR file works on your PaperMC/Spigot servers and your BungeeCord/Velocity proxy, automatically activating the correct functionality for each platform.
-  * **Proxy-Initiated Saves:** The proxy (BungeeCord/Velocity) orchestrates the data saving process, ensuring that a player's data is saved from their source server *before* they connect to the destination server. This eliminates race conditions and ensures data is never lost during a server switch.
-  * **Fully Asynchronous:** All database operations are performed on a separate thread, ensuring that your server's main thread is never blocked. This means no lag, even if your database is slow to respond.
-  * **Robust Locking Mechanism:** A database-level locking mechanism with an automatic timeout prevents data corruption and ensures that only one server can write a player's data at a time.
-  * **Version-Independent Item Serialization:** Player inventories are serialized using Minecraft's built-in Base64 methods, which is highly robust and prevents data loss when you update your Minecraft server to a new version.
-  * **Cross-Server Player Data Sync:** Synchronizes core player data including:
-      * Health
-      * Food Level & Saturation
-      * Experience (Total XP, current XP, and Level)
-      * Inventory Contents
-      * Armor Contents
-      * Active Potion Effects
-      * **Ender Chest Contents**
-      * **Advancements & Recipes**
-  * **Resilient Connection Pooling:** Uses HikariCP with optimized settings to ensure that the database connection is resilient to network issues and database restarts.
-  * **Granular Sync Control**: Enable or disable synchronization for any specific data type via `config.yml`.
-  * **Server/World Blacklist**: Prevent synchronization on specific servers or worlds.
-  * **Configurable Table Names**: Set a custom prefix for database tables to avoid conflicts.
-  * **Configurable & Flexible:** Easily connect to your MySQL database and configure settings for your server environment.
+- **Hybrid Plugin:** A single JAR file works on your PaperMC/Spigot servers and your BungeeCord/Velocity proxy, automatically activating the correct functionality for each platform.
+- **Proxy-Initiated Saves:** The proxy (BungeeCord/Velocity) orchestrates the data saving process, ensuring that a player's data is saved from their source server _before_ they connect to the destination server. This eliminates race conditions and ensures data is never lost during a server switch.
+- **Fully Asynchronous:** All database operations are performed on a separate thread, ensuring that your server's main thread is never blocked. This means no lag, even if your database is slow to respond.
+- **Robust Locking Mechanism:** A database-level locking mechanism with an automatic timeout prevents data corruption and ensures that only one server can write a player's data at a time.
+- **Version-Independent Item Serialization:** Player inventories are serialized using Minecraft's built-in Base64 methods, which is highly robust and prevents data loss when you update your Minecraft server to a new version.
+- **Cross-Server Player Data Sync:** Synchronizes core player data including:
+  - Health
+  - Food Level & Saturation
+  - Experience (Total XP, current XP, and Level)
+  - Inventory Contents
+  - Armor Contents
+  - Active Potion Effects
+  - **Ender Chest Contents**
+  - **Advancements & Recipes**
+- **Resilient Connection Pooling:** Uses HikariCP with optimized settings to ensure that the database connection is resilient to network issues and database restarts.
+- **Granular Sync Control**: Enable or disable synchronization for any specific data type via `config.yml`.
+- **Server/World Blacklist**: Prevent synchronization on specific servers or worlds.
+- **Configurable Table Names**: Set a custom prefix for database tables to avoid conflicts.
+- **Configurable & Flexible:** Easily connect to your MySQL database and configure settings for your server environment.
 
 ## Installation
 
 1.  **Build the Plugin:**
-      * Navigate to the plugin's root directory in your terminal.
-      * Run `mvn clean package` to build the plugin.
-      * The compiled JAR file (`mc-data-bridge-*.jar`) will be located in the `target/` directory.
+    - Navigate to the plugin's root directory in your terminal.
+    - Run `mvn clean package` to build the plugin.
+    - The compiled JAR file (`mc-data-bridge-*.jar`) will be located in the `target/` directory.
+    - **Note**: Development builds will end in `-SNAPSHOT`. Release builds (from the `main` branch tags) will just be the version number.
 2.  **Deploy to Servers:**
-      * Copy the single `mc-data-bridge-*.jar` file into the `plugins/` folder of **each PaperMC server** you wish to synchronize.
-      * Copy the **same JAR file** into the `plugins/` folder of your **BungeeCord or Velocity proxy server**.
+    - Copy the single `mc-data-bridge-*.jar` file into the `plugins/` folder of **each PaperMC server** you wish to synchronize.
+    - Copy the **same JAR file** into the `plugins/` folder of your **BungeeCord or Velocity proxy server**.
 
 ## Configuration
 
@@ -122,17 +123,16 @@ sync-blacklist:
     - "example_nether"
 ```
 
-  * **`database.*`**: Standard configuration for your MySQL database connection.
-  * **`debug`**: Set to `true` to enable verbose debugging messages in the server console. Set to `false` for normal operation.
-  * **`server-id` (Required):** You **must** set a unique name for each of your PaperMC/Spigot servers. This is critical for the data locking system to work correctly. The proxy server does not need this configuration.
-  * **`server-id` (Required):** You **must** set a unique name for each of your PaperMC/Spigot servers. This is critical for the data locking system to work correctly. The proxy server does not need this configuration.
-  * **`lock-timeout`**: The time in milliseconds after which a data lock is considered expired. This prevents a player from being permanently locked if a server crashes while saving their data.
-  * **`sync-data`**: Toggle specific features on/off. New features like `ender-chest` and `advancements` are disabled by default.
-  * **`sync-blacklist`**: Define servers or worlds where synchronization should be skipped.
+- **`database.*`**: Standard configuration for your MySQL database connection.
+- **`debug`**: Set to `true` to enable verbose debugging messages in the server console. Set to `false` for normal operation.
+- **`server-id` (Required):** You **must** set a unique name for each of your PaperMC/Spigot servers. This is critical for the data locking system to work correctly. The proxy server does not need this configuration.
+- **`lock-timeout`**: The time in milliseconds after which a data lock is considered expired. This prevents a player from being permanently locked if a server crashes while saving their data.
+- **`sync-data`**: Toggle specific features on/off. New features like `ender-chest` and `advancements` are disabled by default.
+- **`sync-blacklist`**: Define servers or worlds where synchronization should be skipped.
 
 ## Commands
 
-*   `/databridge unlock <player>` - Manually release a lock for a specific player (Permission: `databridge.admin`).
+- `/databridge unlock <player>` - Manually release a lock for a specific player (Permission: `databridge.admin`).
 
 ## Usage
 
@@ -143,7 +143,7 @@ sync-blacklist:
 
 ## Important Notes
 
-* **Database Requirement:** This plugin requires a **MySQL or MariaDB database** to function.
-* **Security Best Practice:** For production servers, it is strongly recommended to create a dedicated MySQL user for this plugin with limited permissions. The user only needs `SELECT`, `INSERT`, `UPDATE`, `CREATE`, and `ALTER` on the specified database.
-* **Connectivity & Firewalls:** Ensure your Minecraft servers and proxy can open a network connection to your database's `host` and `port`.
-* **Automatic Schema:** The plugin will automatically create and update the `player_data` table in your database. The schema includes `uuid`, `data`, `is_locked`, `locking_server`, `lock_timestamp`, and `last_updated`.
+- **Database Requirement:** This plugin requires a **MySQL or MariaDB database** to function.
+- **Security Best Practice:** For production servers, it is strongly recommended to create a dedicated MySQL user for this plugin with limited permissions. The user only needs `SELECT`, `INSERT`, `UPDATE`, `CREATE`, and `ALTER` on the specified database.
+- **Connectivity & Firewalls:** Ensure your Minecraft servers and proxy can open a network connection to your database's `host` and `port`.
+- **Automatic Schema:** The plugin will automatically create and update the `player_data` table in your database. The schema includes `uuid`, `data`, `is_locked`, `locking_server`, `lock_timestamp`, and `last_updated`.
