@@ -58,8 +58,11 @@ public class PlayerData {
     public PlayerData(Player player, MCDataBridge plugin) {
         if (plugin.isSyncEnabled("health"))
             this.health = player.getHealth();
-        if (plugin.isSyncEnabled("food-level"))
+        if (plugin.isSyncEnabled("food-level")) {
             this.foodLevel = player.getFoodLevel();
+            this.saturation = player.getSaturation();
+            this.exhaustion = player.getExhaustion();
+        }
         if (plugin.isSyncEnabled("experience")) {
             this.totalExperience = player.getTotalExperience();
             this.exp = player.getExp();

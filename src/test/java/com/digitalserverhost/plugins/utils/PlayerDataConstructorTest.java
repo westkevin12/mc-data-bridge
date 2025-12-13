@@ -37,11 +37,21 @@ public class PlayerDataConstructorTest {
     void testPlayerDataSnapshotWhenSyncEnabled() {
         // Create a MockBukkit player
         be.seeseemelk.mockbukkit.ServerMock server = be.seeseemelk.mockbukkit.MockBukkit.getMock();
-        Player player = server.addPlayer();
+        Player originalPlayer = server.addPlayer();
+
+        // Spy on the player to allow stubbing of unimplemented methods
+        Player player = spy(originalPlayer);
+
+        // Stub methods that are not implemented in MockBukkit 1.21 yet
+        doReturn(0.0f).when(player).getExhaustion();
+        doReturn(0.0f).when(player).getSaturation();
 
         // Setup Plugin Toggles
         when(mockPlugin.isSyncEnabled(anyString())).thenReturn(true);
         when(mockPlugin.isSyncEnabledNewFeature(anyString())).thenReturn(true);
+        // Disable advancements sync as MockBukkit 1.21 doesn't support
+        // advancementIterator/getDiscoveredRecipes
+        when(mockPlugin.isSyncEnabledNewFeature("advancements")).thenReturn(false);
         // Note: We might skip some complex ones like advancements if they require
         // complex mocking, but MockBukkit player has default empty inventories etc.
 
@@ -55,6 +65,10 @@ public class PlayerDataConstructorTest {
 
         // Inventory should be empty but not null (as per deserialize logic)
         assertNotNull(playerData.getInventoryContents());
+
+        // Saturation & Exhaustion (MockBukkit defaults)
+        assertEquals(0.0f, playerData.getSaturation(), 0.01f);
+        assertEquals(0.0f, playerData.getExhaustion(), 0.01f);
     }
 
     @Test
@@ -75,5 +89,9 @@ public class PlayerDataConstructorTest {
         // Since sync is disabled, health should NOT be updated from player (default 0.0
         // for double field)
         assertEquals(0.0, playerData.getHealth(), 0.01);
+
+        // Should be default 0 because they were NOT captured
+        assertEquals(0.0f, playerData.getSaturation(), 0.01f);
+        assertEquals(0.0f, playerData.getExhaustion(), 0.01f);
     }
 }

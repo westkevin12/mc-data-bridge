@@ -330,8 +330,11 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
             if (plugin.isSyncEnabled("health"))
                 player.setHealth(data.getHealth());
-            if (plugin.isSyncEnabled("food-level"))
+            if (plugin.isSyncEnabled("food-level")) {
                 player.setFoodLevel(data.getFoodLevel());
+                player.setSaturation(data.getSaturation());
+                player.setExhaustion(data.getExhaustion());
+            }
             if (plugin.isSyncEnabled("experience")) {
                 player.setTotalExperience(data.getTotalExperience());
                 player.setExp(data.getExp());
