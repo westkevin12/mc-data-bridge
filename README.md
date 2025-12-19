@@ -1,5 +1,10 @@
 # MC Data Bridge
 
+![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.x-blue?style=for-the-badge&logo=minecraft)
+![Platform](https://img.shields.io/badge/Platform-Paper%20%7C%20Bungee%20%7C%20Velocity-brightgreen?style=for-the-badge)
+[![Modrinth Downloads](https://img.shields.io/modrinth/dt/mc-data-bridge?style=for-the-badge&logo=modrinth&label=Modrinth)](https://modrinth.com/plugin/mc-data-bridge)
+[![Spigot Downloads](https://img.shields.io/spiget/downloads/128642?style=for-the-badge&logo=spigotmc&label=Spigot&color=orange)](https://www.spigotmc.org/resources/128642)
+
 MC Data Bridge is a robust, high-performance hybrid plugin for PaperMC (Spigot), BungeeCord, and Velocity. It is designed to seamlessly synchronize player data across multiple Minecraft servers, ensuring that players have a consistent experience by retaining their health, hunger, experience, inventory, and more as they move between linked servers.
 
 ## Compatibility
@@ -42,6 +47,95 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 2.  **Deploy to Servers:**
     - Copy the single `mc-data-bridge-*.jar` file into the `plugins/` folder of **each PaperMC server** you wish to synchronize.
     - Copy the **same JAR file** into the `plugins/` folder of your **BungeeCord or Velocity proxy server**.
+
+---
+
+## 🛠 Technical Deep Dive
+
+MC Data Bridge is built with a **Security-First** approach to player state. Unlike traditional sync plugins that rely on simple "Save-on-Quit," this plugin utilizes a Proxy-orchestrated handshake to eliminate data loss and duplication exploits.
+
+### 1. The Secure Handshake (Happy Path)
+
+The Proxy (Bungee/Velocity) acts as the coordinator. It ensures the Source Server has successfully committed data to the MySQL database and released its lock before the Destination Server is even allowed to request it.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant P as Proxy (Velocity/Bungee)
+    participant S1 as Source Server
+    participant DB as MySQL Database
+    participant S2 as Destination Server
+
+    User->>P: /server survival
+    par Signal & Switch
+        P->>S1: Plugin Message: "SaveAndRelease"
+        P->>S2: Connect User
+    end
+
+    rect rgb(35, 35, 35)
+        Note over S1, DB: Async Save Process
+        S1->>DB: UPDATE data... (Save)
+        S1->>DB: UPDATE is_locked=0 (Release)
+    end
+
+    rect rgb(45, 20, 20)
+        Note over S2, DB: Pre-Login Guard
+        loop Polling Lock (Max 10s)
+            S2->>DB: Attempt Acquire Lock (UPDATE ...)
+            alt Lock Acquired
+                DB-->>S2: Success
+                Note over S2: Break Loop
+            else Locked by S1
+                DB-->>S2: Fail (Rows = 0)
+                S2-->>S2: Sleep 500ms
+            end
+        end
+    end
+
+    S2->>DB: SELECT data (Load)
+    DB-->>S2: Return Player Data
+    S2-->>User: Join Successful
+```
+
+### 2. Anti-Duplication & Race Condition Protection
+
+By using a **Database-Level Locking Mechanism**, we prevent the "Double-Login" exploit. If a player somehow exists on two servers simultaneously, the second server will be denied access to the data until the first server safely disconnects.
+
+```mermaid
+sequenceDiagram
+    participant S1 as Server 1 (Survival)
+    participant DB as MySQL Database
+    participant S2 as Server 2 (Creative)
+
+    Note over S1: Active Session
+    S1->>DB: Heartbeat (Every 30s)
+
+    Note over S2: Malicious/Accidental Join
+    S2->>DB: Acquire Lock (UUID)
+    DB-->>S2: FAIL (Locked by 'Survival')
+    S2-->>S2: Kick Player: "Data still syncing..."
+```
+
+### 3. Crash Resilience & Auto-Recovery
+
+If a backend server crashes, the player's data lock might remain "Stuck." MC Data Bridge handles this gracefully via a configurable `lock-timeout` (Default: 60s). This ensures players aren't permanently locked out of the network while maintaining a safe window for the database to settle.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Unlocked
+
+    state "Locked (Active)" as Locked {
+        [*] --> Valid
+        Valid --> Valid : Heartbeat (Every 30s)\nUPDATE lock_timestamp
+        Valid --> Expired : Server Crash\n(No Heartbeat > 60s)
+    }
+
+    Unlocked --> Locked : Player Pre-Login\n(Acquire Lock)
+    Locked --> Unlocked : Player Quit/Switch\n(Release Lock)
+
+    Expired --> Locked : New Server Claims Lock\n(Steal Lock)
+```
 
 ## Configuration
 
