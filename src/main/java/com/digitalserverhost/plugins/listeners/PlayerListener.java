@@ -328,8 +328,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
             if (player == null || !player.isOnline())
                 return;
 
-            if (plugin.isSyncEnabled("health"))
-                player.setHealth(data.getHealth());
             if (plugin.isSyncEnabled("food-level")) {
                 player.setFoodLevel(data.getFoodLevel());
                 player.setSaturation(data.getSaturation());
@@ -360,6 +358,11 @@ public class PlayerListener implements Listener, PluginMessageListener {
                             player.addPotionEffect(effect);
                     }
                 }
+            }
+
+            if (plugin.isSyncEnabled("health")) {
+                double maxHealth = player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getValue();
+                player.setHealth(Math.min(data.getHealth(), maxHealth));
             }
 
             if (plugin.isSyncEnabledNewFeature("advancements")) {

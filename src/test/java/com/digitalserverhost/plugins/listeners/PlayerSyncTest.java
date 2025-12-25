@@ -190,4 +190,94 @@ class PlayerSyncTest {
         verify(targetPlayer, never()).setSaturation(anyFloat());
         verify(targetPlayer, never()).setExhaustion(anyFloat());
     }
+
+    @Test
+    void testHealthAndPotionEffectsSyncOrder() throws Exception {
+        // 1. Prepare Data with 25.0 Health + Health Boost
+        org.bukkit.entity.Player sourcePlayer = mock(org.bukkit.entity.Player.class);
+        when(sourcePlayer.getHealth()).thenReturn(25.0);
+
+        // Health Boost Potion
+        org.bukkit.potion.PotionEffect healthBoost = new org.bukkit.potion.PotionEffect(
+                org.bukkit.potion.PotionEffectType.HEALTH_BOOST, 1000, 4);
+        when(sourcePlayer.getActivePotionEffects()).thenReturn(java.util.Collections.singletonList(healthBoost));
+
+        org.bukkit.inventory.PlayerInventory mockInventory = mock(org.bukkit.inventory.PlayerInventory.class);
+        when(sourcePlayer.getInventory()).thenReturn(mockInventory);
+
+        PlayerData sourceData = new PlayerData(sourcePlayer, mockPlugin);
+        String json = GSON.toJson(sourceData);
+
+        // 2. Setup Listener and DB
+        PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
+        UUID targetUuid = UUID.randomUUID();
+
+        when(mockDatabaseManager.getTableName()).thenReturn("`player_data`");
+        when(mockDatabaseManager.acquireLock(eq(targetUuid), anyString())).thenReturn(true);
+        when(mockDatabaseManager.getConnection()).thenReturn(mockConnection);
+        when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
+        when(mockStatement.executeQuery()).thenReturn(mockResultSet);
+        when(mockResultSet.next()).thenReturn(true);
+        when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        when(mockResultSet.getBytes("data")).thenReturn(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        // PreLogin
+        AsyncPlayerPreLoginEvent preLoginEvent = mock(AsyncPlayerPreLoginEvent.class);
+        when(preLoginEvent.getUniqueId()).thenReturn(targetUuid);
+        when(preLoginEvent.getName()).thenReturn("TargetPlayer");
+        listener.onAsyncPlayerPreLogin(preLoginEvent);
+
+        // 3. Join
+        org.bukkit.entity.Player targetPlayer = mock(org.bukkit.entity.Player.class);
+        when(targetPlayer.getUniqueId()).thenReturn(targetUuid);
+        when(targetPlayer.getName()).thenReturn("TargetPlayer");
+        when(targetPlayer.isOnline()).thenReturn(true);
+        org.bukkit.World mockWorld = mock(org.bukkit.World.class);
+        when(targetPlayer.getWorld()).thenReturn(mockWorld);
+        when(mockWorld.getName()).thenReturn("world");
+        when(targetPlayer.getInventory()).thenReturn(mockInventory);
+
+        // Mock Attributes
+        org.bukkit.attribute.AttributeInstance maxHealthAttr = mock(org.bukkit.attribute.AttributeInstance.class);
+        when(targetPlayer.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH)).thenReturn(maxHealthAttr);
+
+        // Initial max health
+        when(maxHealthAttr.getValue()).thenReturn(20.0);
+
+        doAnswer(invocation -> {
+            // updates max health
+            when(maxHealthAttr.getValue()).thenReturn(40.0);
+            return true;
+        }).when(targetPlayer).addPotionEffect(any(org.bukkit.potion.PotionEffect.class));
+
+        // Mock setHealth to NOT throw if value <= max
+        doAnswer(invocation -> {
+            double val = invocation.getArgument(0);
+            double max = maxHealthAttr.getValue();
+            if (val > max)
+                throw new IllegalArgumentException("Health must be between 0 and " + max);
+            return null;
+        }).when(targetPlayer).setHealth(anyDouble());
+
+        when(mockScheduler.runTaskTimerAsynchronously(any(), any(Runnable.class),
+                anyLong(), anyLong()))
+                .thenReturn(mock(org.bukkit.scheduler.BukkitTask.class));
+
+        PlayerJoinEvent joinEvent = mock(PlayerJoinEvent.class);
+        when(joinEvent.getPlayer()).thenReturn(targetPlayer);
+
+        listener.onPlayerJoin(joinEvent);
+
+        // 4. Verification
+        org.mockito.InOrder inOrder = inOrder(targetPlayer);
+
+        // Verify Potion Effect is added FIRST
+        inOrder.verify(targetPlayer).addPotionEffect(any(org.bukkit.potion.PotionEffect.class));
+
+        // Verify Health is set SECOND
+        inOrder.verify(targetPlayer).setHealth(25.0);
+
+        // Verify NO kick happened
+        verify(targetPlayer, never()).kick(any(net.kyori.adventure.text.Component.class));
+    }
 }
