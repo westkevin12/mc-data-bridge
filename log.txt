@@ -1,0 +1,17 @@
+[12:58:35 INFO]: Loading plugins...
+
+[12:58:35 ERROR]: Unable to load plugin plugins\hmt-sync-2.1.1-SNAPSHOT-velocity.jar
+
+com.velocitypowered.api.plugin.InvalidPluginException: The plugin file hmt-sync-2.1.1-SNAPSHOT-velocity.jar appears to be a Bukkit or BungeeCord plugin. Velocity does not support Bukkit or BungeeCord plugins.
+
+        at com.velocitypowered.proxy.plugin.loader.java.JavaPluginLoader.getSerializedPluginInfo(JavaPluginLoader.java:161) ~[velocity-3.4.0-SNAPSHOT-561.jar:3.4.0-SNAPSHOT (git-372a3b28-b561)]
+
+        at com.velocitypowered.proxy.plugin.loader.java.JavaPluginLoader.loadCandidate(JavaPluginLoader.java:62) ~[velocity-3.4.0-SNAPSHOT-561.jar:3.4.0-SNAPSHOT (git-372a3b28-b561)]
+
+        at com.velocitypowered.proxy.plugin.VelocityPluginManager.loadPlugins(VelocityPluginManager.java:101) ~[velocity-3.4.0-SNAPSHOT-561.jar:3.4.0-SNAPSHOT (git-372a3b28-b561)]
+
+        at com.velocitypowered.proxy.VelocityServer.loadPlugins(VelocityServer.java:437) ~[velocity-3.4.0-SNAPSHOT-561.jar:3.4.0-SNAPSHOT (git-372a3b28-b561)]
+
+        at com.velocitypowered.proxy.VelocityServer.start(VelocityServer.java:308) ~[velocity-3.4.0-SNAPSHOT-561.jar:3.4.0-SNAPSHOT (git-372a3b28-b561)]
+
+        at com.velocitypowered.proxy.Velocity.main(Velocity.java:71) ~[velocity-3.4.0-SNAPSHOT-561.jar:3.4.0-SNAPSHOT (git-372a3b28-b561)]

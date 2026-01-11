@@ -1,0 +1,8 @@
+{
+  "id": "hmt-sync",
+  "name": "HMT Sync",
+  "version": "2.1.1",
+  "description": "A data synchronization system for Minecraft servers.",
+  "authors": ["jumpstone"],
+  "main": "de.jumpstone.plugins.proxy.velocity.VelocityHMTSync"
+}

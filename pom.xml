@@ -5,10 +5,10 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.digitalserverhost.plugins</groupId>
-    <artifactId>mc-data-bridge</artifactId>
+    <artifactId>hmt-sync</artifactId>
     <version>2.1.1-SNAPSHOT</version>
 
-    <name>mc-data-bridge</name>
+    <name>HMT Sync</name>
     <url>https://mc.digitalserverhost.com</url>
 
     <properties>
@@ -30,6 +30,14 @@
         <repository>
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+        <repository>
+            <id>essentialsx-releases</id>
+            <url>https://repo.essentialsx.net/releases/</url>
         </repository>
     </repositories>
 
@@ -62,6 +70,11 @@
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
             <version>9.5.0</version>
+        </dependency>
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>5.1.0</version>
         </dependency>
         <dependency>
             <groupId>de.tr7zw</groupId>
@@ -105,9 +118,291 @@
             <version>3.104.0</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.github.MilkBowl</groupId>
+            <artifactId>VaultAPI</artifactId>
+            <version>1.7</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>net.essentialsx</groupId>
+            <artifactId>EssentialsX</artifactId>
+            <version>2.20.1</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
+    <profiles>
+        <!-- Profile for Spigot/Paper servers (includes plugin.yml) -->
+        <profile>
+            <id>spigot</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <version>3.13.0</version>
+                        <configuration>
+                            <release>21</release>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.3</version>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-shade-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>shade</goal>
+                                </goals>
+                                <configuration>
+                                    <createDependencyReducedPom>false</createDependencyReducedPom>
+                                    <finalName>${project.artifactId}-${project.version}-spigot</finalName>
+                                    <relocations>
+                                        <relocation>
+                                            <pattern>de.tr7zw.changeme.nbtapi</pattern>
+                                            <shadedPattern>com.digitalserverhost.plugins.nbtapi</shadedPattern>
+                                        </relocation>
+                                    </relocations>
+                                    <artifactSet>
+                                        <includes>
+                                            <include>com.zaxxer:HikariCP</include>
+                                            <include>com.mysql:mysql-connector-j</include>
+                                            <include>redis.clients:jedis</include>
+                                            <include>de.tr7zw:item-nbt-api</include>
+                                        </includes>
+                                    </artifactSet>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <filtering>true</filtering>
+                        <includes>
+                            <include>plugin.yml</include>
+                            <include>config.yml</include>
+                        </includes>
+                    </resource>
+                </resources>
+            </build>
+        </profile>
+
+        <!-- Profile for Velocity proxies (excludes plugin.yml, includes velocity-plugin.json if needed) -->
+        <profile>
+            <id>velocity</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <version>3.13.0</version>
+                        <configuration>
+                            <release>21</release>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.3</version>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-shade-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>shade</goal>
+                                </goals>
+                                <configuration>
+                                    <createDependencyReducedPom>false</createDependencyReducedPom>
+                                    <finalName>${project.artifactId}-${project.version}-velocity</finalName>
+                                    <relocations>
+                                        <relocation>
+                                            <pattern>de.tr7zw.changeme.nbtapi</pattern>
+                                            <shadedPattern>com.digitalserverhost.plugins.nbtapi</shadedPattern>
+                                        </relocation>
+                                    </relocations>
+                                    <artifactSet>
+                                        <includes>
+                                            <include>com.digitalserverhost.plugins:hmt-sync</include>
+                                            <include>com.zaxxer:HikariCP</include>
+                                            <include>com.mysql:mysql-connector-j</include>
+                                            <include>redis.clients:jedis</include>
+                                            <include>de.tr7zw:item-nbt-api</include>
+                                        </includes>
+                                    </artifactSet>
+                                    <!-- Exclude Bukkit-specific classes for Velocity build -->
+                                    <filters>
+                                        <filter>
+                                            <artifact>com.digitalserverhost.plugins:hmt-sync</artifact>
+                                            <excludes>
+                                                <exclude>de/jumpstone/plugins/HMTSync.class</exclude>
+                                                <exclude>de/jumpstone/plugins/listeners/PlayerListener.class</exclude>
+                                                <exclude>de/jumpstone/plugins/commands/*</exclude>
+                                                <exclude>de/jumpstone/plugins/proxy/bungee/**</exclude>
+                                            </excludes>
+                                        </filter>
+                                    </filters>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <filtering>true</filtering>
+                        <excludes>
+                            <exclude>plugin.yml</exclude>
+                            <exclude>bungee.yml</exclude>
+                        </excludes>
+                    </resource>
+                </resources>
+            </build>
+        </profile>
+
+        <!-- Profile for BungeeCord proxies (includes bungee.yml, excludes plugin.yml) -->
+        <profile>
+            <id>bungee</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <version>3.13.0</version>
+                        <configuration>
+                            <release>21</release>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.3</version>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-shade-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>shade</goal>
+                                </goals>
+                                <configuration>
+                                    <createDependencyReducedPom>false</createDependencyReducedPom>
+                                    <finalName>${project.artifactId}-${project.version}-bungee</finalName>
+                                    <relocations>
+                                        <relocation>
+                                            <pattern>de.tr7zw.changeme.nbtapi</pattern>
+                                            <shadedPattern>com.digitalserverhost.plugins.nbtapi</shadedPattern>
+                                        </relocation>
+                                    </relocations>
+                                    <artifactSet>
+                                        <includes>
+                                            <include>com.zaxxer:HikariCP</include>
+                                            <include>com.mysql:mysql-connector-j</include>
+                                            <include>redis.clients:jedis</include>
+                                            <include>de.tr7zw:item-nbt-api</include>
+                                        </includes>
+                                    </artifactSet>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <filtering>true</filtering>
+                        <includes>
+                            <include>bungee.yml</include>
+                            <include>config.yml</include>
+                        </includes>
+                        <excludes>
+                            <exclude>plugin.yml</exclude>
+                        </excludes>
+                    </resource>
+                </resources>
+            </build>
+        </profile>
+
+        <!-- Universal profile - all files included (for development/testing) -->
+        <profile>
+            <id>universal</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <version>3.13.0</version>
+                        <configuration>
+                            <release>21</release>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.3</version>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-shade-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>shade</goal>
+                                </goals>
+                                <configuration>
+                                    <createDependencyReducedPom>false</createDependencyReducedPom>
+                                    <finalName>${project.artifactId}-${project.version}-universal</finalName>
+                                    <relocations>
+                                        <relocation>
+                                            <pattern>de.tr7zw.changeme.nbtapi</pattern>
+                                            <shadedPattern>com.digitalserverhost.plugins.nbtapi</shadedPattern>
+                                        </relocation>
+                                    </relocations>
+                                    <artifactSet>
+                                        <includes>
+                                            <include>com.zaxxer:HikariCP</include>
+                                            <include>com.mysql:mysql-connector-j</include>
+                                            <include>redis.clients:jedis</include>
+                                            <include>de.tr7zw:item-nbt-api</include>
+                                        </includes>
+                                    </artifactSet>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <filtering>true</filtering>
+                    </resource>
+                </resources>
+            </build>
+        </profile>
+    </profiles>
+
     <build>
+        <defaultGoal>clean package</defaultGoal>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -122,41 +417,6 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.3</version>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.6.0</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <relocations>
-                                <relocation>
-                                    <pattern>de.tr7zw.changeme.nbtapi</pattern>
-                                    <shadedPattern>com.digitalserverhost.plugins.nbtapi</shadedPattern>
-                                </relocation>
-                            </relocations>
-                            <artifactSet>
-                                <includes>
-                                    <include>com.zaxxer:HikariCP</include>
-                                    <include>com.mysql:mysql-connector-j</include>
-                                    <include>de.tr7zw:item-nbt-api</include>
-                                </includes>
-                            </artifactSet>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
         </plugins>
-        <resources>
-            <resource>
-                <directory>src/main/resources</directory>
-                <filtering>true</filtering>
-            </resource>
-        </resources>
     </build>
 </project>
