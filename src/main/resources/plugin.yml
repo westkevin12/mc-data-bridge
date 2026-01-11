@@ -1,14 +1,18 @@
-main: com.digitalserverhost.plugins.MCDataBridge
+main: de.jumpstone.plugins.HMTSync
 version: 2.1.1
-name: mc-data-bridge
-author: DigitalServerHost
+name: HMTSync
+author: jumpstone
 api-version: 1.21
 permissions:
-  databridge.admin:
-    description: Allows use of admin commands for MC Data Bridge
+  hmtsync.admin:
+    description: Allows use of admin commands for HMT Sync
     default: op
 commands:
-  databridge:
-    description: Main command for MC Data Bridge
-    usage: /databridge <subcommand>
-    permission: databridge.admin
+  hmtsync:
+    description: Main command for HMT Sync
+    usage: /hmtsync <subcommand>
+    permission: hmtsync.admin
+  hmtsync-debug:
+    description: Debug command for HMT Sync
+    usage: /hmtsync-debug <subcommand>
+    permission: hmtsync.admin

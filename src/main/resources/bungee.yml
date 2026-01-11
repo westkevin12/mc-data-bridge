@@ -1,4 +1,4 @@
-name: mc-data-bridge
+name: HMT Sync
 version: 2.1.1
-main: com.digitalserverhost.plugins.proxy.bungee.BungeeMCDataBridge
-author: DigitalServerHost
+main: de.jumpstone.plugins.proxy.bungee.BungeeHMTSync
+author: jumpstone

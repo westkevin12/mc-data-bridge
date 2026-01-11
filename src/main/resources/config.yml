@@ -22,6 +22,28 @@ database:
     connection-timeout: 5000 # 5 seconds
     idle-timeout: 600000 # 10 minutes
 
+  # Redis Configuration
+  # Enable Redis for fast caching during server switches
+  redis:
+    # Enable Redis integration (true/false)
+    enabled: false
+    
+    # Redis server connection details
+    host: localhost
+    port: 6379
+    password: ""  # Leave empty if no password
+    
+    # Connection settings
+    timeout-ms: 2000
+    
+    # Cache settings
+    cache-duration-seconds: 300  # How long to cache player data in Redis
+    
+    # Storage strategy options:
+    # mysql-only: Use only MySQL (traditional mode)
+    # redis-mysql-hybrid: Use Redis for caching, MySQL for persistence
+    storage-strategy: "mysql-only"
+  
   # MySQL JDBC Optimizations
   # These are advanced settings for the MySQL driver.
   # Do not change these unless you know what you are doing.
@@ -46,7 +68,7 @@ debug: false
 # Example: "survival-1", "creative", "lobby"
 server-id: "default-server"
 
-# Set to prefix the player_data table (e.g., 'mc_data_bridge_').
+# Set to prefix the player_data table (e.g., 'hmt_sync_').
 table-prefix: ""
 
 # The duration in milliseconds after which a player data lock is considered expired.
@@ -70,6 +92,8 @@ sync-data:
   ender-chest: false
   location: false
   advancements: false
+  economy: false
+  playtime: false
 
 # Server/World Blacklist
 # Data synchronization will be disabled for players on these servers or in these worlds.
