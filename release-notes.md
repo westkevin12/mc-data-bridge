@@ -1,11 +1,17 @@
-# Release Notes - v2.1.1
+# Release Notes - v2.1.2
 
-**MC Data Bridge v2.1.1** - **Critical Bug Fix & Stability Update**
+**MC Data Bridge v2.1.2** - **Maintenance & Dependency Update**
 
-This patch release addresses a critical issue reported where players with boosted health (e.g., via Health Boost potion effects or attributes) were being kicked upon switching servers.
+This release focuses on updating core dependencies and resolving build-time compatibility issues.
 
 ---
 
-### 🐛 Bug Fixes
-*   **Fixed Kick on Server Switch with High Health:** Resolved an issue where players with health greater than 20.0 (Health Boost) would be kicked with an `IllegalArgumentException`. The plugin now safely handles this by loading potions and attributes from the database before setting the max health attribute.
+### 🔧 Maintenance
 
+- **Dependency Updates:**
+  - Updated `MockBukkit` to `3.133.2`.
+  - Updated `paper-api` to `1.21.1-R0.1-SNAPSHOT` (Fixed compatibility issues with newer MockBukkit).
+  - Updated `mysql-connector-j` to `9.6.0`.
+  - Updated `mockito` to `5.14.2`.
+
+---
