@@ -103,12 +103,20 @@ jobs:
         run: mvn -B clean package -DskipTests
 
       - name: Create Git Tag
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          MCP_PAT: ${{ secrets.MCP_PAT }}
         run: |
           TAG_NAME="v${{ steps.version.outputs.VERSION }}"
           echo "Creating Git tag $TAG_NAME"
           # Configure git for pushing
-          git config user.name github-actions
-          git config user.email github-actions@github.com
+          if [ -n "$RELEASE_TOKEN" ] || [ -n "$MCP_PAT" ]; then
+            git config user.name "mcpwest"
+            git config user.email "west@digitalserverhost.com"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+          fi
           git tag $TAG_NAME
           # Use explicit token auth to ensure the PAT is used for the push
           git push "https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/${{ github.repository }}.git" $TAG_NAME
@@ -123,6 +131,9 @@ jobs:
           body_path: release-notes.md
 
       - name: Prepare for Next Snapshot
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          MCP_PAT: ${{ secrets.MCP_PAT }}
         run: |
           CURRENT_VERSION="${{ steps.version.outputs.VERSION }}"
           SNAPSHOT_VERSION="${CURRENT_VERSION}-SNAPSHOT"
@@ -132,8 +143,13 @@ jobs:
           mvn versions:set -DnewVersion=$SNAPSHOT_VERSION -DgenerateBackupPoms=false
 
           # Commit the snapshot change back to main
-          git config user.name github-actions
-          git config user.email github-actions@github.com
+          if [ -n "$RELEASE_TOKEN" ] || [ -n "$MCP_PAT" ]; then
+            git config user.name "mcpwest"
+            git config user.email "west@digitalserverhost.com"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+          fi
           git commit -am "Prepare for next development iteration ($SNAPSHOT_VERSION) [skip ci]."
           # Use explicit token auth for the commit push as well
           git push "https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:main
