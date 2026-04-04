@@ -1,3 +1,7 @@
+# HMT Sync
+
+Optimized fork of `MC Data Bridge` for the HMT Network.
+
 # MC Data Bridge
 
 ![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.x-blue?style=for-the-badge&logo=minecraft)
