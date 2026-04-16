@@ -136,7 +136,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
                             : null;
 
                     if (json != null && !json.trim().isEmpty() && !json.equals("{}")) {
-                        PlayerData data = gson.fromJson(json, PlayerData.class);
+                        PlayerData data = java.util.Objects.requireNonNull(gson.fromJson(json, PlayerData.class));
                         loadingCache.put(uuid, data);
                         if (plugin.isDebugMode()) {
                             plugin.getLogger().info("Player data for " + name + " loaded into cache.");
@@ -361,7 +361,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
             }
 
             if (plugin.isSyncEnabled("health")) {
-                double maxHealth = player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getValue();
+                double maxHealth = player.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getValue();
                 player.setHealth(Math.min(data.getHealth(), maxHealth));
             }
 

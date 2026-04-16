@@ -21,7 +21,7 @@ public class VelocityListener {
             plugin.getLogger().info("Player " + player.getUsername() + " is switching from " + server.getServerInfo().getName() + ". Requesting data save.");
             ByteArrayDataOutput out = ByteStreams.newDataOutput();
             out.writeUTF("SaveAndRelease");
-            out.writeUTF(player.getUniqueId().toString());
+            out.writeUTF(java.util.Objects.requireNonNull(player.getUniqueId().toString(), "UUID string cannot be null"));
             server.sendPluginMessage(plugin.getChannel(), out.toByteArray());
         });
     }

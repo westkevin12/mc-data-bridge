@@ -23,7 +23,7 @@ public class BungeeListener implements Listener {
             plugin.getLogger().info("Player " + player.getName() + " is switching from " + event.getFrom().getName() + ". Requesting data save.");
             ByteArrayDataOutput out = ByteStreams.newDataOutput();
             out.writeUTF("SaveAndRelease");
-            out.writeUTF(player.getUniqueId().toString());
+            out.writeUTF(java.util.Objects.requireNonNull(player.getUniqueId().toString(), "UUID string cannot be null"));
             event.getFrom().sendData("mc-data-bridge:main", out.toByteArray());
         }
     }
