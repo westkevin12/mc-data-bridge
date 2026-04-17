@@ -221,12 +221,14 @@ sync-blacklist:
 - **`debug`**: Set to `true` to enable verbose debugging messages in the server console. Set to `false` for normal operation.
 - **`server-id` (Required):** You **must** set a unique name for each of your PaperMC/Spigot servers. This is critical for the data locking system to work correctly. The proxy server does not need this configuration.
 - **`lock-timeout`**: The time in milliseconds after which a data lock is considered expired. This prevents a player from being permanently locked if a server crashes while saving their data.
-- **`sync-data`**: Toggle specific features on/off. New features like `ender-chest` and `advancements` are disabled by default.
+- **`sync-data`**: Toggle specific features on/off. Features like `ender-chest`, `advancements`, `statistics`, and `pdc` (metadata) can be customized here.
 - **`sync-blacklist`**: Define servers or worlds where synchronization should be skipped.
+- **`database.backups`**: Configure the optional local redundancy (JSON export) system.
 
 ## Commands
 
-- `/databridge unlock <player>` - Manually release a lock for a specific player (Permission: `databridge.admin`).
+- `/databridge unlock <player>` - Manually release a data lock. This command works on Spigot/Paper, BungeeCord, and Velocity (Permission: `databridge.admin`).
+- `/databridge inspect <player>` - Open a GUI to visualize a player's saved data (Paper/Spigot only).
 
 ## Usage
 
@@ -237,7 +239,9 @@ sync-blacklist:
 
 ## Important Notes
 
-- **Database Requirement:** This plugin requires a **MySQL or MariaDB database** to function.
-- **Security Best Practice:** For production servers, it is strongly recommended to create a dedicated MySQL user for this plugin with limited permissions. The user only needs `SELECT`, `INSERT`, `UPDATE`, `CREATE`, and `ALTER` on the specified database.
+- **Folia Compatibility:** This plugin is fully compatible with Folia's regionalized threading model.
+- **Database Flexibility:** Supports **MySQL/MariaDB** (recommended for production) and **SQLite** (for local/single-machine testing).
+- **Security Best Practice:** For production servers, it is strongly recommended to create a dedicated database user with limited permissions (`SELECT`, `INSERT`, `UPDATE`, `CREATE`, `ALTER`).
+- **Backups:** Use the provided configuration documentation to implement true offsite backups.
 - **Connectivity & Firewalls:** Ensure your Minecraft servers and proxy can open a network connection to your database's `host` and `port`.
 - **Automatic Schema:** The plugin will automatically create and update the `player_data` table in your database. The schema includes `uuid`, `data`, `is_locked`, `locking_server`, `lock_timestamp`, and `last_updated`.
