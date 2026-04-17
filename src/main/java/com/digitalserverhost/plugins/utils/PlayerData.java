@@ -115,7 +115,7 @@ public class PlayerData {
             }
         }
 
-        if (plugin.isSyncEnabled("statistics")) {
+        if (plugin.isSyncEnabledNewFeature("statistics")) {
             this.statistics = new HashMap<>();
             for (org.bukkit.Statistic stat : org.bukkit.Statistic.values()) {
                 try {
@@ -132,7 +132,7 @@ public class PlayerData {
             }
         }
 
-        if (plugin.isSyncEnabled("pdc")) {
+        if (plugin.isSyncEnabledNewFeature("pdc")) {
             if (org.bukkit.Bukkit.getServer() != null) {
                 try {
                     // Custom PDC serialization logic using modern NBTAPI static methods
@@ -146,7 +146,7 @@ public class PlayerData {
             }
         }
 
-        if (plugin.isSyncEnabled("flight-gamemode")) {
+        if (plugin.isSyncEnabledNewFeature("flight-gamemode")) {
             this.isFlying = player.isFlying();
             this.allowFlight = player.getAllowFlight();
             this.gameMode = player.getGameMode().name();

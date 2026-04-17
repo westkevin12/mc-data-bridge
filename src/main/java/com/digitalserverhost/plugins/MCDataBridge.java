@@ -136,9 +136,11 @@ public class MCDataBridge extends JavaPlugin {
                         "ALTER TABLE " + escapedTableName + " ADD COLUMN lock_timestamp BIGINT DEFAULT 0");
             }
             if (!connection.getMetaData().getColumns(null, null, tableName, "last_updated").next()) {
-                statement.executeUpdate(
-                        "ALTER TABLE " + escapedTableName
-                                + " ADD COLUMN last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+                if (dbType.equals("sqlite")) {
+                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN last_updated DATETIME DEFAULT CURRENT_TIMESTAMP");
+                } else {
+                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+                }
             }
 
             ResultSet columns = connection.getMetaData().getColumns(null, null, tableName, "data");

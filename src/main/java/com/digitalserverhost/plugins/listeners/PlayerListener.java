@@ -421,7 +421,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 }
             }
 
-            if (plugin.isSyncEnabled("statistics")) {
+            if (plugin.isSyncEnabledNewFeature("statistics")) {
                 if (data.getStatistics() != null) {
                     for (Map.Entry<String, Integer> entry : data.getStatistics().entrySet()) {
                         try {
@@ -432,7 +432,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 }
             }
 
-            if (plugin.isSyncEnabled("pdc")) {
+            if (plugin.isSyncEnabledNewFeature("pdc")) {
                 if (data.getPdcNBT() != null && !data.getPdcNBT().isEmpty()) {
                     try {
                         de.tr7zw.changeme.nbtapi.NBT.modify(player, nbt -> {
@@ -444,7 +444,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 }
             }
 
-            if (plugin.isSyncEnabled("flight-gamemode")) {
+            if (plugin.isSyncEnabledNewFeature("flight-gamemode")) {
                 if (data.getGameMode() != null) {
                     try {
                         player.setGameMode(org.bukkit.GameMode.valueOf(data.getGameMode()));
