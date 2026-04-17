@@ -27,7 +27,7 @@ public class GsonTest {
         String json = gson.toJson(testMap);
         assertEquals("{\"key\":\"value\"}", json, "Gson should correctly serialize a simple map");
 
-        Map<?, ?> deserialized = gson.fromJson(json, Map.class);
+        Map<?, ?> deserialized = java.util.Objects.requireNonNull(gson.fromJson(json, Map.class), "Deserialized map is null");
         assertEquals("value", deserialized.get("key"), "Gson should correctly deserialize the map");
     }
 }

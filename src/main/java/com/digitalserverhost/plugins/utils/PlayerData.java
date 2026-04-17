@@ -92,6 +92,7 @@ public class PlayerData {
             Iterator<Advancement> it = org.bukkit.Bukkit.advancementIterator();
             while (it.hasNext()) {
                 Advancement adv = it.next();
+                if (adv == null) continue;
                 AdvancementProgress progress = player.getAdvancementProgress(adv);
                 // Only save if there is any progress
                 if (!progress.getAwardedCriteria().isEmpty()) {
@@ -102,11 +103,14 @@ public class PlayerData {
 
         if (plugin.isSyncEnabledNewFeature("location")) {
             this.world = player.getWorld().getName();
-            this.x = player.getLocation().getX();
-            this.y = player.getLocation().getY();
-            this.z = player.getLocation().getZ();
-            this.yaw = player.getLocation().getYaw();
-            this.pitch = player.getLocation().getPitch();
+            org.bukkit.Location loc = player.getLocation();
+            if (loc != null) {
+                this.x = loc.getX();
+                this.y = loc.getY();
+                this.z = loc.getZ();
+                this.yaw = loc.getYaw();
+                this.pitch = loc.getPitch();
+            }
         }
     }
 
@@ -142,7 +146,7 @@ public class PlayerData {
                     continue;
                 }
                 try {
-                    SerializableItemStack serializableItem = gson.fromJson(itemJson, SerializableItemStack.class);
+                    SerializableItemStack serializableItem = java.util.Objects.requireNonNull(gson.fromJson(itemJson, SerializableItemStack.class));
                     items[i] = serializableItem.toItemStack();
                 } catch (Exception e) {
                     throw new ItemDeserializationException("Failed to deserialize item from JSON: " + itemJson, e);

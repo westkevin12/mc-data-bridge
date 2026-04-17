@@ -49,9 +49,9 @@ public class MCDataBridge extends JavaPlugin {
         getServer().getPluginManager().registerEvents(playerListener, this);
 
         // Register Commands
-        if (getCommand("databridge") != null) {
-            getCommand("databridge")
-                    .setExecutor(new com.digitalserverhost.plugins.commands.UnlockCommand(databaseManager));
+        org.bukkit.command.PluginCommand cmd = getCommand("databridge");
+        if (cmd != null) {
+            cmd.setExecutor(new com.digitalserverhost.plugins.commands.UnlockCommand(databaseManager));
         }
 
         // Register it as the listener for our custom plugin channel

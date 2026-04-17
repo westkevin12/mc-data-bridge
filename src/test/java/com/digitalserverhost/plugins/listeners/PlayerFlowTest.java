@@ -71,10 +71,8 @@ class PlayerFlowTest {
         PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
 
         UUID uuid = UUID.randomUUID();
-        // Use non-deprecated constructor if possible, or suppress warning
-        @SuppressWarnings("deprecation")
         AsyncPlayerPreLoginEvent event = new AsyncPlayerPreLoginEvent(
-                "TestPlayer", InetAddress.getByName("127.0.0.1"), uuid);
+                "TestPlayer", InetAddress.getByName("127.0.0.1"), uuid, false);
 
         // Mocks for DB
         when(mockDatabaseManager.getTableName()).thenReturn("`player_data`");
@@ -144,8 +142,7 @@ class PlayerFlowTest {
         when(mockDatabaseManager.saveAndReleaseLock(anyString(), eq(player.getUniqueId()), anyString()))
                 .thenReturn(true);
 
-        @SuppressWarnings("deprecation")
-        PlayerQuitEvent event = new PlayerQuitEvent(player, "Quit");
+        PlayerQuitEvent event = new PlayerQuitEvent(player, net.kyori.adventure.text.Component.text("Quit"), org.bukkit.event.player.PlayerQuitEvent.QuitReason.DISCONNECTED);
 
         listener.onPlayerQuit(event);
 
@@ -182,8 +179,7 @@ class PlayerFlowTest {
         clearInvocations(mockDatabaseManager);
 
         // 2. Quit -> triggers cancelHeartbeat (and save)
-        @SuppressWarnings("deprecation")
-        PlayerQuitEvent quitEvent = new PlayerQuitEvent(player, "Quit");
+        PlayerQuitEvent quitEvent = new PlayerQuitEvent(player, net.kyori.adventure.text.Component.text("Quit"), org.bukkit.event.player.PlayerQuitEvent.QuitReason.DISCONNECTED);
         listener.onPlayerQuit(quitEvent);
 
         // Wait for save to complete (async)
@@ -206,9 +202,8 @@ class PlayerFlowTest {
         PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
 
         UUID uuid = UUID.randomUUID();
-        @SuppressWarnings("deprecation")
         AsyncPlayerPreLoginEvent event = new AsyncPlayerPreLoginEvent(
-                "TestPlayer", InetAddress.getLoopbackAddress(), uuid);
+                "TestPlayer", InetAddress.getLoopbackAddress(), uuid, false);
 
         listener.onAsyncPlayerPreLogin(event);
 
@@ -230,7 +225,7 @@ class PlayerFlowTest {
         @SuppressWarnings("UnstableApiUsage")
         com.google.common.io.ByteArrayDataOutput out = com.google.common.io.ByteStreams.newDataOutput();
         out.writeUTF("SaveAndRelease");
-        out.writeUTF(uuid.toString());
+        out.writeUTF(java.util.Objects.requireNonNull(uuid.toString(), "UUID string cannot be null"));
         byte[] message = out.toByteArray();
 
         // 1. Receive Message -> Triggers async save
@@ -242,8 +237,7 @@ class PlayerFlowTest {
         clearInvocations(mockDatabaseManager);
 
         // 2. Quit Event -> Should be ignored due to switchingPlayers flag
-        @SuppressWarnings("deprecation")
-        PlayerQuitEvent quitEvent = new PlayerQuitEvent(player, "Quit");
+        PlayerQuitEvent quitEvent = new PlayerQuitEvent(player, net.kyori.adventure.text.Component.text("Quit"), org.bukkit.event.player.PlayerQuitEvent.QuitReason.DISCONNECTED);
         listener.onPlayerQuit(quitEvent);
 
         // Verify save was NOT called again

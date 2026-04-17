@@ -48,7 +48,7 @@ public class PlayerDataSerializationTest {
         assertNotNull(json);
 
         // Test Deserialization
-        SerializableItemStack deserialized = GSON.fromJson(json, SerializableItemStack.class);
+        SerializableItemStack deserialized = java.util.Objects.requireNonNull(GSON.fromJson(json, SerializableItemStack.class));
         ItemStack resultItem = deserialized.toItemStack();
 
         assertNotNull(resultItem);
@@ -146,7 +146,7 @@ public class PlayerDataSerializationTest {
 
         // Deserialize
         String json = GSON.toJson(serializableItem);
-        SerializableItemStack deserialized = GSON.fromJson(json, SerializableItemStack.class);
+        SerializableItemStack deserialized = java.util.Objects.requireNonNull(GSON.fromJson(json, SerializableItemStack.class));
         ItemStack result = deserialized.toItemStack();
 
         // Verify

@@ -239,7 +239,7 @@ class PlayerSyncTest {
 
         // Mock Attributes
         org.bukkit.attribute.AttributeInstance maxHealthAttr = mock(org.bukkit.attribute.AttributeInstance.class);
-        when(targetPlayer.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH)).thenReturn(maxHealthAttr);
+        when(targetPlayer.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH)).thenReturn(maxHealthAttr);
 
         // Initial max health
         when(maxHealthAttr.getValue()).thenReturn(20.0);
