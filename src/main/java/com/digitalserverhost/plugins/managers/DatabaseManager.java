@@ -19,8 +19,19 @@ public class DatabaseManager {
         this.tableName = "`" + tableName.replace("`", "") + "`"; // Escape table name
         HikariConfig hikariConfig = new HikariConfig();
 
-        String jdbcUrl = "jdbc:mysql://" + config.getString("database.host") + ":" + config.getInt("database.port")
-                + "/" + config.getString("database.database");
+        String type = config.getString("database.type", "mysql").toLowerCase();
+        String jdbcUrl;
+
+        if (type.equals("sqlite")) {
+            String fileName = config.getString("database.sqlite-file", "player_data.db");
+            jdbcUrl = "jdbc:sqlite:" + fileName;
+            hikariConfig.setDriverClassName("org.sqlite.JDBC");
+        } else {
+            jdbcUrl = "jdbc:mysql://" + config.getString("database.host") + ":" + config.getInt("database.port")
+                    + "/" + config.getString("database.database");
+            // mysql-connector-j is the default for MySQL/MariaDB in this project
+        }
+
         hikariConfig.setJdbcUrl(jdbcUrl);
         hikariConfig.setUsername(config.getString("database.username"));
         hikariConfig.setPassword(config.getString("database.password"));

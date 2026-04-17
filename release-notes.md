@@ -1,34 +1,38 @@
-# Release Notes - v2.1.3
+# MC Data Bridge - Release Notes (v2.1.4)
 
-**MC Data Bridge v2.1.3** - **API Modernization & Strict Null Safety**
+## Overview
+Version 2.1.4 represents a major modernization and feature expansion of the MC Data Bridge plugin. This release focuses on full platform parity, modernization of internal APIs to support the latest server versions (Paper 1.21+, Folia, Velocity 3.3+), and enhanced administrative tools for production environments.
 
-This release focuses on updating core infrastructure to align with the latest 1.21.2+ ecosystems.
+## New Features & Enhancements
+
+### 🛡️ Administrative Inspector GUI
+*   Added `/databridge inspect <player>`: A visual GUI for administrators to inspect saved player data.
+*   Displays real-time stats including health, food, experience, inventory size, and last known location.
+*   View Persistent Data Container (PDC) status and metadata at a glance.
+
+### 🌐 Cross-Platform Parity
+*   **Proxy Unlock Command:** The `/databridge unlock` command is now available on both **BungeeCord** and **Velocity**.
+*   **ForceUnlock Relay:** Proxy commands automatically relay "ForceUnlock" signals to backend Spigot/Paper servers via dedicated messaging channels, ensuring locks can be cleared from anywhere in the network.
+
+### 🚀 Folia & Modern API Support
+*   **Folia Compatibility:** Implemented `SchedulerUtils` to handle regionalized threading requirements, ensuring safe execution on Folia clusters.
+*   **Adventure API Migration:** Replaced all legacy chat and UI logic with the Adventure API for high-fidelity text and cross-platform consistency.
+*   **NBT API Modernization:** Fully migrated to the latest NBT API static utility methods, improving performance and future-proofing data serialization.
+
+### 💾 Data Integrity & Backups
+*   **SQLite Support:** Added support for local SQLite storage as an alternative to MySQL/MariaDB.
+*   **Local Redundancy System:** Optional JSON-based redundancy system for local data exports (disabled by default).
+*   **Professional Backup Guidance:** Updated `config.yml` with comprehensive instructions for implementing "True Offsite Backups" using professional tools like `mysqldump` and `rclone`.
+
+### 🔧 Bug Fixes & Refinements
+*   **Modern Player Resolution:** Switched to the Paper `PlayerProfile` API for safer, non-blocking offline player lookups.
+*   **Null-Safety Audit:** Resolved all persistent IDE warnings and type-safety issues across the entire codebase.
+*   **Teleport-on-Join:** Refined location restoration logic to ensure players are accurately placed when returning to a server.
+
+## Technical Details
+*   **Minimum Java Version:** 25
+*   **Supported Platforms:** Paper (including latest experimental 26.1.2 Build #7), Folia, BungeeCord/Waterfall, Velocity.
+*   **Dependencies Updated:** NBTAPI (2.13.x+), HikariCP, Adventure.
 
 ---
-
-### 🚀 Modernization & Technical Debt
-
-- **API Modernization (Paper/Velocity):**
-  - Updated `paper-api` to `26.1.2.build.7-alpha`.
-  - Updated `velocity-api` to `3.5.0-SNAPSHOT` (Build #592).
-  - Updated `item-nbt-api` to `2.15.7`.
-  - Updated testing dependencies (`mockito`) to `5.23.0`.
-- **Bukkit / Paper Refactors:**
-  - Migrated health sync properties to utilize `Attribute.MAX_HEALTH`, fully deprecating legacy `GENERIC_` prefix requirements for modern servers.
-  - Restructured `PlayerQuitEvent` logic in our flow suites to adopt the modern `Component` adventure text system, erasing legacy string deprecations natively.
-  - Upgraded internal plugin message events to correctly route their legacy event parameters to accommodate transfer flags natively.
-
-### 🛡 Zero-Suppression Defensive Null Safety
-
-- Fully phased out `@SuppressWarnings` for null validation loops across the entire bridge logic constraint map, replacing them with mechanically enforced `java.util.Objects.requireNonNull` validation layers cleanly.
-- Resolved BungeeCord and Velocity `ByteArrayDataOutput.writeUTF` structural inference problems around UUID String bounds natively to conform to `Guava` expectations.
-- Safely rewired ambiguous core Bukkit states (`getLocation`, `advancementIterator`, `getCommand`) to aggressively trap and seal implicit analyzer NPE leakages directly inside the event pipeline.
-
-### 🏗 Build Pipeline Modernization
-
-- **Java 25 Architecture:**
-  - Upgraded compiler compliance matrix to strictly target Java 25 (`<release>25</release>`) accommodating PaperMC 26's bleeding-edge bytecode limits.
-  - Bumped `maven-shade-plugin` natively to `3.6.2`, and injected cutting edge `org.ow2.asm` `9.9.1` dependencies to successfully resolve shade failures against Java 25's new major bytecode signatures.
-- **Velocity Integration Fixes:**
-  - Patched breaking compiler regressions across Maven Annotation Processors that suppressed proxy integration endpoints. 
-  - Explicilty routed the Velocity API annotation processor (`@Plugin`) directly into the compiler arguments array, successfully recovering the `velocity-plugin.json` initialization file.
+*For installation instructions and configuration details, please refer to the [README.md](README.md) and [config.yml](src/main/resources/config.yml).*

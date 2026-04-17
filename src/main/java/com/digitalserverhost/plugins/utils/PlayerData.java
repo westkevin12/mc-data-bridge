@@ -38,13 +38,15 @@ public class PlayerData {
     private SerializablePotionEffect[] potionEffects;
     private List<String> discoveredRecipes;
     private Map<String, List<String>> advancements;
+    private Map<String, Integer> statistics;
+    private String pdcNBT;
+    private boolean isFlying;
+    private boolean allowFlight;
+    private String gameMode;
 
-    // Location Data (Logging/Admin Use Only - NOT APPLIED)
-    @SuppressWarnings("unused")
+    // Location Data (Logging/Admin Use Only - RESTORATION SUPPORTED)
     private String world;
-    @SuppressWarnings("unused")
     private double x, y, z;
-    @SuppressWarnings("unused")
     private float yaw, pitch;
 
     /**
@@ -111,6 +113,43 @@ public class PlayerData {
                 this.yaw = loc.getYaw();
                 this.pitch = loc.getPitch();
             }
+        }
+
+        if (plugin.isSyncEnabled("statistics")) {
+            this.statistics = new HashMap<>();
+            for (org.bukkit.Statistic stat : org.bukkit.Statistic.values()) {
+                try {
+                    if (stat.getType() == org.bukkit.Statistic.Type.UNTYPED) {
+                        int value = player.getStatistic(stat);
+                        if (value > 0) {
+                            this.statistics.put(stat.name(), value);
+                        }
+                    } else {
+                        // For stats with types (Material, EntityType), we might want to skip for now 
+                        // or iterate over all materials/entities. For simplicity, we'll stick to untyped for now.
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        if (plugin.isSyncEnabled("pdc")) {
+            if (org.bukkit.Bukkit.getServer() != null) {
+                try {
+                    // Custom PDC serialization logic using modern NBTAPI static methods
+                    this.pdcNBT = de.tr7zw.changeme.nbtapi.NBT.get(player, nbt -> {
+                        de.tr7zw.changeme.nbtapi.iface.ReadableNBT compound = nbt.getCompound("BukkitValues");
+                        return (compound != null) ? compound.toString() : null;
+                    });
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Failed to capture PDC for " + player.getName() + ": " + e.getMessage());
+                }
+            }
+        }
+
+        if (plugin.isSyncEnabled("flight-gamemode")) {
+            this.isFlying = player.isFlying();
+            this.allowFlight = player.getAllowFlight();
+            this.gameMode = player.getGameMode().name();
         }
     }
 
@@ -209,6 +248,36 @@ public class PlayerData {
     public Map<String, List<String>> getAdvancements() {
         return advancements;
     }
+
+    public Map<String, Integer> getStatistics() {
+        return statistics;
+    }
+
+    public String getPdcNBT() {
+        return pdcNBT;
+    }
+
+    public boolean isFlying() {
+        return isFlying;
+    }
+
+    public boolean isAllowFlight() {
+        return allowFlight;
+    }
+
+    public String getGameMode() {
+        return gameMode;
+    }
+
+    public String getWorld() {
+        return world;
+    }
+
+    public double getX() { return x; }
+    public double getY() { return y; }
+    public double getZ() { return z; }
+    public float getYaw() { return yaw; }
+    public float getPitch() { return pitch; }
 
     private SerializablePotionEffect[] convertPotionEffectArrayToSerializable(PotionEffect[] effects) {
         if (effects == null) {

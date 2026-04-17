@@ -58,9 +58,8 @@ public class MCDataBridge extends JavaPlugin {
         this.getServer().getMessenger().registerIncomingPluginChannel(this, "mc-data-bridge:main", playerListener);
         this.getServer().getMessenger().registerOutgoingPluginChannel(this, "mc-data-bridge:main");
 
-        if (debugMode) {
-            getLogger().info("Registered 'mc-data-bridge:main' plugin channel.");
-        }
+        // Initialize Backup Manager
+        new com.digitalserverhost.plugins.managers.BackupManager(this, databaseManager);
 
         getLogger().info("mc-data-bridge has been enabled on Spigot/Paper!");
     }
@@ -75,14 +74,27 @@ public class MCDataBridge extends JavaPlugin {
 
     private void createServerTable() {
         String escapedTableName = "`" + tableName + "`";
-        String createTableSQL = "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
-                "uuid VARCHAR(36) NOT NULL, " +
-                "data LONGTEXT, " +
-                "is_locked BOOLEAN DEFAULT 0, " +
-                "locking_server VARCHAR(255) DEFAULT NULL, " +
-                "lock_timestamp BIGINT DEFAULT 0, " +
-                "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
-                "PRIMARY KEY (uuid)) ENGINE=InnoDB;";
+        String createTableSQL;
+        String dbType = getConfig().getString("database.type", "mysql").toLowerCase();
+
+        if (dbType.equals("sqlite")) {
+            createTableSQL = "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
+                    "uuid TEXT PRIMARY KEY, " +
+                    "data BLOB, " +
+                    "is_locked INTEGER DEFAULT 0, " +
+                    "locking_server TEXT DEFAULT NULL, " +
+                    "lock_timestamp INTEGER DEFAULT 0, " +
+                    "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);";
+        } else {
+            createTableSQL = "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
+                    "uuid VARCHAR(36) NOT NULL, " +
+                    "data LONGBLOB, " +
+                    "is_locked BOOLEAN DEFAULT 0, " +
+                    "locking_server VARCHAR(255) DEFAULT NULL, " +
+                    "lock_timestamp BIGINT DEFAULT 0, " +
+                    "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                    "PRIMARY KEY (uuid)) ENGINE=InnoDB;";
+        }
 
         try (Connection connection = databaseManager.getConnection();
                 Statement statement = connection.createStatement()) {
@@ -263,6 +275,36 @@ public class MCDataBridge extends JavaPlugin {
             updated = true;
         }
 
+        // Check for 'database.backups'
+        if (!fileConfig.contains("database.backups")) {
+            newConfigContent.append("\n");
+            newConfigContent.append("  # Redundancy System (JSON Exports)\n");
+            newConfigContent.append("  # This is NOT a true backup if stored on the same machine/container.\n");
+            newConfigContent.append("  backups:\n");
+            newConfigContent.append("    enabled: false\n");
+            newConfigContent.append("    interval-hours: 24\n");
+            newConfigContent.append("    max-backups: 7\n");
+            newConfigContent.append("    path: \"backups/\"\n");
+            newConfigContent.append("\n");
+            newConfigContent.append("  # =========================================================================\n");
+            newConfigContent.append("  # TRUE OFFSITE BACKUPS (RECOMMENDED)\n");
+            newConfigContent.append("  # =========================================================================\n");
+            newConfigContent.append("  # For production servers, we STRONGLY recommend using external database\n");
+            newConfigContent.append("  # management tools rather than the internal redundancy system above.\n");
+            newConfigContent.append("  #\n");
+            newConfigContent.append("  # Example (Linux/MySQL):\n");
+            newConfigContent.append("  #   mysqldump -u [user] -p[password] [database] [table] > backup.sql\n");
+            newConfigContent.append("  #\n");
+            newConfigContent.append("  # Best Practices:\n");
+            newConfigContent.append("  # 1. Automate: Use a cron job to run backups daily.\n");
+            newConfigContent.append("  # 2. Offsite: Use 'rclone' or 'aws s3 cp' to move the .sql file to cloud storage.\n");
+            newConfigContent.append("  # 3. Isolation: NEVER store true backups in the Minecraft server directory.\n");
+            newConfigContent.append("  # 4. Managed: Consider using AWS RDS, Google CloudSQL, or DigitalOcean Managed\n");
+            newConfigContent.append("  #    Databases for automatic point-in-time recovery.\n");
+            newConfigContent.append("  # =========================================================================\n");
+            updated = true;
+        }
+
         // Check for 'lock-timeout'
         if (!fileConfig.contains("lock-timeout")) {
             newConfigContent.append("\n");
@@ -308,7 +350,21 @@ public class MCDataBridge extends JavaPlugin {
             newConfigContent.append("  ender-chest: false\n");
             newConfigContent.append("  location: false\n");
             newConfigContent.append("  advancements: false\n");
+            newConfigContent.append("  statistics: false\n");
+            newConfigContent.append("  pdc: false\n");
+            newConfigContent.append("  flight-gamemode: false\n");
             updated = true;
+        }
+
+        // Check for new sync-data keys specifically if section exists
+        if (fileConfig.contains("sync-data")) {
+            String[] newKeys = {"statistics", "pdc", "flight-gamemode"};
+            for (String key : newKeys) {
+                if (!fileConfig.contains("sync-data." + key)) {
+                    newConfigContent.append("sync-data." + key + ": false\n");
+                    updated = true;
+                }
+            }
         }
 
         // Check if sync-blacklist exists

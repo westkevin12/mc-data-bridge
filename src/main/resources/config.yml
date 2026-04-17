@@ -1,10 +1,42 @@
 # MySQL Database Configuration
 database:
+  # Connection type: "mysql" (for MySQL/MariaDB) or "sqlite" (local file)
+  type: mysql
   host: localhost
   port: 3306
   database: minecraft
   username: user
   password: password
+
+  # If type is "sqlite", specify the filename here.
+  sqlite-file: "player_data.db"
+
+  # Redundancy System (JSON Exports)
+  # WARNING: This simply copies database contents to the local filesystem.
+  # This is NOT a true backup if stored on the same machine/container.
+  # It is disabled by default to avoid misleading administrators.
+  backups:
+    enabled: false
+    interval-hours: 24
+    max-backups: 7
+    path: "backups/"
+
+  # =========================================================================
+  # TRUE OFFSITE BACKUPS (RECOMMENDED)
+  # =========================================================================
+  # For production servers, we STRONGLY recommend using external database
+  # management tools rather than the internal redundancy system above.
+  #
+  # Example (Linux/MySQL):
+  #   mysqldump -u [user] -p[password] [database] [table] > backup.sql
+  #
+  # Best Practices:
+  # 1. Automate: Use a cron job to run backups daily.
+  # 2. Offsite: Use 'rclone' or 'aws s3 cp' to move the .sql file to cloud storage.
+  # 3. Isolation: NEVER store true backups in the Minecraft server directory.
+  # 4. Managed: Consider using AWS RDS, Google CloudSQL, or DigitalOcean Managed
+  #    Databases for automatic point-in-time recovery.
+  # =========================================================================
 
   # A list of JDBC properties to apply.
   # These are recommended, but you can change/add/remove as needed.
@@ -70,6 +102,9 @@ sync-data:
   ender-chest: false
   location: false
   advancements: false
+  statistics: false
+  pdc: false
+  flight-gamemode: false
 
 # Server/World Blacklist
 # Data synchronization will be disabled for players on these servers or in these worlds.

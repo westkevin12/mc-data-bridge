@@ -75,6 +75,13 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
                 savePlayerDataAndReleaseLock(playerToSave);
             }
+        } else if (subchannel.equals("ForceUnlock")) {
+            String uuidStr = in.readUTF();
+            UUID uuid = UUID.fromString(uuidStr);
+            if (plugin.isDebugMode()) {
+                plugin.getLogger().info("Received 'ForceUnlock' request for UUID: " + uuid);
+            }
+            databaseManager.releaseLock(uuid);
         }
     }
 
@@ -207,15 +214,24 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
         // Start heartbeat task to periodically update the lock
         long heartbeatTicks = plugin.getLockHeartbeatSeconds() * 20L;
-        BukkitTask lockTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
-            if (player.isOnline()) { // Player might have logged off
-                databaseManager.updateLock(uuid, serverId);
-            } else {
-                cancelHeartbeat(uuid); // Stop if player is no longer online
-            }
-        }, heartbeatTicks, heartbeatTicks);
-
-        activeLockTasks.put(uuid, lockTask);
+        if (com.digitalserverhost.plugins.utils.SchedulerUtils.isFolia()) {
+            Bukkit.getAsyncScheduler().runAtFixedRate(plugin, (t) -> {
+                if (player.isOnline()) {
+                    databaseManager.updateLock(uuid, serverId);
+                } else {
+                    t.cancel();
+                }
+            }, heartbeatTicks * 50, heartbeatTicks * 50, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } else {
+            BukkitTask lockTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+                if (player.isOnline()) {
+                    databaseManager.updateLock(uuid, serverId);
+                } else {
+                    cancelHeartbeat(uuid);
+                }
+            }, heartbeatTicks, heartbeatTicks);
+            activeLockTasks.put(uuid, lockTask);
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -287,7 +303,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
             plugin.getLogger().info("Got data snapshot for " + name + ". Scheduling save and lock release.");
         }
 
-        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+        com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
             try {
                 String json = gson.toJson(finalData);
                 boolean success = databaseManager.saveAndReleaseLock(json, uuid, serverId);
@@ -401,6 +417,49 @@ public class PlayerListener implements Listener, PluginMessageListener {
                         } catch (Exception e) {
                             // Ignore errors
                         }
+                    }
+                }
+            }
+
+            if (plugin.isSyncEnabled("statistics")) {
+                if (data.getStatistics() != null) {
+                    for (Map.Entry<String, Integer> entry : data.getStatistics().entrySet()) {
+                        try {
+                            org.bukkit.Statistic stat = org.bukkit.Statistic.valueOf(entry.getKey());
+                            player.setStatistic(stat, entry.getValue());
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+
+            if (plugin.isSyncEnabled("pdc")) {
+                if (data.getPdcNBT() != null && !data.getPdcNBT().isEmpty()) {
+                    try {
+                        de.tr7zw.changeme.nbtapi.NBT.modify(player, nbt -> {
+                            nbt.getOrCreateCompound("BukkitValues").mergeCompound(de.tr7zw.changeme.nbtapi.NBT.parseNBT(data.getPdcNBT()));
+                        });
+                    } catch (Exception e) {
+                        plugin.getLogger().warning("Failed to apply PDC for " + player.getName() + ": " + e.getMessage());
+                    }
+                }
+            }
+
+            if (plugin.isSyncEnabled("flight-gamemode")) {
+                if (data.getGameMode() != null) {
+                    try {
+                        player.setGameMode(org.bukkit.GameMode.valueOf(data.getGameMode()));
+                    } catch (Exception ignored) {}
+                }
+                player.setAllowFlight(data.isAllowFlight());
+                player.setFlying(data.isFlying());
+            }
+
+            if (plugin.isSyncEnabledNewFeature("location")) {
+                if (data.getWorld() != null) {
+                    org.bukkit.World world = Bukkit.getWorld(data.getWorld());
+                    if (world != null) {
+                        org.bukkit.Location loc = new org.bukkit.Location(world, data.getX(), data.getY(), data.getZ(), data.getYaw(), data.getPitch());
+                        player.teleport(loc);
                     }
                 }
             }
