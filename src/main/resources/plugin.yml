@@ -3,6 +3,7 @@ version: 2.1.4
 name: mc-data-bridge
 author: DigitalServerHost
 api-version: 1.21
+folia-supported: true
 permissions:
   databridge.admin:
     description: Allows use of admin commands for MC Data Bridge
