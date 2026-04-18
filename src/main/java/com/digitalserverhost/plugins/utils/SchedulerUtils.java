@@ -11,9 +11,9 @@ public class SchedulerUtils {
     public static boolean isFolia() {
         if (isFolia == null) {
             try {
-                Class.forName("io.papermc.paper.threadedregions.RegionScheduler");
+                org.bukkit.Bukkit.class.getMethod("getAsyncScheduler");
                 isFolia = true;
-            } catch (ClassNotFoundException e) {
+            } catch (NoSuchMethodException e) {
                 isFolia = false;
             }
         }

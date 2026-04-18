@@ -39,8 +39,8 @@ public class MCDataBridge extends JavaPlugin {
         }
         databaseManager = new DatabaseManager(getConfig(), this.tableName);
 
-        getServer().getScheduler().runTaskAsynchronously(this, this::createServerTable);
-        getServer().getScheduler().runTaskAsynchronously(this, this::releaseOrphanedLocks);
+        com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(this, this::createServerTable);
+        com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(this, this::releaseOrphanedLocks);
 
         // Create the listener instance
         PlayerListener playerListener = new PlayerListener(databaseManager, this);
@@ -68,7 +68,9 @@ public class MCDataBridge extends JavaPlugin {
     public void onDisable() {
         this.getServer().getMessenger().unregisterIncomingPluginChannel(this, "mc-data-bridge:main");
         this.getServer().getMessenger().unregisterOutgoingPluginChannel(this, "mc-data-bridge:main");
-        databaseManager.close();
+        if (databaseManager != null) {
+            databaseManager.close();
+        }
         getLogger().info("mc-data-bridge has been disabled!");
     }
 
@@ -230,6 +232,11 @@ public class MCDataBridge extends JavaPlugin {
         if (!configFile.exists())
             return;
 
+        String existingContent = "";
+        try {
+            existingContent = new String(java.nio.file.Files.readAllBytes(configFile.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException ignored) {}
+
         // Load strictly from file to check valid keys without defaults interference
         org.bukkit.configuration.file.YamlConfiguration fileConfig = org.bukkit.configuration.file.YamlConfiguration
                 .loadConfiguration(configFile);
@@ -238,7 +245,7 @@ public class MCDataBridge extends JavaPlugin {
         boolean updated = false;
 
         // Check for 'debug'
-        if (!fileConfig.contains("debug")) {
+        if (!fileConfig.contains("debug") && !existingContent.contains("debug:")) {
             newConfigContent.append("\n");
             newConfigContent.append("# Enable debug mode for verbose logging.\n");
             newConfigContent.append("debug: false\n");
@@ -246,7 +253,7 @@ public class MCDataBridge extends JavaPlugin {
         }
 
         // Check for 'server-id'
-        if (!fileConfig.contains("server-id")) {
+        if (!fileConfig.contains("server-id") && !existingContent.contains("server-id:")) {
             newConfigContent.append("\n");
             newConfigContent.append("# Unique identifier for this server (Required).\n");
             newConfigContent.append("server-id: \"default-server\"\n");
@@ -254,7 +261,7 @@ public class MCDataBridge extends JavaPlugin {
         }
 
         // Check for 'table-prefix'
-        if (!fileConfig.contains("table-prefix")) {
+        if (!fileConfig.contains("table-prefix") && !existingContent.contains("table-prefix:")) {
             newConfigContent.append("\n");
             newConfigContent.append("# Set to prefix the player_data table (e.g., 'mc_data_bridge_').\n");
             newConfigContent.append("table-prefix: \"\"\n");
@@ -262,7 +269,7 @@ public class MCDataBridge extends JavaPlugin {
         }
 
         // Check for 'database' section
-        if (!fileConfig.contains("database")) {
+        if (!fileConfig.contains("database") && !existingContent.contains("database:")) {
             newConfigContent.append("\n");
             newConfigContent.append("database:\n");
             newConfigContent.append("  host: \"localhost\"\n");
@@ -278,15 +285,24 @@ public class MCDataBridge extends JavaPlugin {
         }
 
         // Check for 'database.backups'
-        if (!fileConfig.contains("database.backups")) {
+        if (!fileConfig.contains("database.backups") && !existingContent.contains("backups:") && !existingContent.contains("database.backups")) {
             newConfigContent.append("\n");
-            newConfigContent.append("  # Redundancy System (JSON Exports)\n");
-            newConfigContent.append("  # This is NOT a true backup if stored on the same machine/container.\n");
-            newConfigContent.append("  backups:\n");
-            newConfigContent.append("    enabled: false\n");
-            newConfigContent.append("    interval-hours: 24\n");
-            newConfigContent.append("    max-backups: 7\n");
-            newConfigContent.append("    path: \"backups/\"\n");
+            if (!fileConfig.contains("database") && !existingContent.contains("database:")) {
+                newConfigContent.append("database:\n");
+                newConfigContent.append("  # Redundancy System (JSON Exports)\n");
+                newConfigContent.append("  # This is NOT a true backup if stored on the same machine/container.\n");
+                newConfigContent.append("  backups:\n");
+                newConfigContent.append("    enabled: false\n");
+                newConfigContent.append("    interval-hours: 24\n");
+                newConfigContent.append("    max-backups: 7\n");
+                newConfigContent.append("    path: \"backups/\"\n");
+            } else {
+                // Parent exists, use dot-notation at root to avoid overriding the whole 'database' section
+                newConfigContent.append("database.backups.enabled: false\n");
+                newConfigContent.append("database.backups.interval-hours: 24\n");
+                newConfigContent.append("database.backups.max-backups: 7\n");
+                newConfigContent.append("database.backups.path: \"backups/\"\n");
+            }
             newConfigContent.append("\n");
             newConfigContent.append("  # =========================================================================\n");
             newConfigContent.append("  # TRUE OFFSITE BACKUPS (RECOMMENDED)\n");
@@ -308,7 +324,7 @@ public class MCDataBridge extends JavaPlugin {
         }
 
         // Check for 'lock-timeout'
-        if (!fileConfig.contains("lock-timeout")) {
+        if (!fileConfig.contains("lock-timeout") && !existingContent.contains("lock-timeout:")) {
             newConfigContent.append("\n");
             newConfigContent
                     .append("# The duration in milliseconds after which a player data lock is considered expired.\n");
@@ -318,7 +334,7 @@ public class MCDataBridge extends JavaPlugin {
         }
 
         // Check if lock-heartbeat-seconds exists
-        if (!fileConfig.contains("lock-heartbeat-seconds")) {
+        if (!fileConfig.contains("lock-heartbeat-seconds") && !existingContent.contains("lock-heartbeat-seconds:")) {
             newConfigContent.append("\n");
             newConfigContent
                     .append("# The interval in seconds between lock updates (heartbeats) while a player is online.\n");
@@ -328,7 +344,7 @@ public class MCDataBridge extends JavaPlugin {
         }
 
         // Check for 'auto-update-schema'
-        if (!fileConfig.contains("auto-update-schema")) {
+        if (!fileConfig.contains("auto-update-schema") && !existingContent.contains("auto-update-schema:")) {
             newConfigContent.append("\n");
             newConfigContent
                     .append("# Automatically migrate 'data' column from LONGTEXT to MEDIUMBLOB for performance?\n");
@@ -338,7 +354,7 @@ public class MCDataBridge extends JavaPlugin {
         }
 
         // Check if sync-data exists
-        if (!fileConfig.contains("sync-data")) {
+        if (!fileConfig.contains("sync-data") && !existingContent.contains("sync-data:")) {
             newConfigContent.append("\n");
             newConfigContent.append("# Granular Data Synchronization Toggles\n");
             newConfigContent.append("# Enable or disable synchronization for specific data components.\n");
@@ -362,7 +378,9 @@ public class MCDataBridge extends JavaPlugin {
         if (fileConfig.contains("sync-data")) {
             String[] newKeys = {"statistics", "pdc", "flight-gamemode"};
             for (String key : newKeys) {
-                if (!fileConfig.contains("sync-data." + key)) {
+                if (!fileConfig.contains("sync-data." + key) && !existingContent.contains(key + ":") && !existingContent.contains("sync-data." + key)) {
+                    // To avoid indentation issues with append-only mode, we add as root keys
+                    // if the section already exists, though this is a temporary fix.
                     newConfigContent.append("sync-data." + key + ": false\n");
                     updated = true;
                 }
@@ -370,7 +388,7 @@ public class MCDataBridge extends JavaPlugin {
         }
 
         // Check if sync-blacklist exists
-        if (!fileConfig.contains("sync-blacklist")) {
+        if (!fileConfig.contains("sync-blacklist") && !existingContent.contains("sync-blacklist:")) {
             newConfigContent.append("\n");
             newConfigContent.append("# Server/World Blacklist\n");
             newConfigContent.append(

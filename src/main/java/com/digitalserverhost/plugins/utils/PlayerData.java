@@ -326,7 +326,7 @@ public class PlayerData {
     }
 
     static class SerializableItemStack {
-        private final String itemAsBase64;
+        private String itemAsBase64;
         private final String material;
         private final int amount;
         private final String nbt;
@@ -335,7 +335,16 @@ public class PlayerData {
             if (item == null || item.getType().isAir()) {
                 this.itemAsBase64 = null;
             } else {
-                this.itemAsBase64 = Base64.getEncoder().encodeToString(item.serializeAsBytes());
+                try {
+                    // Use NBTAPI for robust, non-deprecated serialization
+                    this.itemAsBase64 = de.tr7zw.changeme.nbtapi.NBT.itemStackToNBT(item).toString();
+                } catch (Exception e) {
+                    this.itemAsBase64 = null;
+                    // Fallback to Paper's binary method if NBTAPI fails
+                    try {
+                        this.itemAsBase64 = Base64.getEncoder().encodeToString(item.serializeAsBytes());
+                    } catch (Exception ignored) {}
+                }
             }
             this.material = null;
             this.amount = 0;
@@ -344,13 +353,36 @@ public class PlayerData {
 
         public ItemStack toItemStack() {
             if (this.itemAsBase64 != null) {
+                if (this.itemAsBase64.startsWith("{")) {
+                    try {
+                        return de.tr7zw.changeme.nbtapi.NBT.itemStackFromNBT(de.tr7zw.changeme.nbtapi.NBT.parseNBT(this.itemAsBase64));
+                    } catch (Exception ignored) {}
+                }
+
                 try {
                     byte[] itemBytes = Base64.getDecoder().decode(this.itemAsBase64);
+                    if (itemBytes.length > 2) {
+                        // Detect format: AC ED = Java/Bukkit Serialization, 1F 8B = GZIP/Paper Binary
+                        if (itemBytes[0] == (byte) 0xAC && itemBytes[1] == (byte) 0xED) {
+                            java.io.ByteArrayInputStream inputStream = new java.io.ByteArrayInputStream(itemBytes);
+                            // Deprecated in 1.21, but kept for backward compatibility with old data
+                            try {
+                                @SuppressWarnings("deprecation")
+                                org.bukkit.util.io.BukkitObjectInputStream dataInput = new org.bukkit.util.io.BukkitObjectInputStream(inputStream);
+                                ItemStack item = (ItemStack) dataInput.readObject();
+                                dataInput.close();
+                                return item;
+                            } catch (Exception e) {
+                                // Fall through
+                            }
+                        } else if (itemBytes[0] == (byte) 0x1F && itemBytes[1] == (byte) 0x8B) {
+                            return ItemStack.deserializeBytes(itemBytes);
+                        }
+                    }
+                    // Fallback to trying Paper's method directly if detection fails
                     return ItemStack.deserializeBytes(itemBytes);
                 } catch (Exception e) {
-                    System.err.println(
-                            "[mc-data-bridge] Failed to deserialize item from Base64! Data: " + this.itemAsBase64);
-                    return new ItemStack(Material.AIR);
+                    // Final fallback to legacy path or AIR
                 }
             }
 
