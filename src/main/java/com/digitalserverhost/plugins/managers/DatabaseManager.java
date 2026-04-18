@@ -14,6 +14,7 @@ public class DatabaseManager {
     private final HikariDataSource dataSource;
     private final long lockTimeout;
     private final String tableName;
+    private final String currentTimeFunction;
 
     public DatabaseManager(FileConfiguration config, String tableName) {
         this.tableName = "`" + tableName.replace("`", "") + "`"; // Escape table name
@@ -58,6 +59,11 @@ public class DatabaseManager {
 
         this.dataSource = new HikariDataSource(hikariConfig);
         this.lockTimeout = config.getLong("lock-timeout", 60000); // 60 seconds default
+        if (type.equals("sqlite")) {
+            this.currentTimeFunction = "(strftime('%s','now') * 1000)";
+        } else {
+            this.currentTimeFunction = "(UNIX_TIMESTAMP() * 1000)";
+        }
     }
 
     /**
@@ -68,6 +74,7 @@ public class DatabaseManager {
         this.dataSource = dataSource;
         this.tableName = "`" + tableName.replace("`", "") + "`";
         this.lockTimeout = lockTimeout;
+        this.currentTimeFunction = "(UNIX_TIMESTAMP() * 1000)"; // Default for tests
     }
 
     public Connection getConnection() throws SQLException {
@@ -81,17 +88,15 @@ public class DatabaseManager {
     }
 
     public boolean acquireLock(UUID uuid, String serverId) throws SQLException {
-        long currentTime = System.currentTimeMillis();
-        long expirationTime = currentTime - lockTimeout;
-
         try (Connection connection = getConnection()) {
+            // Use database-side time to prevent race conditions caused by clock drift between servers
             PreparedStatement updateStmt = connection.prepareStatement(
                     "UPDATE " + tableName
-                            + " SET is_locked = 1, locking_server = ?, lock_timestamp = ? WHERE uuid = ? AND (is_locked = 0 OR is_locked IS NULL OR lock_timestamp < ?)");
+                            + " SET is_locked = 1, locking_server = ?, lock_timestamp = " + currentTimeFunction
+                            + " WHERE uuid = ? AND (is_locked = 0 OR is_locked IS NULL OR lock_timestamp < " + currentTimeFunction + " - ?)");
             updateStmt.setString(1, serverId);
-            updateStmt.setLong(2, currentTime);
-            updateStmt.setString(3, uuid.toString());
-            updateStmt.setLong(4, expirationTime);
+            updateStmt.setString(2, uuid.toString());
+            updateStmt.setLong(3, lockTimeout);
 
             if (updateStmt.executeUpdate() > 0) {
                 return true; // Lock acquired on existing row
@@ -100,10 +105,9 @@ public class DatabaseManager {
             try {
                 PreparedStatement insertStmt = connection.prepareStatement(
                         "INSERT INTO " + tableName
-                                + " (uuid, data, is_locked, locking_server, lock_timestamp) VALUES (?, NULL, 1, ?, ?)");
+                                + " (uuid, data, is_locked, locking_server, lock_timestamp) VALUES (?, NULL, 1, ?, " + currentTimeFunction + ")");
                 insertStmt.setString(1, uuid.toString());
                 insertStmt.setString(2, serverId);
-                insertStmt.setLong(3, currentTime);
                 insertStmt.executeUpdate();
                 return true; // Lock acquired via new row
             } catch (SQLException e) {
@@ -169,13 +173,11 @@ public class DatabaseManager {
     }
 
     public void updateLock(UUID uuid, String serverId) {
-        long currentTime = System.currentTimeMillis();
-        String sql = "UPDATE " + tableName + " SET lock_timestamp = ? WHERE uuid = ? AND locking_server = ?";
+        String sql = "UPDATE " + tableName + " SET lock_timestamp = " + currentTimeFunction + " WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, currentTime);
-            statement.setString(2, uuid.toString());
-            statement.setString(3, serverId);
+            statement.setString(1, uuid.toString());
+            statement.setString(2, serverId);
             statement.executeUpdate();
         } catch (SQLException e) {
             System.err.println("[mc-data-bridge] Failed to update lock for " + uuid + ": " + e.getMessage());

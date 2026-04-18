@@ -57,6 +57,21 @@ public class PlayerData {
         this(player, JavaPlugin.getPlugin(MCDataBridge.class));
     }
 
+    private static final org.bukkit.Statistic[] ESSENTIAL_STATS = {
+        org.bukkit.Statistic.DEATHS,
+        org.bukkit.Statistic.PLAYER_KILLS,
+        org.bukkit.Statistic.MOB_KILLS,
+        org.bukkit.Statistic.PLAY_ONE_MINUTE,
+        org.bukkit.Statistic.WALK_ONE_CM,
+        org.bukkit.Statistic.SPRINT_ONE_CM,
+        org.bukkit.Statistic.FLY_ONE_CM,
+        org.bukkit.Statistic.CROUCH_ONE_CM,
+        org.bukkit.Statistic.JUMP,
+        org.bukkit.Statistic.DAMAGE_DEALT,
+        org.bukkit.Statistic.DAMAGE_TAKEN,
+        org.bukkit.Statistic.LEAVE_GAME
+    };
+    
     public PlayerData(Player player, MCDataBridge plugin) {
         if (plugin.isSyncEnabled("health"))
             this.health = player.getHealth();
@@ -117,16 +132,13 @@ public class PlayerData {
 
         if (plugin.isSyncEnabledNewFeature("statistics")) {
             this.statistics = new HashMap<>();
-            for (org.bukkit.Statistic stat : org.bukkit.Statistic.values()) {
+            // Essential statistics whitelist to avoid performance bottlenecks
+            for (org.bukkit.Statistic stat : ESSENTIAL_STATS) {
+                if (stat == null) continue;
                 try {
-                    if (stat.getType() == org.bukkit.Statistic.Type.UNTYPED) {
-                        int value = player.getStatistic(stat);
-                        if (value > 0) {
-                            this.statistics.put(stat.name(), value);
-                        }
-                    } else {
-                        // For stats with types (Material, EntityType), we might want to skip for now 
-                        // or iterate over all materials/entities. For simplicity, we'll stick to untyped for now.
+                    int value = player.getStatistic(stat);
+                    if (value > 0) {
+                        this.statistics.put(stat.name(), value);
                     }
                 } catch (Exception ignored) {}
             }
@@ -339,11 +351,14 @@ public class PlayerData {
                     // Use NBTAPI for robust, non-deprecated serialization
                     this.itemAsBase64 = de.tr7zw.changeme.nbtapi.NBT.itemStackToNBT(item).toString();
                 } catch (Exception e) {
+                    System.err.println("[mc-data-bridge] NBTAPI serialization failed for " + item.getType() + ": " + e.getMessage());
                     this.itemAsBase64 = null;
                     // Fallback to Paper's binary method if NBTAPI fails
                     try {
                         this.itemAsBase64 = Base64.getEncoder().encodeToString(item.serializeAsBytes());
-                    } catch (Exception ignored) {}
+                    } catch (Exception e2) {
+                        System.err.println("[mc-data-bridge] Paper binary serialization fallback failed: " + e2.getMessage());
+                    }
                 }
             }
             this.material = null;
@@ -382,6 +397,8 @@ public class PlayerData {
                     // Fallback to trying Paper's method directly if detection fails
                     return ItemStack.deserializeBytes(itemBytes);
                 } catch (Exception e) {
+                    System.err.println("[mc-data-bridge] Failed to deserialize item from binary format! Fallback to AIR.");
+                    e.printStackTrace();
                     // Final fallback to legacy path or AIR
                 }
             }

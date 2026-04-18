@@ -30,7 +30,17 @@ public class MCDataBridge extends JavaPlugin {
         updateConfig(); // Check and update config if missing new keys
         this.debugMode = getConfig().getBoolean("debug", false);
         this.serverId = getConfig().getString("server-id", "default-server");
-        this.tableName = getConfig().getString("table-prefix", "") + "player_data";
+        String tablePrefix = getConfig().getString("table-prefix", "");
+        if (!tablePrefix.matches("^[a-zA-Z0-9_]*$")) {
+            getLogger().severe("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            getLogger().severe("!!! INVALID table-prefix: '" + tablePrefix + "'");
+            getLogger().severe("!!! Only alphanumeric characters and underscores are allowed.");
+            getLogger().severe("!!! Plugin will now disable to prevent SQL errors.   !!!");
+            getLogger().severe("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        this.tableName = tablePrefix + "player_data";
         if (this.serverId.equals("default-server")) {
             getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
             getLogger().warning("!!! Server-id is not set in config.yml. Using default. !!!");
@@ -152,6 +162,10 @@ public class MCDataBridge extends JavaPlugin {
 
                 if (needsMigration) {
                     if (getConfig().getBoolean("auto-update-schema", false)) {
+                        if (dbType.equals("sqlite")) {
+                            // SQLite BLOB is dynamic and doesn't need explicit 'LONGBLOB' migration
+                            return;
+                        }
                         getLogger().info("Migrating 'data' column from " + typeName + " to LONGBLOB as requested...");
                         statement
                                 .executeUpdate("ALTER TABLE " + escapedTableName + " MODIFY COLUMN data LONGBLOB NULL");
