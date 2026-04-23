@@ -99,13 +99,42 @@
             <version>5.2.0</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.mockbukkit.mockbukkit</groupId>
-            <artifactId>mockbukkit-v26.1</artifactId>
-            <version>dev-1d82babb</version>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
+    
+    <profiles>
+        <profile>
+            <id>local-dev</id>
+            <activation>
+                <property>
+                    <name>!env.GITHUB_ACTIONS</name>
+                </property>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>org.mockbukkit.mockbukkit</groupId>
+                    <artifactId>mockbukkit-v26.1</artifactId>
+                    <version>dev-1d82babb</version>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>github-ci</id>
+            <activation>
+                <property>
+                    <name>env.GITHUB_ACTIONS</name>
+                </property>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>org.mockbukkit.mockbukkit</groupId>
+                    <artifactId>mockbukkit-v1.21</artifactId>
+                    <version>4.108.0</version>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
 
     <build>
         <plugins>
