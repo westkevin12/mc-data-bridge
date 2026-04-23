@@ -71,7 +71,7 @@ public class MCDataBridge extends JavaPlugin {
         // Initialize Backup Manager
         new com.digitalserverhost.plugins.managers.BackupManager(this, databaseManager);
 
-        getLogger().info("mc-data-bridge has been enabled on Spigot/Paper!");
+        getLogger().info("mc-data-bridge has been enabled on Spigot/Paper/Folia!");
     }
 
     @Override

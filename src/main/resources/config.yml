@@ -1,4 +1,4 @@
-# MySQL Database Configuration
+# Database Configuration
 database:
   # Connection type: "mysql" (for MySQL/MariaDB) or "sqlite" (local file)
   type: mysql
