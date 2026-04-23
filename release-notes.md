@@ -12,7 +12,8 @@ Version 2.1.4 represents a major modernization and feature expansion of the MC D
 
 ### 🌐 Cross-Platform Parity
 *   **Proxy Unlock Command:** The `/databridge unlock` command is now available on both **BungeeCord** and **Velocity**.
-*   **ForceUnlock Relay:** Proxy commands automatically relay "ForceUnlock" signals to backend Spigot/Paper servers via dedicated messaging channels, ensuring locks can be cleared from anywhere in the network.
+*   **ForceUnlock Relay:** Proxy commands automatically relay "ForceUnlock" signals to backend Spigot/Paper/Folia servers.
+*   **Spigot/Bukkit Support:** Implemented platform-agnostic messaging and UI fallbacks, enabling full support for standard Spigot/Bukkit 1.21+ servers alongside Paper and Folia.
 
 ### 🚀 Folia & Modern API Support
 *   **Folia Compatibility:** Implemented `SchedulerUtils` to handle regionalized threading requirements, ensuring safe execution on Folia clusters.
@@ -31,7 +32,7 @@ Version 2.1.4 represents a major modernization and feature expansion of the MC D
 
 ## Technical Details
 *   **Minimum Java Version:** 25
-*   **Supported Platforms:** Paper (1.21.x and 26.1.x), Folia, BungeeCord/Waterfall, Velocity.
+*   **Supported Platforms:** Paper (1.21.x and 26.1.x), Folia, Spigot/Bukkit, BungeeCord/Waterfall, Velocity.
 *   **Dependencies Updated:** NBTAPI (2.13.x+), HikariCP, Adventure.
 *   **CI/CD Modernization:** Migrated to Node.js 24 and updated GitHub Actions to latest v4 versions for improved build reliability and long-term support.
 

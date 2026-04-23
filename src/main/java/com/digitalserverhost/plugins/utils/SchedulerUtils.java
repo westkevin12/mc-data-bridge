@@ -7,6 +7,7 @@ import org.bukkit.plugin.Plugin;
 public class SchedulerUtils {
 
     private static Boolean isFolia = null;
+    private static Boolean isPaper = null;
 
     public static boolean isFolia() {
         if (isFolia == null) {
@@ -18,6 +19,18 @@ public class SchedulerUtils {
             }
         }
         return isFolia;
+    }
+
+    public static boolean isPaper() {
+        if (isPaper == null) {
+            try {
+                Class.forName("com.destroystokyo.paper.profile.PlayerProfile");
+                isPaper = true;
+            } catch (ClassNotFoundException e) {
+                isPaper = false;
+            }
+        }
+        return isPaper;
     }
 
     public static void runLater(Plugin plugin, Runnable runnable, long ticks) {

@@ -48,18 +48,18 @@ public class DataManagementGUI {
                                 .ifPresentOrElse(
                                         d -> SchedulerUtils.runOnEntity(plugin, admin,
                                                 () -> buildAndOpenGUI(admin, targetName, d)),
-                                        () -> admin.sendMessage(LegacyComponentSerializer.legacySection()
+                                        () -> MessageUtils.sendMessage(admin, LegacyComponentSerializer.legacySection()
                                                 .deserialize("§cFailed to parse player data for: " + targetName)));
                     } else {
-                        admin.sendMessage(LegacyComponentSerializer.legacySection()
+                        MessageUtils.sendMessage(admin, LegacyComponentSerializer.legacySection()
                                 .deserialize("§cNo data found for player: " + targetName));
                     }
                 } else {
-                    admin.sendMessage(LegacyComponentSerializer.legacySection()
+                    MessageUtils.sendMessage(admin, LegacyComponentSerializer.legacySection()
                             .deserialize("§cPlayer " + targetName + " not found in database."));
                 }
             } catch (Exception e) {
-                admin.sendMessage(LegacyComponentSerializer.legacySection()
+                MessageUtils.sendMessage(admin, LegacyComponentSerializer.legacySection()
                         .deserialize("§cError loading player data: " + e.getMessage()));
             }
         });
@@ -67,7 +67,12 @@ public class DataManagementGUI {
 
     private void buildAndOpenGUI(Player admin, String targetName, PlayerData data) {
         Component title = LegacyComponentSerializer.legacySection().deserialize("§8Inspecting: §1" + targetName);
-        Inventory inv = Bukkit.createInventory(null, 27, title);
+        Inventory inv;
+        if (SchedulerUtils.isPaper()) {
+            inv = Bukkit.createInventory(null, 27, title);
+        } else {
+            inv = Bukkit.createInventory(null, 27, LegacyComponentSerializer.legacySection().serialize(title));
+        }
 
         // Stats Item
         inv.setItem(10, createInfoItem(Material.PLAYER_HEAD, "§b§lPlayer Stats",

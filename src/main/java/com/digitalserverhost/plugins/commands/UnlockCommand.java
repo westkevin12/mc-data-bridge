@@ -23,12 +23,12 @@ public class UnlockCommand implements CommandExecutor {
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label,
             @NotNull String[] args) {
         if (!sender.hasPermission("databridge.admin")) {
-            sender.sendMessage(Component.text("You do not have permission to use this command.", NamedTextColor.RED));
+            com.digitalserverhost.plugins.utils.MessageUtils.sendMessage(sender, Component.text("You do not have permission to use this command.", NamedTextColor.RED));
             return true;
         }
 
         if (args.length < 2) {
-            sender.sendMessage(Component.text("Usage: /databridge <unlock|inspect> <player>", NamedTextColor.RED));
+            com.digitalserverhost.plugins.utils.MessageUtils.sendMessage(sender, Component.text("Usage: /databridge <unlock|inspect> <player>", NamedTextColor.RED));
             return true;
         }
 
@@ -42,25 +42,30 @@ public class UnlockCommand implements CommandExecutor {
                 try {
                     uuid = UUID.fromString(targetName);
                 } catch (IllegalArgumentException e) {
-                    // It's a name, resolve it using modern PlayerProfile API
-                    com.destroystokyo.paper.profile.PlayerProfile profile = Bukkit.createProfile(targetName);
-                    profile.complete();
-                    uuid = profile.getId();
+                    // Resolve name to UUID
+                    if (com.digitalserverhost.plugins.utils.SchedulerUtils.isPaper()) {
+                        // Use modern PaperProfile API (safe async)
+                        uuid = com.digitalserverhost.plugins.utils.PaperProfileUtils.resolveUuid(targetName);
+                    } else {
+                        // Fallback for Spigot/Bukkit (Warning: getOfflinePlayer is blocking)
+                        //noinspection deprecation
+                        uuid = org.bukkit.Bukkit.getOfflinePlayer(targetName).getUniqueId();
+                    }
                 }
 
                 if (uuid == null) {
-                    sender.sendMessage(Component.text("Could not resolve player " + targetName, NamedTextColor.RED));
+                    com.digitalserverhost.plugins.utils.MessageUtils.sendMessage(sender, Component.text("Could not resolve player " + targetName, NamedTextColor.RED));
                     return;
                 }
 
                 boolean success = databaseManager.releaseLock(uuid);
 
                 if (success) {
-                    sender.sendMessage(
+                    com.digitalserverhost.plugins.utils.MessageUtils.sendMessage(sender, 
                             Component.text("Successfully released lock for player " + targetName + " (" + uuid + ")",
                                     NamedTextColor.GREEN));
                 } else {
-                    sender.sendMessage(
+                    com.digitalserverhost.plugins.utils.MessageUtils.sendMessage(sender, 
                             Component.text("Failed to release lock for " + targetName + ". Check console for errors.",
                                     NamedTextColor.RED));
                 }
@@ -80,13 +85,16 @@ public class UnlockCommand implements CommandExecutor {
                 try {
                     uuid = UUID.fromString(targetName);
                 } catch (IllegalArgumentException e) {
-                    com.destroystokyo.paper.profile.PlayerProfile profile = Bukkit.createProfile(targetName);
-                    profile.complete();
-                    uuid = profile.getId();
+                    if (com.digitalserverhost.plugins.utils.SchedulerUtils.isPaper()) {
+                        uuid = com.digitalserverhost.plugins.utils.PaperProfileUtils.resolveUuid(targetName);
+                    } else {
+                        //noinspection deprecation
+                        uuid = org.bukkit.Bukkit.getOfflinePlayer(targetName).getUniqueId();
+                    }
                 }
 
                 if (uuid == null) {
-                    admin.sendMessage(Component.text("Could not resolve player " + targetName, NamedTextColor.RED));
+                    com.digitalserverhost.plugins.utils.MessageUtils.sendMessage(admin, Component.text("Could not resolve player " + targetName, NamedTextColor.RED));
                     return;
                 }
 
@@ -96,7 +104,7 @@ public class UnlockCommand implements CommandExecutor {
             return true;
         }
 
-        sender.sendMessage(Component.text("Unknown subcommand. Usage: /databridge <unlock|inspect> <player>", NamedTextColor.RED));
+        com.digitalserverhost.plugins.utils.MessageUtils.sendMessage(sender, Component.text("Unknown subcommand. Usage: /databridge <unlock|inspect> <player>", NamedTextColor.RED));
         return true;
     }
 }

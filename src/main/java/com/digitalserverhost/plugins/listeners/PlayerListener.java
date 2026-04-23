@@ -118,10 +118,14 @@ public class PlayerListener implements Listener, PluginMessageListener {
             }
 
             if (!isLockOwner(uuid, serverId)) {
-                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER,
-                        Component.text(
-                                "[DataBridge] Your data is still being saved by another server. Please try again.",
-                                net.kyori.adventure.text.format.NamedTextColor.RED));
+                Component kickMsg = Component.text(
+                        "[DataBridge] Your data is still being saved by another server. Please try again.",
+                        net.kyori.adventure.text.format.NamedTextColor.RED);
+                if (com.digitalserverhost.plugins.utils.SchedulerUtils.isPaper()) {
+                    event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg);
+                } else {
+                    event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, com.digitalserverhost.plugins.utils.MessageUtils.serialize(kickMsg));
+                }
                 plugin.getLogger().warning("Player " + name + " was disallowed due to a persistent data lock.");
                 return;
             }
@@ -159,15 +163,24 @@ public class PlayerListener implements Listener, PluginMessageListener {
         } catch (PlayerData.ItemDeserializationException e) {
             plugin.getLogger().severe("A critical error occurred while deserializing inventory for player " + name
                     + ". " + e.getMessage());
-            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, Component.text(
+            Component errComponent = Component.text(
                     "[DataBridge] A critical error occurred while deserializing your inventory. Please contact an administrator.",
-                    net.kyori.adventure.text.format.NamedTextColor.RED));
+                    net.kyori.adventure.text.format.NamedTextColor.RED);
+            if (com.digitalserverhost.plugins.utils.SchedulerUtils.isPaper()) {
+                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, errComponent);
+            } else {
+                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, com.digitalserverhost.plugins.utils.MessageUtils.serialize(errComponent));
+            }
             databaseManager.releaseLock(uuid, serverId); // Release the lock we acquired
         } catch (Exception e) {
             plugin.getLogger().severe("Critical error during pre-login for player " + name + ": " + e.getMessage());
-            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER,
-                    Component.text("[DataBridge] Could not process your player data. Please relog.",
-                            net.kyori.adventure.text.format.NamedTextColor.RED));
+            Component errComponent = Component.text("[DataBridge] Could not process your player data. Please relog.",
+                    net.kyori.adventure.text.format.NamedTextColor.RED);
+            if (com.digitalserverhost.plugins.utils.SchedulerUtils.isPaper()) {
+                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, errComponent);
+            } else {
+                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, com.digitalserverhost.plugins.utils.MessageUtils.serialize(errComponent));
+            }
             databaseManager.releaseLock(uuid, serverId); // Release the lock we acquired
         }
     }
@@ -469,8 +482,13 @@ public class PlayerListener implements Listener, PluginMessageListener {
             plugin.getLogger().severe("A critical error occurred while applying data to player "
                     + (player != null ? player.getName() : "null") + ". " + e.getMessage());
             if (player != null) {
-                player.kick(Component.text("[DataBridge] An error occurred applying your data.",
-                        net.kyori.adventure.text.format.NamedTextColor.RED));
+                Component kickMsg = Component.text("[DataBridge] An error occurred applying your data.",
+                        net.kyori.adventure.text.format.NamedTextColor.RED);
+                if (com.digitalserverhost.plugins.utils.SchedulerUtils.isPaper()) {
+                    player.kick(kickMsg);
+                } else {
+                    player.kickPlayer(com.digitalserverhost.plugins.utils.MessageUtils.serialize(kickMsg));
+                }
             }
         }
     }

@@ -105,6 +105,26 @@
             <version>4.108.0</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-api</artifactId>
+            <version>5.0.1</version>
+        </dependency>
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-text-serializer-legacy</artifactId>
+            <version>5.0.1</version>
+        </dependency>
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-text-serializer-plain</artifactId>
+            <version>5.0.1</version>
+        </dependency>
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-text-serializer-gson</artifactId>
+            <version>5.0.1</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -161,12 +181,21 @@
                                     <pattern>de.tr7zw.changeme.nbtapi</pattern>
                                     <shadedPattern>com.digitalserverhost.plugins.nbtapi</shadedPattern>
                                 </relocation>
+                                <relocation>
+                                    <pattern>net.kyori.adventure</pattern>
+                                    <shadedPattern>com.digitalserverhost.plugins.adventure</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>net.kyori.examination</pattern>
+                                    <shadedPattern>com.digitalserverhost.plugins.examination</shadedPattern>
+                                </relocation>
                             </relocations>
                             <artifactSet>
                                 <includes>
                                     <include>com.zaxxer:HikariCP</include>
                                     <include>com.mysql:mysql-connector-j</include>
                                     <include>de.tr7zw:item-nbt-api</include>
+                                    <include>net.kyori:*</include>
                                 </includes>
                             </artifactSet>
                         </configuration>
