@@ -1,4 +1,4 @@
-# MC Data Bridge - Release Notes (v2.1.4)
+# MC Data Bridge - Release Notes (v2.1.4-RC1)
 
 ## Overview
 Version 2.1.4 represents a major modernization and feature expansion of the MC Data Bridge plugin. This release focuses on full platform parity, modernization of internal APIs to support the latest server versions (Paper 1.21+, Folia, Velocity 3.3+), and enhanced administrative tools for production environments.
