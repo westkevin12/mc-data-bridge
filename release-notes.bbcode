@@ -11,37 +11,38 @@
 
 [SIZE=5][B]🌐 Cross-Platform Parity[/B][/SIZE]
 [LIST]
-[*]**Proxy Unlock Command:** The [B]/databridge unlock[/B] command is now available on both [B]BungeeCord[/B] and [B]Velocity[/B].
-[*]**ForceUnlock Relay:** Proxy commands automatically relay "ForceUnlock" signals to backend Spigot/Paper servers via dedicated messaging channels, ensuring locks can be cleared from anywhere in the network.
+[*] [B]Proxy Unlock Command:[/B] The [B]/databridge unlock[/B] command is now available on both [B]BungeeCord[/B] and [B]Velocity[/B].
+[*] [B]ForceUnlock Relay:[/B] Proxy commands automatically relay "ForceUnlock" signals to backend Spigot/Paper servers via dedicated messaging channels, ensuring locks can be cleared from anywhere in the network.
 [/LIST]
 
 [SIZE=5][B]🚀 Folia & Modern API Support[/B][/SIZE]
 [LIST]
-[*]**Folia Compatibility:** Implemented [I]SchedulerUtils[/I] to handle regionalized threading requirements, ensuring safe execution on Folia clusters.
-[*]**Adventure API Migration:** Replaced all legacy chat and UI logic with the Adventure API for high-fidelity text and cross-platform consistency.
-[*]**NBT API Modernization:** Fully migrated to the latest NBT API static utility methods, improving performance and future-proofing data serialization.
+[*] [B]Folia Compatibility:[/B] Implemented [I]SchedulerUtils[/I] to handle regionalized threading requirements, ensuring safe execution on Folia clusters.
+[*] [B]Adventure API Migration:[/B] Replaced all legacy chat and UI logic with the Adventure API for high-fidelity text and cross-platform consistency.
+[*] [B]NBT API Modernization:[/B] Fully migrated to the latest NBT API static utility methods, improving performance and future-proofing data serialization.
 [/LIST]
 
 [SIZE=5][B]💾 Data Integrity & Backups[/B][/SIZE]
 [LIST]
-[*]**SQLite Support:** Added support for local SQLite storage as an alternative to MySQL/MariaDB.
-[*]**Local Redundancy System:** Optional JSON-based redundancy system for local data exports (disabled by default).
-[*]**Professional Backup Guidance:** Updated [I]config.yml[/I] with comprehensive instructions for implementing "True Offsite Backups" using professional tools like mysqldump and rclone.
+[*] [B]SQLite Support:[/B] Added support for local SQLite storage as an alternative to MySQL/MariaDB.
+[*] [B]Local Redundancy System:[/B] Optional JSON-based redundancy system for local data exports (disabled by default).
+[*] [B]Professional Backup Guidance:[/B] Updated [I]config.yml[/I] with comprehensive instructions for implementing "True Offsite Backups" using professional tools like mysqldump and rclone.
 [/LIST]
 
 [SIZE=5][B]🔧 Bug Fixes & Refinements[/B][/SIZE]
 [LIST]
-[*]**Modern Player Resolution:** Switched to the Paper [I]PlayerProfile[/I] API for safer, non-blocking offline player lookups.
-[*]**Null-Safety Audit:** Resolved all persistent IDE warnings and type-safety issues across the entire codebase.
-[*]**Teleport-on-Join:** Refined location restoration logic to ensure players are accurately placed when returning to a server.
+[*] [B]Modern Player Resolution:[/B] Switched to the Paper [I]PlayerProfile[/I] API for safer, non-blocking offline player lookups.
+[*] [B]Null-Safety Audit:[/B] Resolved all persistent IDE warnings and type-safety issues across the entire codebase.
+[*] [B]Teleport-on-Join:[/B] Refined location restoration logic to ensure players are accurately placed when returning to a server.
 [/LIST]
 
 [SIZE=5][B]📄 Technical Details[/B][/SIZE]
 [LIST]
 [*][B]Minimum Java Version:[/B] 25
-[*][B]Supported Platforms:[/B] Paper (including latest experimental 26.1.2 Build #7), Folia, BungeeCord/Waterfall, Velocity.
+[*][B]Supported Platforms:[/B] Paper (1.21.x and 26.1.x), Folia, BungeeCord/Waterfall, Velocity.
 [*][B]Dependencies Updated:[/B] NBTAPI (2.13.x+), HikariCP, Adventure.
+[*][B]CI/CD Modernization:[/B] Migrated to Node.js 24 and updated GitHub Actions to latest v4 versions for improved build reliability and long-term support.
 [/LIST]
 
-[HR][/HR]
+[CENTER]----------------------------------------------------------------[/CENTER]
 [I]For installation instructions and configuration details, please refer to the plugin documentation and config.yml.[/I]

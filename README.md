@@ -1,6 +1,6 @@
 # MC Data Bridge
 
-![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.x-blue?style=for-the-badge&logo=minecraft)
+![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.x%20%7C%2026.1.x-blue?style=for-the-badge&logo=minecraft)
 ![Platform](https://img.shields.io/badge/Platform-Paper%20%7C%20Folia%20%7C%20Bungee%20%7C%20Velocity-brightgreen?style=for-the-badge)
 [![Modrinth Downloads](https://img.shields.io/modrinth/dt/mc-data-bridge?style=for-the-badge&logo=modrinth&label=Modrinth)](https://modrinth.com/plugin/mc-data-bridge)
 [![Spigot Downloads](https://img.shields.io/spiget/downloads/128642?style=for-the-badge&logo=spigotmc&label=Spigot&color=orange)](https://www.spigotmc.org/resources/128642)
@@ -9,7 +9,7 @@ MC Data Bridge is a robust, high-performance hybrid plugin for PaperMC (Spigot),
 
 ## Compatibility
 
-- **Minecraft Version:** `1.21.x`
+- **Minecraft Version:** `1.21.x` `26.1.x`
 - **Server Platforms:** PaperMC (or forks like Purpur), Spigot, **Folia**
 - **Proxy Platforms:** BungeeCord, Velocity
 

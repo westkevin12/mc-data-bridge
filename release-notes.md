@@ -31,8 +31,9 @@ Version 2.1.4 represents a major modernization and feature expansion of the MC D
 
 ## Technical Details
 *   **Minimum Java Version:** 25
-*   **Supported Platforms:** Paper (including latest experimental 26.1.2 Build #7), Folia, BungeeCord/Waterfall, Velocity.
+*   **Supported Platforms:** Paper (1.21.x and 26.1.x), Folia, BungeeCord/Waterfall, Velocity.
 *   **Dependencies Updated:** NBTAPI (2.13.x+), HikariCP, Adventure.
+*   **CI/CD Modernization:** Migrated to Node.js 24 and updated GitHub Actions to latest v4 versions for improved build reliability and long-term support.
 
 ---
 *For installation instructions and configuration details, please refer to the [README.md](README.md) and [config.yml](src/main/resources/config.yml).*
