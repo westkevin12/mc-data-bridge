@@ -1,23 +1,25 @@
 # MC Data Bridge
 
 ![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.x%20%7C%2026.1.x-blue?style=for-the-badge&logo=minecraft)
-![Platform](https://img.shields.io/badge/Platform-Paper%20%7C%20Folia%20%7C%20Bungee%20%7C%20Velocity-brightgreen?style=for-the-badge)
+![Proxy](https://img.shields.io/badge/Proxy-Velocity%20%7C%20Bungee%20%7C%20Waterfall-blue?style=for-the-badge)
+![Backend](https://img.shields.io/badge/Backend-Paper%20%7C%20Folia%20%7C%20Purpur%20%7C%20Spigot%20%7C%20Bukkit-brightgreen?style=for-the-badge)
 [![Modrinth Downloads](https://img.shields.io/modrinth/dt/mc-data-bridge?style=for-the-badge&logo=modrinth&label=Modrinth)](https://modrinth.com/plugin/mc-data-bridge)
 [![Spigot Downloads](https://img.shields.io/spiget/downloads/128642?style=for-the-badge&logo=spigotmc&label=Spigot&color=orange)](https://www.spigotmc.org/resources/128642)
+[![GitHub Downloads](https://img.shields.io/github/downloads/westkevin12/mc-data-bridge/total?style=for-the-badge&logo=github&label=GitHub&color=black)](https://github.com/westkevin12/mc-data-bridge/releases)
 
-MC Data Bridge is a robust, high-performance hybrid plugin for PaperMC (Spigot), Folia, BungeeCord, and Velocity. It is designed to seamlessly synchronize player data across multiple Minecraft servers, ensuring that players have a consistent experience by retaining their health, hunger, experience, inventory, and more as they move between linked servers.
+MC Data Bridge is a robust, high-performance hybrid plugin for **PaperMC** (and forks like **Purpur**), **Folia**, **Spigot**, **Bukkit**, **BungeeCord** (and forks like **Waterfall**), and **Velocity**. It is designed to seamlessly synchronize player data across multiple Minecraft servers, ensuring that players have a consistent experience by retaining their health, hunger, experience, inventory, and more as they move between linked servers.
 
 ## Compatibility
 
 - **Minecraft Version:** `1.21.x` `26.1.x`
-- **Server Platforms:** PaperMC (or forks like Purpur), Spigot, **Folia**
-- **Proxy Platforms:** BungeeCord, Velocity
+- **Server Platforms:** PaperMC, Purpur, Spigot, Bukkit, **Folia**
+- **Proxy Platforms:** BungeeCord, Waterfall, Velocity
 
 This plugin is a hybrid build and the same JAR file works on all supported platforms.
 
 ## Features
 
-- **Hybrid Plugin:** A single JAR file works on your PaperMC/Spigot/Folia servers and your BungeeCord/Velocity proxy, automatically activating the correct functionality for each platform.
+- **Hybrid Plugin:** A single JAR file works on your PaperMC/Purpur/Spigot/Folia servers and your BungeeCord/Waterfall/Velocity proxy, automatically activating the correct functionality for each platform.
 - **Folia Support:** Built-in compatibility for Folia's regionalized threading model, ensuring safe operation on high-performance multi-threaded servers.
 - **Database Flexibility:** Supports **MySQL**, **MariaDB**, and **SQLite**. Choose the backend that best fits your network size.
 - **Proxy-Initiated Saves:** The proxy (BungeeCord/Velocity) orchestrates the data saving process, ensuring that a player's data is saved from their source server _before_ they connect to the destination server. This eliminates race conditions and ensures data is never lost during a server switch.
@@ -261,6 +263,7 @@ sync-blacklist:
 ## Important Notes
 
 - **Folia Compatibility:** This plugin is fully compatible with Folia. It uses the `GlobalRegionScheduler` and `EntityScheduler` to ensure thread safety across regions.
+- **Platform Parity:** Whether you are running a single Spigot server, a massive Folia cluster, or even a mix of server types on different machines behind a Velocity or Waterfall proxy, MC Data Bridge provides identical features and reliability.
 - **Security Best Practice:** For production MySQL servers, use a dedicated user with limited permissions (`SELECT`, `INSERT`, `UPDATE`, `CREATE`, `ALTER`).
 - **Backups:** Use the provided configuration documentation to implement true offsite backups.
 - **Connectivity & Firewalls:** Ensure your Minecraft servers and proxy can open a network connection to your database's `host` and `port`.

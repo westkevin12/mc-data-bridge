@@ -11,6 +11,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -65,7 +66,8 @@ public class DataManagementGUI {
         });
     }
 
-    private void buildAndOpenGUI(Player admin, String targetName, PlayerData data) {
+    @SuppressWarnings({"deprecation", "null"})
+    private void buildAndOpenGUI(@NotNull Player admin, @NotNull String targetName, @NotNull PlayerData data) {
         Component title = LegacyComponentSerializer.legacySection().deserialize("§8Inspecting: §1" + targetName);
         Inventory inv;
         if (SchedulerUtils.isPaper()) {
@@ -104,17 +106,27 @@ public class DataManagementGUI {
 
         admin.openInventory(inv);
     }
-
-    private ItemStack createInfoItem(Material material, String name, String... lore) {
+ 
+    @SuppressWarnings({"deprecation", "null"})
+    private @NotNull ItemStack createInfoItem(@NotNull Material material, @NotNull String name, @NotNull String... lore) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(LegacyComponentSerializer.legacySection().deserialize(name));
-            List<Component> loreList = new ArrayList<>();
-            for (String line : lore) {
-                loreList.add(LegacyComponentSerializer.legacySection().deserialize(line));
+            if (SchedulerUtils.isPaper()) {
+                meta.displayName(LegacyComponentSerializer.legacySection().deserialize(name));
+                List<Component> loreList = new ArrayList<>();
+                for (String line : lore) {
+                    loreList.add(LegacyComponentSerializer.legacySection().deserialize(line));
+                }
+                meta.lore(loreList);
+            } else {
+                meta.setDisplayName(name);
+                List<String> loreList = new ArrayList<>();
+                for (String line : lore) {
+                    loreList.add(line);
+                }
+                meta.setLore(loreList);
             }
-            meta.lore(loreList);
             item.setItemMeta(meta);
         }
         return item;

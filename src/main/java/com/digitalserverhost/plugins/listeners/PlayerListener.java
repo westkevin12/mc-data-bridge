@@ -86,6 +86,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
+    @SuppressWarnings("deprecation")
     public void onAsyncPlayerPreLogin(AsyncPlayerPreLoginEvent event) {
         UUID uuid = event.getUniqueId();
         String name = event.getName();
@@ -352,6 +353,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
         }
     }
 
+    @SuppressWarnings("deprecation")
     private void applyPlayerData(Player player, PlayerData data) {
         try {
             if (player == null || !player.isOnline())

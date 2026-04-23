@@ -1,0 +1,10 @@
+{
+  "id": "mc-data-bridge",
+  "name": "mc-data-bridge",
+  "version": "2.1.4-RC2",
+  "description": "A data bridge for Minecraft servers.",
+  "authors": [
+    "DigitalServerHost"
+  ],
+  "main": "com.digitalserverhost.plugins.proxy.velocity.VelocityMCDataBridge"
+}
