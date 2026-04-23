@@ -76,8 +76,7 @@ jobs:
           echo "All pre-release metadata checks passed. Ready for final build."
 
       - name: Build with Maven
-        # TODO: Remove -DskipTests once MockBukkit releases a version fully compatible with PaperMC 26.1.2+ registries.
-        run: mvn -B verify -DskipTests --file pom.xml
+        run: mvn -B verify -Dmaven.test.skip=true --file pom.xml
 
   release:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -104,7 +103,7 @@ jobs:
         run: echo "VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)" >> $GITHUB_OUTPUT
 
       - name: Build Final Release JAR
-        run: mvn -B clean package -DskipTests
+        run: mvn -B clean package -Dmaven.test.skip=true
 
       - name: Create Git Tag
         env:
