@@ -22,7 +22,7 @@
 - [x] **Command Parity:** Added `/databridge unlock` to **BungeeCord** and **Velocity** proxy versions.
 - [x] **Folia Support:** Implemented a compatibility layer for regionalized threading, ensuring safety on high-performance multi-threaded servers.
 
-### 5. Security & Identity (COMPLETED - v2.1.4-RC2)
+### 5. Security & Identity (COMPLETED - v2.1.4-RC3)
 
 - [x] **Data Integrity Verification:** SHA-256 checksums prevent manual database tampering.
 - [x] **Identity History Tracking:** Tracking `last_known_name` enables automatic UUID change detection.

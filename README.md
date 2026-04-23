@@ -28,7 +28,7 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 - **Version-Independent Item Serialization:** Player inventories are serialized using Minecraft's built-in Base64 methods, which is highly robust and prevents data loss when you update your Minecraft server to a new version.
 - **Cross-Server Player Data Sync:** Synchronizes core player data including:
   - Health
-  - Food Level & Saturation
+  - Food Level, Saturation & Exhaustion
   - Experience (Total XP, current XP, and Level)
   - Inventory & Armor Contents
   - Active Potion Effects
@@ -57,7 +57,7 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 
 ## 🛠 Technical Deep Dive
 
-MC Data Bridge is built with a **Security-First** approach to player state. Unlike traditional sync plugins that rely on simple "Save-on-Quit," this plugin utilizes a Proxy-orchestrated handshake to eliminate data loss and duplication exploits.
+MC Data Bridge is built with a **Security-First** approach to player state. It utilizes SHA-256 data checksums to prevent manual database tampering and a Proxy-orchestrated handshake to eliminate data loss and duplication exploits.
 
 ### 1. The Secure Handshake (Happy Path)
 
@@ -250,8 +250,14 @@ sync-blacklist:
 
 ## Commands
 
-- `/databridge unlock <player>` - Manually release a data lock. Works on Spigot, Folia, Bungee, and Velocity (Permission: `databridge.admin`).
-- `/databridge inspect <player>` - Open a GUI to visualize a player's saved data (Paper/Spigot/Folia only).
+MC Data Bridge uses a consolidated command hub for all administrative tasks.
+
+- `/databridge unlock <player>` - Manually release a data lock. Works on Spigot, Folia, Bungee, and Velocity.
+- `/databridge inspect <player>` - Open a visual GUI to inspect a player's saved data (Paper/Spigot/Folia only).
+- `/databridge migrate <source> <target>` - Securely migrate data from one player (UUID or Name) to another. Useful for account recoveries or identity changes.
+
+**Aliases:** `/db`
+**Permission:** `databridge.admin`
 
 ## Usage
 

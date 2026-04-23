@@ -1,7 +1,7 @@
-# MC Data Bridge - Release Notes (v2.1.4-RC2)
+# MC Data Bridge - Release Notes (v2.1.4-RC3)
 
 ## Overview
-Version 2.1.4 represents a major modernization and feature expansion of the MC Data Bridge plugin. This release focuses on full platform parity, modernization of internal APIs to support the latest server versions (Paper 1.21+, Folia, Purpur, Waterfall, Velocity 3.3+), and enhanced administrative tools for production environments.
+Version 2.1.4 represents a major modernization and feature expansion of the MC Data Bridge plugin. This release focuses on full platform parity, a consolidated command architecture, and enhanced security tools for production environments. All administrative functions have been unified under the `/databridge` command hub, simplifying network management.
 
 ## New Features & Enhancements
 
@@ -10,10 +10,13 @@ Version 2.1.4 represents a major modernization and feature expansion of the MC D
 *   Displays real-time stats including health, food, experience, inventory size, and last known location.
 *   View Persistent Data Container (PDC) status and metadata at a glance.
 
-### 🌐 Cross-Platform Parity
-*   **Proxy Unlock Command:** The `/databridge unlock` command is now available on **BungeeCord**, **Waterfall**, and **Velocity**.
+### 🛡️ Advanced Security & Integrity
+*   **SHA-256 Checksums:** Implemented data integrity verification to detect and prevent manual database tampering or corruption.
+*   **Identity History Tracking:** Automatically tracks `last_known_name` to enable secure UUID change detection and migration warnings.
+*   **Automatic Lock Recovery:** The plugin now automatically identifies and releases orphaned locks held by the local server on startup, preventing stuck sessions after a crash.
+*   **New Migration System:** Added `/databridge migrate <source> <target>` to securely move data between player identities (UUID or Name).
+*   **Proxy Parity:** The `/databridge unlock` command is now available on **BungeeCord**, **Waterfall**, and **Velocity**.
 *   **ForceUnlock Relay:** Proxy commands automatically relay "ForceUnlock" signals to backend Spigot/Paper/Folia servers.
-*   **Broad Backend Support:** Implemented platform-agnostic messaging and UI fallbacks, enabling full support for **Purpur**, **Spigot**, and **Bukkit** 1.21+ servers alongside Paper and Folia.
 
 ### 🚀 Folia & Modern API Support
 *   **Folia Compatibility:** Implemented `SchedulerUtils` to handle regionalized threading requirements, ensuring safe execution on Folia clusters.
@@ -25,10 +28,14 @@ Version 2.1.4 represents a major modernization and feature expansion of the MC D
 *   **Local Redundancy System:** Optional JSON-based redundancy system for local data exports (disabled by default).
 *   **Professional Backup Guidance:** Updated `config.yml` with comprehensive instructions for implementing "True Offsite Backups" using professional tools like `mysqldump` and `rclone`.
 
-### 🔧 Bug Fixes & Refinements
+### 🔧 Refinements & Logic Improvements
 *   **Modern Player Resolution:** Switched to the Paper `PlayerProfile` API for safer, non-blocking offline player lookups.
+*   **Delayed Flight Application:** Implemented a 5-tick override for flight status on join, ensuring compatibility with plugins like EssentialsX that may reset flight.
+*   **Auto-Update Schema:** Added `auto-update-schema` configuration to allow the plugin to automatically migrate database columns (e.g., from TEXT to LONGBLOB).
+*   **Exhaustion Sync:** Expanded food synchronization to include exhaustion levels for 100% hunger parity.
 *   **Null-Safety Audit:** Resolved all persistent IDE warnings and type-safety issues across the entire codebase.
 *   **Teleport-on-Join:** Refined location restoration logic to ensure players are accurately placed when returning to a server.
+*   **Standalone Sync Parity:** Improved data flush logic during server shutdown, ensuring data integrity even for servers operating without a proxy coordinator.
 
 ## Technical Details
 *   **Minimum Java Version:** 25
