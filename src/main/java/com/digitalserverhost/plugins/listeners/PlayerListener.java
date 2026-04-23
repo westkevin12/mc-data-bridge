@@ -17,8 +17,6 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.ByteArrayDataInput;
-import org.bukkit.scheduler.BukkitTask;
-import net.kyori.adventure.text.Component;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -35,7 +33,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
     private final Gson gson;
     private final Map<UUID, PlayerData> loadingCache = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> savingPlayers = new ConcurrentHashMap<>();
-    private final Map<UUID, BukkitTask> activeLockTasks = new ConcurrentHashMap<>();
 
     // This will track players handled by the 'SaveAndRelease' message
     // to prevent 'PlayerQuitEvent' from firing a redundant save.
@@ -86,7 +83,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    @SuppressWarnings("deprecation")
     public void onAsyncPlayerPreLogin(AsyncPlayerPreLoginEvent event) {
         UUID uuid = event.getUniqueId();
         String name = event.getName();
@@ -119,35 +115,54 @@ public class PlayerListener implements Listener, PluginMessageListener {
             }
 
             if (!isLockOwner(uuid, serverId)) {
-                Component kickMsg = Component.text(
-                        "[DataBridge] Your data is still being saved by another server. Please try again.",
-                        net.kyori.adventure.text.format.NamedTextColor.RED);
-                if (com.digitalserverhost.plugins.utils.SchedulerUtils.isPaper()) {
-                    event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg);
-                } else {
-                    event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, com.digitalserverhost.plugins.utils.MessageUtils.serialize(kickMsg));
-                }
+                String kickMsg = "§c[DataBridge] Your data is still being saved by another server.\n§7Please wait a few seconds and try again.";
+                
+                com.digitalserverhost.plugins.utils.SchedulerUtils.getBridge().disallowPlayer(
+                    event, AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg
+                );
+                
                 plugin.getLogger().warning("Player " + name + " was disallowed due to a persistent data lock.");
                 return;
             }
 
-            if (plugin.isDebugMode()) {
-                plugin.getLogger().info("Successfully acquired data lock for player " + name + ".");
+            // UUID Switch Detection
+            UUID existingUuid = databaseManager.getUuidByName(name);
+            if (existingUuid != null && !existingUuid.equals(uuid)) {
+                if (plugin.getConfig().getBoolean("security.log-uuid-mismatches", true)) {
+                    plugin.getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                    plugin.getLogger().warning("!!! SECURITY ALERT: Player '" + name + "' UUID mismatch !!!");
+                    plugin.getLogger().warning("!!! Incoming UUID: " + uuid);
+                    plugin.getLogger().warning("!!! Known DB UUID: " + existingUuid);
+                    plugin.getLogger().warning("!!! Data will NOT be synced automatically for safety. !!!");
+                    plugin.getLogger().warning("!!! Use '/databridge migrate' to link these accounts. !!!");
+                    plugin.getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                }
             }
 
             // --- DATA IS LOCKED, PROCEED WITH LOADING ---
             try (Connection connection = databaseManager.getConnection()) {
-                String query = "SELECT data FROM " + databaseManager.getTableName() + " WHERE uuid = ?";
+                String query = "SELECT data, data_checksum FROM " + databaseManager.getTableName() + " WHERE uuid = ?";
                 PreparedStatement statement = connection.prepareStatement(query);
                 statement.setString(1, uuid.toString());
                 ResultSet resultSet = statement.executeQuery();
 
                 if (resultSet.next()) {
                     byte[] dataBytes = resultSet.getBytes("data");
-                    String json = (dataBytes != null) ? new String(dataBytes, java.nio.charset.StandardCharsets.UTF_8)
-                            : null;
+                    String json = (dataBytes != null) ? new String(dataBytes, java.nio.charset.StandardCharsets.UTF_8) : null;
 
                     if (json != null && !json.trim().isEmpty() && !json.equals("{}")) {
+                        // Integrity check
+                        String checksum = resultSet.getString("data_checksum");
+                        if (plugin.getConfig().getBoolean("security.verify-data-integrity", true) && checksum != null) {
+                            if (!PlayerData.verifyChecksum(json, checksum)) {
+                                plugin.getLogger().severe("CRITICAL: Data integrity violation for player " + name + "! Checksum mismatch.");
+                                String kickMsg = "§c[DataBridge] Your player data appears to be corrupted or tampered with. Please contact an admin.";
+                                com.digitalserverhost.plugins.utils.SchedulerUtils.getBridge().disallowPlayer(event, AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg);
+                                databaseManager.releaseLock(uuid, serverId);
+                                return;
+                            }
+                        }
+
                         PlayerData data = java.util.Objects.requireNonNull(gson.fromJson(json, PlayerData.class));
                         loadingCache.put(uuid, data);
                         if (plugin.isDebugMode()) {
@@ -164,24 +179,13 @@ public class PlayerListener implements Listener, PluginMessageListener {
         } catch (PlayerData.ItemDeserializationException e) {
             plugin.getLogger().severe("A critical error occurred while deserializing inventory for player " + name
                     + ". " + e.getMessage());
-            Component errComponent = Component.text(
-                    "[DataBridge] A critical error occurred while deserializing your inventory. Please contact an administrator.",
-                    net.kyori.adventure.text.format.NamedTextColor.RED);
-            if (com.digitalserverhost.plugins.utils.SchedulerUtils.isPaper()) {
-                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, errComponent);
-            } else {
-                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, com.digitalserverhost.plugins.utils.MessageUtils.serialize(errComponent));
-            }
+            String kickMsg = "§c[DataBridge] A critical error occurred while deserializing your inventory. Please contact an administrator.";
+            com.digitalserverhost.plugins.utils.SchedulerUtils.getBridge().disallowPlayer(event, AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg);
             databaseManager.releaseLock(uuid, serverId); // Release the lock we acquired
         } catch (Exception e) {
             plugin.getLogger().severe("Critical error during pre-login for player " + name + ": " + e.getMessage());
-            Component errComponent = Component.text("[DataBridge] Could not process your player data. Please relog.",
-                    net.kyori.adventure.text.format.NamedTextColor.RED);
-            if (com.digitalserverhost.plugins.utils.SchedulerUtils.isPaper()) {
-                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, errComponent);
-            } else {
-                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, com.digitalserverhost.plugins.utils.MessageUtils.serialize(errComponent));
-            }
+            String kickMsg = "§c[DataBridge] Could not process your player data. Please relog.";
+            com.digitalserverhost.plugins.utils.SchedulerUtils.getBridge().disallowPlayer(event, AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg);
             databaseManager.releaseLock(uuid, serverId); // Release the lock we acquired
         }
     }
@@ -226,26 +230,12 @@ public class PlayerListener implements Listener, PluginMessageListener {
                     .info("Player " + player.getName() + " joining with fresh profile. Lock will be released on quit.");
         }
 
-        // Start heartbeat task to periodically update the lock
+        // Start heartbeat task to periodically update the lock via the scheduler bridge
         long heartbeatTicks = plugin.getLockHeartbeatSeconds() * 20L;
-        if (com.digitalserverhost.plugins.utils.SchedulerUtils.isFolia()) {
-            Bukkit.getAsyncScheduler().runAtFixedRate(plugin, (t) -> {
-                if (player.isOnline()) {
-                    databaseManager.updateLock(uuid, serverId);
-                } else {
-                    t.cancel();
-                }
-            }, heartbeatTicks * 50, heartbeatTicks * 50, java.util.concurrent.TimeUnit.MILLISECONDS);
-        } else {
-            BukkitTask lockTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
-                if (player.isOnline()) {
-                    databaseManager.updateLock(uuid, serverId);
-                } else {
-                    cancelHeartbeat(uuid);
-                }
-            }, heartbeatTicks, heartbeatTicks);
-            activeLockTasks.put(uuid, lockTask);
-        }
+        com.digitalserverhost.plugins.utils.SchedulerUtils.getScheduler().startHeartbeat(
+            plugin, player, uuid, serverId, heartbeatTicks,
+            (targetUuid) -> databaseManager.updateLock(targetUuid, serverId)
+        );
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -320,7 +310,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
         com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
             try {
                 String json = gson.toJson(finalData);
-                boolean success = databaseManager.saveAndReleaseLock(json, uuid, serverId);
+                String checksum = PlayerData.calculateChecksum(json);
+                boolean success = databaseManager.saveAndReleaseLock(json, checksum, name, uuid, serverId);
 
                 if (success) {
                     if (plugin.isDebugMode()) {
@@ -343,155 +334,189 @@ public class PlayerListener implements Listener, PluginMessageListener {
         });
     }
 
-    private void cancelHeartbeat(UUID uuid) {
-        BukkitTask task = activeLockTasks.remove(uuid);
-        if (task != null) {
-            task.cancel();
+    public void savePlayerDataAndReleaseLockSync(Player player) {
+        final UUID uuid = player.getUniqueId();
+        final String name = player.getName();
+        final String serverId = plugin.getServerId();
+
+        cancelHeartbeat(uuid);
+
+        try {
+            PlayerData finalData = new PlayerData(player, plugin);
+            String json = gson.toJson(finalData);
+            String checksum = PlayerData.calculateChecksum(json);
+            databaseManager.saveAndReleaseLock(json, checksum, name, uuid, serverId);
             if (plugin.isDebugMode()) {
-                plugin.getLogger().info("Cancelled heartbeat for UUID: " + uuid);
+                plugin.getLogger().info("Synchronously saved data for " + name + ".");
             }
+        } catch (Exception e) {
+            plugin.getLogger().severe("Failed to sync save data for " + name + ": " + e.getMessage());
+            databaseManager.releaseLock(uuid, serverId);
+        } finally {
+            savingPlayers.remove(uuid);
         }
     }
 
-    @SuppressWarnings("deprecation")
+    public void shutdown() {
+        plugin.getLogger().info("Performing final data sync for all players...");
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            savePlayerDataAndReleaseLockSync(player);
+        }
+    }
+
+    private void cancelHeartbeat(UUID uuid) {
+        com.digitalserverhost.plugins.utils.SchedulerUtils.getScheduler().cancelHeartbeat(uuid);
+        if (plugin.isDebugMode()) {
+            plugin.getLogger().info("Requested heartbeat cancellation for UUID: " + uuid);
+        }
+    }
+
     private void applyPlayerData(Player player, PlayerData data) {
-        try {
-            if (player == null || !player.isOnline())
-                return;
+        if (data == null || player == null) return;
 
-            if (plugin.isSyncEnabled("food-level")) {
-                player.setFoodLevel(data.getFoodLevel());
-                player.setSaturation(data.getSaturation());
-                player.setExhaustion(data.getExhaustion());
-            }
-            if (plugin.isSyncEnabled("experience")) {
-                player.setTotalExperience(data.getTotalExperience());
-                player.setExp(data.getExp());
-                player.setLevel(data.getLevel());
-            }
-            if (plugin.isSyncEnabled("inventory"))
-                player.getInventory().setContents(data.getInventoryContents());
-            if (plugin.isSyncEnabled("armor"))
-                player.getInventory().setArmorContents(data.getArmorContents());
-            if (plugin.isSyncEnabledNewFeature("ender-chest")) {
-                if (data.getEnderChestContents() != null && data.getEnderChestContents().length > 0) {
-                    player.getEnderChest().setContents(data.getEnderChestContents());
-                }
-            }
+        com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
+            try {
+                if (!player.isOnline()) return;
 
-            if (plugin.isSyncEnabled("potion-effects")) {
-                for (PotionEffect effect : player.getActivePotionEffects()) {
-                    player.removePotionEffect(effect.getType());
+                if (plugin.isSyncEnabled("food-level")) {
+                    player.setFoodLevel(data.getFoodLevel());
+                    player.setSaturation(data.getSaturation());
+                    player.setExhaustion(data.getExhaustion());
                 }
-                if (data.getPotionEffects() != null) {
-                    for (PotionEffect effect : data.getPotionEffects()) {
-                        if (effect != null)
-                            player.addPotionEffect(effect);
+                if (plugin.isSyncEnabled("experience")) {
+                    player.setTotalExperience(data.getTotalExperience());
+                    player.setExp(data.getExp());
+                    player.setLevel(data.getLevel());
+                }
+                if (plugin.isSyncEnabled("inventory")) {
+                    player.getInventory().setContents(data.getInventoryContents());
+                }
+                if (plugin.isSyncEnabled("armor")) {
+                    player.getInventory().setArmorContents(data.getArmorContents());
+                }
+                if (plugin.isSyncEnabledNewFeature("ender-chest")) {
+                    if (data.getEnderChestContents() != null && data.getEnderChestContents().length > 0) {
+                        player.getEnderChest().setContents(data.getEnderChestContents());
                     }
                 }
-            }
 
-            if (plugin.isSyncEnabled("health")) {
-                double maxHealth = player.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getValue();
-                player.setHealth(Math.min(data.getHealth(), maxHealth));
-            }
-
-            if (plugin.isSyncEnabledNewFeature("advancements")) {
-                // Apply Recipes
-                if (data.getDiscoveredRecipes() != null) {
-                    for (String recipeKey : data.getDiscoveredRecipes()) {
-                        try {
-                            org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(recipeKey);
-                            if (key != null && !player.hasDiscoveredRecipe(key)) {
-                                player.discoverRecipe(key);
-                            }
-                        } catch (Exception e) {
-                            // Ignore invalid keys
+                if (plugin.isSyncEnabled("potion-effects")) {
+                    for (PotionEffect effect : player.getActivePotionEffects()) {
+                        player.removePotionEffect(effect.getType());
+                    }
+                    if (data.getPotionEffects() != null) {
+                        for (PotionEffect effect : data.getPotionEffects()) {
+                            if (effect != null)
+                                player.addPotionEffect(effect);
                         }
                     }
                 }
 
-                // Apply Advancements
-                if (data.getAdvancements() != null) {
-                    for (Map.Entry<String, java.util.List<String>> entry : data.getAdvancements().entrySet()) {
-                        try {
-                            org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(entry.getKey());
-                            if (key == null)
-                                continue;
+                if (plugin.isSyncEnabled("health")) {
+                    double maxHealth = player.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getValue();
+                    player.setHealth(Math.min(data.getHealth(), maxHealth));
+                }
 
-                            org.bukkit.advancement.Advancement adv = Bukkit.getAdvancement(key);
-                            if (adv == null)
-                                continue;
-
-                            org.bukkit.advancement.AdvancementProgress progress = player.getAdvancementProgress(adv);
-                            for (String criteria : entry.getValue()) {
-                                if (!progress.getAwardedCriteria().contains(criteria)) {
-                                    progress.awardCriteria(criteria);
+                if (plugin.isSyncEnabledNewFeature("advancements")) {
+                    // Apply Recipes
+                    if (data.getDiscoveredRecipes() != null) {
+                        for (String recipeKey : data.getDiscoveredRecipes()) {
+                            try {
+                                org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(recipeKey);
+                                if (key != null && !player.hasDiscoveredRecipe(key)) {
+                                    player.discoverRecipe(key);
                                 }
+                            } catch (Exception e) {
+                                // Ignore invalid keys
                             }
-                        } catch (Exception e) {
-                            // Ignore errors
+                        }
+                    }
+
+                    // Apply Advancements
+                    if (data.getAdvancements() != null) {
+                        for (Map.Entry<String, java.util.List<String>> entry : data.getAdvancements().entrySet()) {
+                            try {
+                                org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(entry.getKey());
+                                if (key == null)
+                                    continue;
+
+                                org.bukkit.advancement.Advancement adv = Bukkit.getAdvancement(key);
+                                if (adv == null)
+                                    continue;
+
+                                org.bukkit.advancement.AdvancementProgress progress = player.getAdvancementProgress(adv);
+                                for (String criteria : entry.getValue()) {
+                                    if (!progress.getAwardedCriteria().contains(criteria)) {
+                                        progress.awardCriteria(criteria);
+                                    }
+                                }
+                            } catch (Exception e) {
+                                // Ignore errors
+                            }
                         }
                     }
                 }
-            }
 
-            if (plugin.isSyncEnabledNewFeature("statistics")) {
-                if (data.getStatistics() != null) {
-                    for (Map.Entry<String, Integer> entry : data.getStatistics().entrySet()) {
+                if (plugin.isSyncEnabledNewFeature("statistics")) {
+                    if (data.getStatistics() != null) {
+                        for (Map.Entry<String, Integer> entry : data.getStatistics().entrySet()) {
+                            try {
+                                org.bukkit.Statistic stat = org.bukkit.Statistic.valueOf(entry.getKey());
+                                player.setStatistic(stat, entry.getValue());
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+
+                if (plugin.isSyncEnabledNewFeature("pdc")) {
+                    if (data.getPdcNBT() != null && !data.getPdcNBT().isEmpty()) {
                         try {
-                            org.bukkit.Statistic stat = org.bukkit.Statistic.valueOf(entry.getKey());
-                            player.setStatistic(stat, entry.getValue());
+                            de.tr7zw.changeme.nbtapi.NBT.modify(player, nbt -> {
+                                nbt.getOrCreateCompound("PublicBukkitValues").mergeCompound(de.tr7zw.changeme.nbtapi.NBT.parseNBT(data.getPdcNBT()));
+                            });
+                        } catch (Exception e) {
+                            plugin.getLogger().warning("Failed to apply PDC for " + player.getName() + ": " + e.getMessage());
+                        }
+                    }
+                }
+
+                if (plugin.isSyncEnabledNewFeature("flight-gamemode")) {
+                    if (data.getGameMode() != null) {
+                        try {
+                            player.setGameMode(org.bukkit.GameMode.valueOf(data.getGameMode()));
                         } catch (Exception ignored) {}
                     }
+                    
+                    // Delay flight application slightly to 'beat' other plugins (like EssentialsX) 
+                    // that might reset it on join.
+                    com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntityLater(plugin, player, () -> {
+                        if (player.isOnline()) {
+                            player.setAllowFlight(data.isAllowFlight());
+                            player.setFlying(data.isFlying());
+                            if (plugin.isDebugMode()) {
+                                plugin.getLogger().info("Delayed flight applied for " + player.getName() + 
+                                    ": Allow=" + data.isAllowFlight() + ", Flying=" + data.isFlying());
+                            }
+                        }
+                    }, 5L); // 5 tick delay is usually enough to be the 'final word'
                 }
-            }
 
-            if (plugin.isSyncEnabledNewFeature("pdc")) {
-                if (data.getPdcNBT() != null && !data.getPdcNBT().isEmpty()) {
-                    try {
-                        de.tr7zw.changeme.nbtapi.NBT.modify(player, nbt -> {
-                            nbt.getOrCreateCompound("BukkitValues").mergeCompound(de.tr7zw.changeme.nbtapi.NBT.parseNBT(data.getPdcNBT()));
-                        });
-                    } catch (Exception e) {
-                        plugin.getLogger().warning("Failed to apply PDC for " + player.getName() + ": " + e.getMessage());
+                if (plugin.isSyncEnabledNewFeature("location")) {
+                    if (data.getWorld() != null) {
+                        org.bukkit.World world = Bukkit.getWorld(data.getWorld());
+                        if (world != null) {
+                            org.bukkit.Location loc = new org.bukkit.Location(world, data.getX(), data.getY(), data.getZ(), data.getYaw(), data.getPitch());
+                            player.teleport(loc);
+                        }
                     }
                 }
-            }
 
-            if (plugin.isSyncEnabledNewFeature("flight-gamemode")) {
-                if (data.getGameMode() != null) {
-                    try {
-                        player.setGameMode(org.bukkit.GameMode.valueOf(data.getGameMode()));
-                    } catch (Exception ignored) {}
-                }
-                player.setAllowFlight(data.isAllowFlight());
-                player.setFlying(data.isFlying());
+                plugin.getLogger().info("Successfully applied data to player " + player.getName());
+            } catch (Exception e) {
+                plugin.getLogger().severe("A critical error occurred while applying data to player "
+                        + (player != null ? player.getName() : "null") + ". " + e.getMessage());
+                e.printStackTrace();
             }
-
-            if (plugin.isSyncEnabledNewFeature("location")) {
-                if (data.getWorld() != null) {
-                    org.bukkit.World world = Bukkit.getWorld(data.getWorld());
-                    if (world != null) {
-                        org.bukkit.Location loc = new org.bukkit.Location(world, data.getX(), data.getY(), data.getZ(), data.getYaw(), data.getPitch());
-                        player.teleport(loc);
-                    }
-                }
-            }
-
-            plugin.getLogger().info("Successfully applied data to player " + player.getName());
-        } catch (Exception e) {
-            plugin.getLogger().severe("A critical error occurred while applying data to player "
-                    + (player != null ? player.getName() : "null") + ". " + e.getMessage());
-            if (player != null) {
-                Component kickMsg = Component.text("[DataBridge] An error occurred applying your data.",
-                        net.kyori.adventure.text.format.NamedTextColor.RED);
-                if (com.digitalserverhost.plugins.utils.SchedulerUtils.isPaper()) {
-                    player.kick(kickMsg);
-                } else {
-                    player.kickPlayer(com.digitalserverhost.plugins.utils.MessageUtils.serialize(kickMsg));
-                }
-            }
-        }
+        });
     }
 }

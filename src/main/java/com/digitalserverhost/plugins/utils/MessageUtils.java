@@ -10,17 +10,11 @@ import org.jetbrains.annotations.NotNull;
  */
 public class MessageUtils {
 
-    @SuppressWarnings("null")
-    public static void sendMessage(@NotNull CommandSender sender, @NotNull Component component) {
-        if (SchedulerUtils.isPaper()) {
-            sender.sendMessage(component);
-        } else {
-            // Fallback for Spigot/Bukkit
-            sender.sendMessage(LegacyComponentSerializer.legacySection().serialize(component));
-        }
+    public static void sendMessage(@NotNull CommandSender sender, @NotNull String message) {
+        // We use legacy section symbol for color codes
+        sender.sendMessage(message.replace("&", "§"));
     }
 
-    @SuppressWarnings("null")
     public static @NotNull String serialize(@NotNull Component component) {
         return LegacyComponentSerializer.legacySection().serialize(component);
     }

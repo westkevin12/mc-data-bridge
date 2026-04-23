@@ -4,6 +4,7 @@ import com.digitalserverhost.plugins.MCDataBridge;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -33,6 +34,18 @@ public class PlayerDataConstructorTest {
         org.mockbukkit.mockbukkit.MockBukkit.unmock();
     }
 
+    @BeforeEach
+    void setup() {
+        lenient().when(mockPlugin.isSyncEnabled(anyString())).thenReturn(true);
+        lenient().when(mockPlugin.isSyncEnabledNewFeature(anyString())).thenReturn(true);
+        lenient().when(mockPlugin.isSyncEnabledNewFeature("pdc")).thenReturn(false);
+        lenient().when(mockPlugin.getLogger()).thenReturn(java.util.logging.Logger.getLogger("MCDataBridge"));
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+    }
+
     @Test
     void testPlayerDataSnapshotWhenSyncEnabled() {
         // Create a MockBukkit player
@@ -49,6 +62,7 @@ public class PlayerDataConstructorTest {
         // Setup Plugin Toggles
         when(mockPlugin.isSyncEnabled(anyString())).thenReturn(true);
         when(mockPlugin.isSyncEnabledNewFeature(anyString())).thenReturn(true);
+        when(mockPlugin.isSyncEnabledNewFeature("pdc")).thenReturn(false);
         // Disable advancements sync as MockBukkit 1.21 doesn't support
         // advancementIterator/getDiscoveredRecipes
         when(mockPlugin.isSyncEnabledNewFeature("advancements")).thenReturn(false);

@@ -114,3 +114,12 @@ sync-blacklist:
   worlds:
     - "example_world_nether"
 
+# Security Settings
+security:
+  # Log a warning if a player joins with a different UUID than previously recorded for that name.
+  # This helps identify potential identity switches or "cracked-to-premium" transitions.
+  log-uuid-mismatches: true
+  
+  # Verify SHA-256 checksums of player data before loading.
+  # This prevents data manipulation or corruption from being synced.
+  verify-data-integrity: true

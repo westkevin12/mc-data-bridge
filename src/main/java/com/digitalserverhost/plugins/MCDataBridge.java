@@ -17,6 +17,7 @@ public class MCDataBridge extends JavaPlugin {
     private boolean debugMode;
     private String serverId;
     private String tableName;
+    private PlayerListener playerListener;
     private static final Gson GSON = new GsonBuilder().create();
 
     @Override
@@ -48,24 +49,25 @@ public class MCDataBridge extends JavaPlugin {
             getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         }
         databaseManager = new DatabaseManager(getConfig(), this.tableName);
-
-        com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(this, this::createServerTable);
+        
+        // Ensure table and columns exist synchronously before events are registered
+        createServerTable();
+        
         com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(this, this::releaseOrphanedLocks);
 
         // Create the listener instance
-        PlayerListener playerListener = new PlayerListener(databaseManager, this);
+        this.playerListener = new PlayerListener(databaseManager, this);
 
         // Register its Bukkit events
-        getServer().getPluginManager().registerEvents(playerListener, this);
+        getServer().getPluginManager().registerEvents(this.playerListener, this);
 
-        // Register Commands
         org.bukkit.command.PluginCommand cmd = getCommand("databridge");
         if (cmd != null) {
-            cmd.setExecutor(new com.digitalserverhost.plugins.commands.UnlockCommand(databaseManager));
+            cmd.setExecutor(new com.digitalserverhost.plugins.commands.BridgeCommand(databaseManager));
         }
 
         // Register it as the listener for our custom plugin channel
-        this.getServer().getMessenger().registerIncomingPluginChannel(this, "mc-data-bridge:main", playerListener);
+        this.getServer().getMessenger().registerIncomingPluginChannel(this, "mc-data-bridge:main", this.playerListener);
         this.getServer().getMessenger().registerOutgoingPluginChannel(this, "mc-data-bridge:main");
 
         // Initialize Backup Manager
@@ -78,6 +80,9 @@ public class MCDataBridge extends JavaPlugin {
     public void onDisable() {
         this.getServer().getMessenger().unregisterIncomingPluginChannel(this, "mc-data-bridge:main");
         this.getServer().getMessenger().unregisterOutgoingPluginChannel(this, "mc-data-bridge:main");
+        if (playerListener != null) {
+            playerListener.shutdown();
+        }
         if (databaseManager != null) {
             databaseManager.close();
         }
@@ -96,6 +101,8 @@ public class MCDataBridge extends JavaPlugin {
                     "is_locked INTEGER DEFAULT 0, " +
                     "locking_server TEXT DEFAULT NULL, " +
                     "lock_timestamp INTEGER DEFAULT 0, " +
+                    "last_known_name TEXT DEFAULT NULL, " +
+                    "data_checksum TEXT DEFAULT NULL, " +
                     "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);";
         } else {
             createTableSQL = "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
@@ -104,6 +111,8 @@ public class MCDataBridge extends JavaPlugin {
                     "is_locked BOOLEAN DEFAULT 0, " +
                     "locking_server VARCHAR(255) DEFAULT NULL, " +
                     "lock_timestamp BIGINT DEFAULT 0, " +
+                    "last_known_name VARCHAR(16) DEFAULT NULL, " +
+                    "data_checksum VARCHAR(64) DEFAULT NULL, " +
                     "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
                     "PRIMARY KEY (uuid)) ENGINE=InnoDB;";
         }
@@ -146,6 +155,20 @@ public class MCDataBridge extends JavaPlugin {
             if (!connection.getMetaData().getColumns(null, null, tableName, "lock_timestamp").next()) {
                 statement.executeUpdate(
                         "ALTER TABLE " + escapedTableName + " ADD COLUMN lock_timestamp BIGINT DEFAULT 0");
+            }
+            if (!connection.getMetaData().getColumns(null, null, tableName, "last_known_name").next()) {
+                if (dbType.equals("sqlite")) {
+                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN last_known_name TEXT DEFAULT NULL");
+                } else {
+                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN last_known_name VARCHAR(16) DEFAULT NULL");
+                }
+            }
+            if (!connection.getMetaData().getColumns(null, null, tableName, "data_checksum").next()) {
+                if (dbType.equals("sqlite")) {
+                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN data_checksum TEXT DEFAULT NULL");
+                } else {
+                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN data_checksum VARCHAR(64) DEFAULT NULL");
+                }
             }
             if (!connection.getMetaData().getColumns(null, null, tableName, "last_updated").next()) {
                 if (dbType.equals("sqlite")) {
@@ -241,188 +264,97 @@ public class MCDataBridge extends JavaPlugin {
     }
 
     private void updateConfig() {
-        // Simple append-based updater to preserve comments in existing file
         java.io.File configFile = new java.io.File(getDataFolder(), "config.yml");
         if (!configFile.exists())
             return;
-
-        String existingContent = "";
-        try {
-            existingContent = new String(java.nio.file.Files.readAllBytes(configFile.toPath()), java.nio.charset.StandardCharsets.UTF_8);
-        } catch (java.io.IOException ignored) {}
 
         // Load strictly from file to check valid keys without defaults interference
         org.bukkit.configuration.file.YamlConfiguration fileConfig = org.bukkit.configuration.file.YamlConfiguration
                 .loadConfiguration(configFile);
 
-        StringBuilder newConfigContent = new StringBuilder();
+        java.util.List<String> lines;
+        try {
+            lines = java.nio.file.Files.readAllLines(configFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            getLogger().severe("Failed to read config.yml for update: " + e.getMessage());
+            return;
+        }
+
         boolean updated = false;
 
-        // Check for 'debug'
-        if (!fileConfig.contains("debug") && !existingContent.contains("debug:")) {
-            newConfigContent.append("\n");
-            newConfigContent.append("# Enable debug mode for verbose logging.\n");
-            newConfigContent.append("debug: false\n");
+        // 1. Check for top-level keys (Append to end if missing)
+        StringBuilder topLevelAppends = new StringBuilder();
+        if (!fileConfig.contains("debug")) {
+            topLevelAppends.append("\n# Enable debug mode for verbose logging.\ndebug: false\n");
+            updated = true;
+        }
+        if (!fileConfig.contains("server-id")) {
+            topLevelAppends.append("\n# Unique identifier for this server (Required).\nserver-id: \"default-server\"\n");
+            updated = true;
+        }
+        if (!fileConfig.contains("table-prefix")) {
+            topLevelAppends.append("\n# Set to prefix the player_data table (e.g., 'mc_data_bridge_').\ntable-prefix: \"\"\n");
+            updated = true;
+        }
+        if (!fileConfig.contains("lock-timeout")) {
+            topLevelAppends.append("\n# Lock expiration in milliseconds.\nlock-timeout: 60000\n");
+            updated = true;
+        }
+        if (!fileConfig.contains("lock-heartbeat-seconds")) {
+            topLevelAppends.append("\n# Interval between lock updates.\nlock-heartbeat-seconds: 30\n");
+            updated = true;
+        }
+        if (!fileConfig.contains("auto-update-schema")) {
+            topLevelAppends.append("\n# Automatically migrate database schema.\nauto-update-schema: true\n");
             updated = true;
         }
 
-        // Check for 'server-id'
-        if (!fileConfig.contains("server-id") && !existingContent.contains("server-id:")) {
-            newConfigContent.append("\n");
-            newConfigContent.append("# Unique identifier for this server (Required).\n");
-            newConfigContent.append("server-id: \"default-server\"\n");
-            updated = true;
-        }
-
-        // Check for 'table-prefix'
-        if (!fileConfig.contains("table-prefix") && !existingContent.contains("table-prefix:")) {
-            newConfigContent.append("\n");
-            newConfigContent.append("# Set to prefix the player_data table (e.g., 'mc_data_bridge_').\n");
-            newConfigContent.append("table-prefix: \"\"\n");
-            updated = true;
-        }
-
-        // Check for 'database' section
-        if (!fileConfig.contains("database") && !existingContent.contains("database:")) {
-            newConfigContent.append("\n");
-            newConfigContent.append("database:\n");
-            newConfigContent.append("  host: \"localhost\"\n");
-            newConfigContent.append("  port: 3306\n");
-            newConfigContent.append("  name: \"minecraft\"\n");
-            newConfigContent.append("  username: \"root\"\n");
-            newConfigContent.append("  password: \"password\"\n");
-            newConfigContent.append("  useSSL: false\n");
-            newConfigContent.append("  connection-timeout: 30000\n");
-            newConfigContent.append("  idle-timeout: 600000\n");
-            newConfigContent.append("  max-lifetime: 1800000\n");
-            updated = true;
-        }
-
-        // Check for 'database.backups'
-        if (!fileConfig.contains("database.backups") && !existingContent.contains("backups:") && !existingContent.contains("database.backups")) {
-            newConfigContent.append("\n");
-            if (!fileConfig.contains("database") && !existingContent.contains("database:")) {
-                newConfigContent.append("database:\n");
-                newConfigContent.append("  # Redundancy System (JSON Exports)\n");
-                newConfigContent.append("  # This is NOT a true backup if stored on the same machine/container.\n");
-                newConfigContent.append("  backups:\n");
-                newConfigContent.append("    enabled: false\n");
-                newConfigContent.append("    interval-hours: 24\n");
-                newConfigContent.append("    max-backups: 7\n");
-                newConfigContent.append("    path: \"backups/\"\n");
-            } else {
-                // Parent exists, use dot-notation at root to avoid overriding the whole 'database' section
-                newConfigContent.append("database.backups.enabled: false\n");
-                newConfigContent.append("database.backups.interval-hours: 24\n");
-                newConfigContent.append("database.backups.max-backups: 7\n");
-                newConfigContent.append("database.backups.path: \"backups/\"\n");
+        // 2. Check for nested sync-data keys (Structural insertion)
+        String[] syncKeys = {"statistics", "pdc", "flight-gamemode"};
+        java.util.List<String> missingSyncKeys = new java.util.ArrayList<>();
+        for (String key : syncKeys) {
+            if (!fileConfig.contains("sync-data." + key)) {
+                missingSyncKeys.add(key);
             }
-            newConfigContent.append("\n");
-            newConfigContent.append("  # =========================================================================\n");
-            newConfigContent.append("  # TRUE OFFSITE BACKUPS (RECOMMENDED)\n");
-            newConfigContent.append("  # =========================================================================\n");
-            newConfigContent.append("  # For production servers, we STRONGLY recommend using external database\n");
-            newConfigContent.append("  # management tools rather than the internal redundancy system above.\n");
-            newConfigContent.append("  #\n");
-            newConfigContent.append("  # Example (Linux/MySQL):\n");
-            newConfigContent.append("  #   mysqldump -u [user] -p[password] [database] [table] > backup.sql\n");
-            newConfigContent.append("  #\n");
-            newConfigContent.append("  # Best Practices:\n");
-            newConfigContent.append("  # 1. Automate: Use a cron job to run backups daily.\n");
-            newConfigContent.append("  # 2. Offsite: Use 'rclone' or 'aws s3 cp' to move the .sql file to cloud storage.\n");
-            newConfigContent.append("  # 3. Isolation: NEVER store true backups in the Minecraft server directory.\n");
-            newConfigContent.append("  # 4. Managed: Consider using AWS RDS, Google CloudSQL, or DigitalOcean Managed\n");
-            newConfigContent.append("  #    Databases for automatic point-in-time recovery.\n");
-            newConfigContent.append("  # =========================================================================\n");
-            updated = true;
         }
 
-        // Check for 'lock-timeout'
-        if (!fileConfig.contains("lock-timeout") && !existingContent.contains("lock-timeout:")) {
-            newConfigContent.append("\n");
-            newConfigContent
-                    .append("# The duration in milliseconds after which a player data lock is considered expired.\n");
-            newConfigContent.append("# Default: 60000 (1 minute)\n");
-            newConfigContent.append("lock-timeout: 60000\n");
-            updated = true;
-        }
-
-        // Check if lock-heartbeat-seconds exists
-        if (!fileConfig.contains("lock-heartbeat-seconds") && !existingContent.contains("lock-heartbeat-seconds:")) {
-            newConfigContent.append("\n");
-            newConfigContent
-                    .append("# The interval in seconds between lock updates (heartbeats) while a player is online.\n");
-            newConfigContent.append("# Default: 30\n");
-            newConfigContent.append("lock-heartbeat-seconds: 30\n");
-            updated = true;
-        }
-
-        // Check for 'auto-update-schema'
-        if (!fileConfig.contains("auto-update-schema") && !existingContent.contains("auto-update-schema:")) {
-            newConfigContent.append("\n");
-            newConfigContent
-                    .append("# Automatically migrate 'data' column from LONGTEXT to MEDIUMBLOB for performance?\n");
-            newConfigContent.append("# WARNING: This causes an ALTER TABLE which might lock the table briefly.\n");
-            newConfigContent.append("auto-update-schema: true\n");
-            updated = true;
-        }
-
-        // Check if sync-data exists
-        if (!fileConfig.contains("sync-data") && !existingContent.contains("sync-data:")) {
-            newConfigContent.append("\n");
-            newConfigContent.append("# Granular Data Synchronization Toggles\n");
-            newConfigContent.append("# Enable or disable synchronization for specific data components.\n");
-            newConfigContent.append("sync-data:\n");
-            newConfigContent.append("  health: true\n");
-            newConfigContent.append("  food-level: true\n");
-            newConfigContent.append("  experience: true\n");
-            newConfigContent.append("  inventory: true\n");
-            newConfigContent.append("  armor: true\n");
-            newConfigContent.append("  potion-effects: true\n");
-            newConfigContent.append("  ender-chest: false\n");
-            newConfigContent.append("  location: false\n");
-            newConfigContent.append("  advancements: false\n");
-            newConfigContent.append("  statistics: false\n");
-            newConfigContent.append("  pdc: false\n");
-            newConfigContent.append("  flight-gamemode: false\n");
-            updated = true;
-        }
-
-        // Check for new sync-data keys specifically if section exists
-        if (fileConfig.contains("sync-data")) {
-            String[] newKeys = {"statistics", "pdc", "flight-gamemode"};
-            for (String key : newKeys) {
-                if (!fileConfig.contains("sync-data." + key) && !existingContent.contains(key + ":") && !existingContent.contains("sync-data." + key)) {
-                    // To avoid indentation issues with append-only mode, we add as root keys
-                    // if the section already exists, though this is a temporary fix.
-                    newConfigContent.append("sync-data." + key + ": false\n");
-                    updated = true;
+        if (!missingSyncKeys.isEmpty()) {
+            int syncDataLine = -1;
+            for (int i = 0; i < lines.size(); i++) {
+                if (lines.get(i).trim().startsWith("sync-data:")) {
+                    syncDataLine = i;
+                    break;
                 }
             }
-        }
 
-        // Check if sync-blacklist exists
-        if (!fileConfig.contains("sync-blacklist") && !existingContent.contains("sync-blacklist:")) {
-            newConfigContent.append("\n");
-            newConfigContent.append("# Server/World Blacklist\n");
-            newConfigContent.append(
-                    "# Data synchronization will be disabled for players on these servers or in these worlds.\n");
-            newConfigContent.append("sync-blacklist:\n");
-            newConfigContent.append("  servers:\n");
-            newConfigContent.append("    - \"example-blacklisted-server\"\n");
-            newConfigContent.append("  worlds:\n");
-            newConfigContent.append("    - \"example_world_nether\"\n");
-            updated = true;
+            if (syncDataLine != -1) {
+                // Insert after the header
+                for (String key : missingSyncKeys) {
+                    lines.add(syncDataLine + 1, "  " + key + ": false");
+                }
+                updated = true;
+            } else {
+                // If section itself is missing, append it to top-level
+                topLevelAppends.append("\nsync-data:\n");
+                for (String key : missingSyncKeys) {
+                    topLevelAppends.append("  ").append(key).append(": false\n");
+                }
+                updated = true;
+            }
         }
 
         if (updated) {
-            try (java.io.FileWriter writer = new java.io.FileWriter(configFile, true)) {
-                writer.write(newConfigContent.toString());
-                getLogger().info("Automatically updated config.yml with new settings.");
+            try {
+                java.util.List<String> finalLines = new java.util.ArrayList<>(lines);
+                if (topLevelAppends.length() > 0) {
+                    finalLines.add(topLevelAppends.toString());
+                }
+                java.nio.file.Files.write(configFile.toPath(), finalLines, java.nio.charset.StandardCharsets.UTF_8);
+                getLogger().info("Successfully updated config.yml with missing settings.");
+                reloadConfig();
             } catch (java.io.IOException e) {
-                getLogger().severe("Failed to update config.yml: " + e.getMessage());
+                getLogger().severe("Failed to write updated config.yml: " + e.getMessage());
             }
-            reloadConfig(); // Reload the config so internal logic sees the new values
         }
     }
 

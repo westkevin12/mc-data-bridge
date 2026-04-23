@@ -119,16 +119,22 @@ public class DatabaseManager {
         }
     }
 
-    public boolean saveAndReleaseLock(String json, UUID uuid, String serverId) throws SQLException {
+    public boolean saveAndReleaseLock(String json, String checksum, String name, UUID uuid, String serverId) throws SQLException {
         String sql = "UPDATE " + tableName
-                + " SET data = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
+                + " SET data = ?, data_checksum = ?, last_known_name = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setBytes(1, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            statement.setString(2, uuid.toString());
-            statement.setString(3, serverId);
+            statement.setString(2, checksum);
+            statement.setString(3, name);
+            statement.setString(4, uuid.toString());
+            statement.setString(5, serverId);
             return statement.executeUpdate() > 0;
         }
+    }
+
+    public boolean saveAndReleaseLock(String json, UUID uuid, String serverId) throws SQLException {
+        return saveAndReleaseLock(json, null, null, uuid, serverId);
     }
 
     public void releaseLock(UUID uuid, String serverId) {
@@ -181,6 +187,69 @@ public class DatabaseManager {
             statement.executeUpdate();
         } catch (SQLException e) {
             System.err.println("[mc-data-bridge] Failed to update lock for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public void updateLastKnownName(UUID uuid, String name) {
+        String sql = "UPDATE " + tableName + " SET last_known_name = ? WHERE uuid = ?";
+        try (Connection connection = getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, name);
+            statement.setString(2, uuid.toString());
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("[mc-data-bridge] Failed to update last known name for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public UUID getUuidByName(String name) {
+        String sql = "SELECT uuid FROM " + tableName + " WHERE last_known_name = ? ORDER BY last_updated DESC LIMIT 1";
+        try (Connection connection = getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, name);
+            try (java.sql.ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return UUID.fromString(rs.getString("uuid"));
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[mc-data-bridge] Failed to get UUID by name: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public boolean migrateData(UUID oldUuid, UUID newUuid) throws SQLException {
+        try (Connection connection = getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                // Check if target UUID already has data. If so, we might want to backup or delete it.
+                // For now, we'll assume we are overwriting the target or merging.
+                // A safe approach is to delete the target's existing data row if it exists.
+                String deleteSql = "DELETE FROM " + tableName + " WHERE uuid = ?";
+                try (PreparedStatement deleteStmt = connection.prepareStatement(deleteSql)) {
+                    deleteStmt.setString(1, newUuid.toString());
+                    deleteStmt.executeUpdate();
+                }
+
+                // Update the old row to the new UUID
+                String updateSql = "UPDATE " + tableName + " SET uuid = ? WHERE uuid = ?";
+                try (PreparedStatement updateStmt = connection.prepareStatement(updateSql)) {
+                    updateStmt.setString(1, newUuid.toString());
+                    updateStmt.setString(2, oldUuid.toString());
+                    if (updateStmt.executeUpdate() == 0) {
+                        connection.rollback();
+                        return false;
+                    }
+                }
+
+                connection.commit();
+                return true;
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
         }
     }
 

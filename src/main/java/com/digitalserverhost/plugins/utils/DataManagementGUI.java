@@ -8,8 +8,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.NotNull;
 
@@ -49,32 +47,23 @@ public class DataManagementGUI {
                                 .ifPresentOrElse(
                                         d -> SchedulerUtils.runOnEntity(plugin, admin,
                                                 () -> buildAndOpenGUI(admin, targetName, d)),
-                                        () -> MessageUtils.sendMessage(admin, LegacyComponentSerializer.legacySection()
-                                                .deserialize("§cFailed to parse player data for: " + targetName)));
+                                        () -> MessageUtils.sendMessage(admin, "§cFailed to parse player data for: " + targetName));
                     } else {
-                        MessageUtils.sendMessage(admin, LegacyComponentSerializer.legacySection()
-                                .deserialize("§cNo data found for player: " + targetName));
+                        MessageUtils.sendMessage(admin, "§cNo data found for player: " + targetName);
                     }
                 } else {
-                    MessageUtils.sendMessage(admin, LegacyComponentSerializer.legacySection()
-                            .deserialize("§cPlayer " + targetName + " not found in database."));
+                    MessageUtils.sendMessage(admin, "§cPlayer " + targetName + " not found in database.");
                 }
             } catch (Exception e) {
-                MessageUtils.sendMessage(admin, LegacyComponentSerializer.legacySection()
-                        .deserialize("§cError loading player data: " + e.getMessage()));
+                MessageUtils.sendMessage(admin, "§cError loading player data: " + e.getMessage());
             }
         });
     }
 
-    @SuppressWarnings({"deprecation", "null"})
+    @SuppressWarnings("deprecation")
     private void buildAndOpenGUI(@NotNull Player admin, @NotNull String targetName, @NotNull PlayerData data) {
-        Component title = LegacyComponentSerializer.legacySection().deserialize("§8Inspecting: §1" + targetName);
-        Inventory inv;
-        if (SchedulerUtils.isPaper()) {
-            inv = Bukkit.createInventory(null, 27, title);
-        } else {
-            inv = Bukkit.createInventory(null, 27, LegacyComponentSerializer.legacySection().serialize(title));
-        }
+        String title = "§8Inspecting: §1" + targetName;
+        Inventory inv = Bukkit.createInventory(null, 27, title);
 
         // Stats Item
         inv.setItem(10, createInfoItem(Material.PLAYER_HEAD, "§b§lPlayer Stats",
@@ -107,26 +96,14 @@ public class DataManagementGUI {
         admin.openInventory(inv);
     }
  
-    @SuppressWarnings({"deprecation", "null"})
+    @SuppressWarnings("deprecation")
     private @NotNull ItemStack createInfoItem(@NotNull Material material, @NotNull String name, @NotNull String... lore) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            if (SchedulerUtils.isPaper()) {
-                meta.displayName(LegacyComponentSerializer.legacySection().deserialize(name));
-                List<Component> loreList = new ArrayList<>();
-                for (String line : lore) {
-                    loreList.add(LegacyComponentSerializer.legacySection().deserialize(line));
-                }
-                meta.lore(loreList);
-            } else {
-                meta.setDisplayName(name);
-                List<String> loreList = new ArrayList<>();
-                for (String line : lore) {
-                    loreList.add(line);
-                }
-                meta.setLore(loreList);
-            }
+            meta.setDisplayName(name);
+            List<String> loreList = new ArrayList<>(List.of(lore));
+            meta.setLore(loreList);
             item.setItemMeta(meta);
         }
         return item;

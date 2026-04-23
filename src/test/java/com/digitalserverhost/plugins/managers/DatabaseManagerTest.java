@@ -52,8 +52,8 @@ public class DatabaseManagerTest {
         assertTrue(result);
         verify(mockConnection, times(1)).prepareStatement(contains("UPDATE `player_data`"));
         verify(mockStatement).setString(1, serverId); // locking_server
-        verify(mockStatement).setString(3, uuid.toString()); // uuid
-        verify(mockStatement).setString(3, uuid.toString()); // uuid
+        verify(mockStatement).setString(2, uuid.toString()); // uuid
+        verify(mockStatement).setLong(3, 60000L); // lock_timeout
         verify(mockConnection, never()).prepareStatement(contains("INSERT")); // Should not insert
     }
 
@@ -103,16 +103,20 @@ public class DatabaseManagerTest {
     @Test
     void testSaveAndReleaseLock_Success() throws SQLException {
         String json = "{\"data\": \"test\"}";
+        String checksum = "abc";
+        String playerName = "Player1";
         when(mockStatement.executeUpdate()).thenReturn(1);
 
-        boolean result = databaseManager.saveAndReleaseLock(json, uuid, serverId);
+        boolean result = databaseManager.saveAndReleaseLock(json, checksum, playerName, uuid, serverId);
 
         assertTrue(result);
         verify(mockConnection).prepareStatement(contains("UPDATE `player_data` SET data = ?"));
         // cannot easily verify setBytes with argument matchers for specific content but
         // we verify interactions
-        verify(mockStatement).setString(2, uuid.toString());
-        verify(mockStatement).setString(3, serverId);
+        verify(mockStatement).setString(2, checksum);
+        verify(mockStatement).setString(3, playerName);
+        verify(mockStatement).setString(4, uuid.toString());
+        verify(mockStatement).setString(5, serverId);
     }
 
     @Test
