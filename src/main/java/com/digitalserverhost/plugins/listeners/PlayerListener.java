@@ -413,7 +413,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 }
 
                 if (plugin.isSyncEnabled("health")) {
-                    double maxHealth = player.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getValue();
+                    org.bukkit.attribute.AttributeInstance maxHealthAttr = player.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
+                    double maxHealth = maxHealthAttr != null ? maxHealthAttr.getValue() : 20.0;
                     player.setHealth(Math.min(data.getHealth(), maxHealth));
                 }
 

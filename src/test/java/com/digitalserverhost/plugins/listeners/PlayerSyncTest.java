@@ -154,6 +154,11 @@ class PlayerSyncTest {
         // Mock inventory for application
         when(targetPlayer.getInventory()).thenReturn(mockInventory);
 
+        // Mock Attributes
+        org.bukkit.attribute.AttributeInstance maxHealthAttr = mock(org.bukkit.attribute.AttributeInstance.class);
+        when(targetPlayer.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH)).thenReturn(maxHealthAttr);
+        when(maxHealthAttr.getValue()).thenReturn(20.0);
+
         // Setup scheduler runTaskTimerAsynchronously
         lenient().when(mockScheduler.runTaskTimerAsynchronously(any(org.bukkit.plugin.Plugin.class), any(Runnable.class),
                 anyLong(), anyLong()))
