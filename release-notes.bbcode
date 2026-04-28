@@ -1,0 +1,62 @@
+[SIZE=6][B]MC Data Bridge - Release Notes (v2.1.4)[/B][/SIZE]
+
+[SIZE=5][B]Overview[/B][/SIZE]
+[SIZE=4]Version 2.1.4 represents a major modernization and feature expansion of the MC Data Bridge plugin. This release focuses on full platform parity, a consolidated command architecture, and enhanced security tools for production environments. All administrative functions have been unified under the [B]/databridge[/B] command hub, simplifying network management.[/SIZE]
+
+[SIZE=5][B]New Features & Enhancements[/B][/SIZE]
+
+[SIZE=5][B]🛡️ Administrative Inspector GUI[/B][/SIZE]
+[LIST]
+[*]Added [B]/databridge inspect <player>[/B]: A visual GUI for administrators to inspect saved player data.
+[*]Displays real-time stats including health, food, experience, inventory size, and last known location.
+[*]View Persistent Data Container (PDC) status and metadata at a glance.
+[/LIST]
+
+[SIZE=5][B]🛡️ Advanced Security & Integrity[/B][/SIZE]
+[LIST]
+[*][B]SHA-256 Checksums:[/B] Implemented data integrity verification to detect and prevent manual database tampering or corruption.
+[*][B]Identity History Tracking:[/B] Automatically tracks [I]last_known_name[/I] and a secure [I]identity_hash[/I] (SHA-256) to enable secure UUID change detection and prevent identity hijacking in hybrid (Cracked/Premium) environments.
+[*][B]Identity Modes (PREMIUM/HYBRID):[/B] Introduced selectable identity modes. [B]PREMIUM[/B] mode strictly enforces UUID consistency and blocks data load on collisions, while [B]HYBRID[/B] mode allows for flexible identity shifts common in mixed networks.
+[*][B]FastLogin & AuthMe Auto-Migration:[/B] Seamlessly handles Cracked -> Premium account upgrades. Supports both [B]FastLogin[/B] (pre-login verification) and [B]AuthMe[/B] (post-login verification), including support for [B]TOTP/2FA[/B] flows.
+[*][B]Server-Side Salting:[/B] Introduced [I]security.seed[/I] to salt all identity hashes and data checksums, providing protection against rainbow table attacks and pre-computation. Includes automatic legacy migration for existing data.
+[*][B]Automatic Lock Recovery:[/B] The plugin now automatically identifies and releases orphaned locks held by the local server on startup, preventing stuck sessions after a crash.
+[*][B]New Migration System:[/B] Added [B]/databridge migrate <source> <target>[/B] to securely move data between player identities (UUID or Name).
+[*][B]Proxy Parity:[/B] The [B]/databridge unlock[/B] command is now available on [B]BungeeCord[/B], [B]Waterfall[/B], and [B]Velocity[/B].
+[*][B]ForceUnlock Relay:[/B] Proxy commands automatically relay "ForceUnlock" signals to backend Spigot/Paper/Folia servers.
+[/LIST]
+
+[SIZE=5][B]🚀 Folia & Modern API Support[/B][/SIZE]
+[LIST]
+[*][B]Folia Compatibility:[/B] Implemented [I]SchedulerUtils[/I] to handle regionalized threading requirements, ensuring safe execution on Folia clusters.
+[*][B]Adventure API Migration:[/B] Replaced all legacy chat and UI logic with the Adventure API for high-fidelity text and cross-platform consistency.
+[*][B]NBT API Modernization:[/B] Fully migrated to the latest NBT API static utility methods, improving performance and future-proofing data serialization.
+[/LIST]
+
+[SIZE=5][B]💾 Data Integrity & Backups[/B][/SIZE]
+[LIST]
+[*][B]SQLite Support:[/B] Added support for local SQLite storage as an alternative to MySQL/MariaDB.
+[*][B]Local Redundancy System:[/B] Optional JSON-based redundancy system for local data exports (disabled by default).
+[*][B]Professional Backup Guidance:[/B] Updated [I]config.yml[/I] with comprehensive instructions for implementing "True Offsite Backups" using professional tools like [I]mysqldump[/I] and [I]rclone[/I].
+[/LIST]
+
+[SIZE=5][B]🔧 Refinements & Logic Improvements[/B][/SIZE]
+[LIST]
+[*][B]Modern Player Resolution:[/B] Switched to the Paper [I]PlayerProfile[/I] API for safer, non-blocking offline player lookups.
+[*][B]Delayed Flight Application:[/B] Implemented a 5-tick override for flight status on join, ensuring compatibility with plugins like EssentialsX that may reset flight.
+[*][B]Auto-Update Schema:[/B] Added [I]auto-update-schema[/I] configuration to allow the plugin to automatically migrate database columns (e.g., from TEXT to LONGBLOB).
+[*][B]Exhaustion Sync:[/B] Expanded food synchronization to include exhaustion levels for 100% hunger parity.
+[*][B]Null-Safety Audit:[/B] Resolved all persistent IDE warnings and type-safety issues across the entire codebase.
+[*][B]Teleport-on-Join:[/B] Refined location restoration logic to ensure players are accurately placed when returning to a server.
+[*][B]Standalone Sync Parity:[/B] Improved data flush logic during server shutdown, ensuring data integrity even for servers operating without a proxy coordinator.
+[/LIST]
+
+[SIZE=5][B]Technical Details[/B][/SIZE]
+[LIST]
+[*][B]Minimum Java Version:[/B] 25
+[*][B]Supported Platforms:[/B] Paper (1.21.x and 26.1.x), Purpur, Folia, Spigot/Bukkit, BungeeCord/Waterfall, Velocity.
+[*][B]Dependencies Updated:[/B] NBTAPI (2.13.x+), HikariCP, Adventure.
+[*][B]CI/CD Modernization:[/B] Migrated to Node.js 24 and updated GitHub Actions to latest v4 versions for improved build reliability and long-term support.
+[/LIST]
+
+[CENTER]----------------------------------------------------------------[/CENTER]
+[I]For installation instructions and configuration details, please refer to the README.md and config.yml.[/I]

@@ -9,5 +9,6 @@ public class BungeeMCDataBridge extends Plugin {
         getLogger().info("mc-data-bridge has been enabled on BungeeCord!");
         getProxy().registerChannel("mc-data-bridge:main");
         getProxy().getPluginManager().registerListener(this, new BungeeListener(this));
+        getProxy().getPluginManager().registerCommand(this, new BungeeUnlockCommand(this));
     }
 }

@@ -1,0 +1,56 @@
+[CENTER][SIZE=6][B]MC Data Bridge[/B][/SIZE]
+[SIZE=4][I]High-Performance, Secure, and Universal Player Data Synchronization[/I][/SIZE][/CENTER]
+
+MC Data Bridge is a robust, high-performance hybrid synchronization suite for [B]Paper/Spigot[/B], [B]Folia[/B], [B]BungeeCord[/B], and [B]Velocity[/B]. Designed for high-traffic production networks, it ensures a seamless cross-server experience by synchronizing health, hunger, experience, inventories, ender chests, advancements, and more with zero lag and industrial-grade security.
+
+[SIZE=5]► Key Features[/SIZE]
+
+[LIST]
+[*][B]Universal Hybrid Plugin:[/B] A single JAR file detects its environment and activates correct logic for Spigot, Paper, Folia, BungeeCord, or Velocity.
+[*][B]SHA-256 Data Integrity:[/B] Every data packet is verified with a SHA-256 checksum and a server-side salt, preventing manual database tampering or corruption from affecting your players.
+[*][B]Industrial Identity Protection:[/B] Secure tracking of [I]last_known_name[/I] and identity hashes allows for reliable UUID change detection and prevention of identity hijacking in hybrid environments.
+[*][B]Regionalized Folia Support:[/B] Fully compatible with Folia's regionalized threading, ensuring safe data handling on modern multi-threaded server clusters.
+[*][B]Administrative Inspector GUI (NEW):[/B] Visual tools for administrators to inspect player data (inventory, stats, PDC) directly from the database without the player needing to be online.
+[*][B]Proxy-Orchestrated Saves:[/B] The proxy (Bungee/Velocity) ensures data is flushed and verified before a player connects to the destination server, eliminating race conditions.
+[*][B]Native Binary Serialization:[/B] Uses Paper/Folia native binary methods for 100% item integrity and performance, with a robust NBT-API fallback for Spigot legacy support.
+[*][B]Seamless Migration Suite:[/B] Built-in integrations for [B]FastLogin[/B] and [B]AuthMe[/B] to handle Cracked -> Premium account transitions automatically.
+[*][B]Granular Sync Control:[/B] Per-component toggles in the config:
+[LIST]
+[*]Health (Attribute-aware)
+[*]Food Level, Saturation, & [B]Exhaustion[/B]
+[*]Experience & Levels
+[*]Inventories & Armor
+[*]Active Potion Effects
+[*]Ender Chests
+[*]Advancements & Recipes
+[*]Statistics (Custom Stats)
+[*]Persistent Data Container (PDC)
+[*]Flight & Gamemode Status
+[/LIST]
+[*][B]Flexible Storage:[/B] Support for high-performance MySQL/MariaDB clusters or local SQLite databases.
+[/LIST]
+
+[SIZE=5]► Installation[/SIZE]
+
+[LIST=1]
+[*][B]Deploy the JAR:[/B] Place the same `mc-data-bridge-*.jar` file into the `plugins/` folder of all your Minecraft servers AND your BungeeCord/Velocity proxy.
+[*][B]Initial Setup:[/B] Start your servers to generate the default configuration.
+[*][B]Configure Database:[/B] Edit `plugins/mc-data-bridge/config.yml` on each server. Set your database credentials and ensure each server has a unique `server-id`.
+[*][B]Set Security Seed:[/B] Change the `security.seed` in your config to a long, random string. This is used for all cryptographic verifications.
+[*][B]Restart & Sync:[/B] Restart all components. Your data is now securely linked!
+[/LIST]
+
+[SIZE=5]► Links & Support[/SIZE]
+
+[LIST]
+[*][URL='https://github.com/westkevin12/mc-data-bridge'][B]GitHub Repository[/B][/URL] - Source code, issues, and wiki.
+[*][URL='https://github.com/westkevin12/mc-data-bridge/releases'][B]Latest Releases[/B][/URL] - Download the latest binaries.
+[/LIST]
+
+[SIZE=5]► Important Technical Notes[/SIZE]
+
+[LIST]
+[*][B]Java 25+ Required:[/B] This plugin is built for the future of Minecraft and requires modern Java environments.
+[*][B]Unique Server IDs:[/B] You **must** set a unique `server-id` for each server (e.g., "lobby-1", "survival").
+[*][B]Managed Database Best Practices:[/B] For production use, we recommend creating a dedicated database user with restricted permissions (SELECT, INSERT, UPDATE, CREATE, ALTER).
+[/LIST]

@@ -8,7 +8,7 @@ import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 
-@Plugin(id = "mc-data-bridge", name = "mc-data-bridge", version = "2.0.4", description = "A data bridge for Minecraft servers.", authors = {
+@Plugin(id = "mc-data-bridge", name = "mc-data-bridge", version = "2.1.4", authors = {
         "DigitalServerHost" })
 public class VelocityMCDataBridge {
 
@@ -26,6 +26,12 @@ public class VelocityMCDataBridge {
     public void onProxyInitialization(ProxyInitializeEvent event) {
         server.getChannelRegistrar().register(channel);
         server.getEventManager().register(this, new VelocityListener(this));
+        
+        com.velocitypowered.api.command.CommandMeta meta = server.getCommandManager().metaBuilder("databridge")
+                .aliases("db")
+                .build();
+        server.getCommandManager().register(meta, new VelocityUnlockCommand(this));
+        
         logger.info("mc-data-bridge has been enabled on Velocity!");
     }
 

@@ -4,6 +4,7 @@ import com.digitalserverhost.plugins.MCDataBridge;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -24,19 +25,31 @@ public class PlayerDataConstructorTest {
     @BeforeAll
     static void setupBukkit() {
         if (org.bukkit.Bukkit.getServer() == null) {
-            be.seeseemelk.mockbukkit.MockBukkit.mock();
+            org.mockbukkit.mockbukkit.MockBukkit.mock();
         }
     }
 
     @AfterAll
     static void tearDownBukkit() {
-        be.seeseemelk.mockbukkit.MockBukkit.unmock();
+        org.mockbukkit.mockbukkit.MockBukkit.unmock();
+    }
+
+    @BeforeEach
+    void setup() {
+        lenient().when(mockPlugin.isSyncEnabled(anyString())).thenReturn(true);
+        lenient().when(mockPlugin.isSyncEnabledNewFeature(anyString())).thenReturn(true);
+        lenient().when(mockPlugin.isSyncEnabledNewFeature("pdc")).thenReturn(false);
+        lenient().when(mockPlugin.getLogger()).thenReturn(java.util.logging.Logger.getLogger("MCDataBridge"));
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
     }
 
     @Test
     void testPlayerDataSnapshotWhenSyncEnabled() {
         // Create a MockBukkit player
-        be.seeseemelk.mockbukkit.ServerMock server = be.seeseemelk.mockbukkit.MockBukkit.getMock();
+        org.mockbukkit.mockbukkit.ServerMock server = org.mockbukkit.mockbukkit.MockBukkit.getMock();
         Player originalPlayer = server.addPlayer();
 
         // Spy on the player to allow stubbing of unimplemented methods
@@ -49,6 +62,7 @@ public class PlayerDataConstructorTest {
         // Setup Plugin Toggles
         when(mockPlugin.isSyncEnabled(anyString())).thenReturn(true);
         when(mockPlugin.isSyncEnabledNewFeature(anyString())).thenReturn(true);
+        when(mockPlugin.isSyncEnabledNewFeature("pdc")).thenReturn(false);
         // Disable advancements sync as MockBukkit 1.21 doesn't support
         // advancementIterator/getDiscoveredRecipes
         when(mockPlugin.isSyncEnabledNewFeature("advancements")).thenReturn(false);
@@ -74,7 +88,7 @@ public class PlayerDataConstructorTest {
     @Test
     void testPlayerDataSnapshotWhenSyncDisabled() {
         // Create a MockBukkit player
-        be.seeseemelk.mockbukkit.ServerMock server = be.seeseemelk.mockbukkit.MockBukkit.getMock();
+        org.mockbukkit.mockbukkit.ServerMock server = org.mockbukkit.mockbukkit.MockBukkit.getMock();
         Player player = server.addPlayer();
 
         // Setup Plugin Toggles to FALSE

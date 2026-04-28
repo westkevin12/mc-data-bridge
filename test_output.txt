@@ -1,0 +1,97 @@
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by com.google.common.util.concurrent.AbstractFuture$UnsafeAtomicHelper (file:/usr/share/maven/lib/guava.jar)
+WARNING: Please consider reporting this to the maintainers of class com.google.common.util.concurrent.AbstractFuture$UnsafeAtomicHelper
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m------------< [0;36mcom.digitalserverhost.plugins:mc-data-bridge[0;1m >------------[m
+[[1;34mINFO[m] [1mBuilding mc-data-bridge 2.1.4-RC2[m
+[[1;34mINFO[m]   from pom.xml
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mresources:3.3.1:resources[m [1m(default-resources)[m @ [36mmc-data-bridge[0;1m ---[m
+[[1;34mINFO[m] Copying 6 resources from src/main/resources to target/classes
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mcompiler:3.13.0:compile[m [1m(default-compile)[m @ [36mmc-data-bridge[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date.
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mresources:3.3.1:testResources[m [1m(default-testResources)[m @ [36mmc-data-bridge[0;1m ---[m
+[[1;34mINFO[m] Copying 0 resource from src/test/resources to target/test-classes
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mcompiler:3.13.0:testCompile[m [1m(default-testCompile)[m @ [36mmc-data-bridge[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date.
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32msurefire:3.2.3:test[m [1m(default-test)[m @ [36mmc-data-bridge[0;1m ---[m
+[[1;34mINFO[m] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m] Running com.digitalserverhost.plugins.listeners.[1mPlayerFlowTest[m
+Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build as described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org.mockito/org/mockito/Mockito.html#0.3
+WARNING: A Java agent has been loaded dynamically (/home/west/.m2/repository/net/bytebuddy/byte-buddy-agent/1.17.7/byte-buddy-agent-1.17.7.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+[10:02:09 INFO]: Received 'SaveAndRelease' request for Player0. Triggering save.
+[10:02:09 INFO]: Requested heartbeat cancellation for UUID: c53ebe13-f86f-1b9f-d070-664e1ec3cdce
+[10:02:09 INFO]: Got data snapshot for Player0. Scheduling save and lock release.
+[[1;31mERROR[m] [1;31mTests [0;1mrun: [0;1m1[m, [1;31mFailures: [0;1;31m1[m, Errors: 0, Skipped: 0, Time elapsed: 4.627 s[1;31m <<< FAILURE![m -- in com.digitalserverhost.plugins.listeners.[1mPlayerFlowTest[m
+[[1;31mERROR[m] com.digitalserverhost.plugins.listeners.PlayerFlowTest.testProxyMessageTriggersSaveAndSkipQuit -- Time elapsed: 4.601 s <<< FAILURE!
+Wanted but not invoked:
+mockDatabaseManager.saveAndReleaseLock(
+    <any string>,
+    <any string>,
+    <any string>,
+    c53ebe13-f86f-1b9f-d070-664e1ec3cdce,
+    <any string>
+);
+-> at com.digitalserverhost.plugins.managers.DatabaseManager.saveAndReleaseLock(DatabaseManager.java:123)
+Actually, there were zero interactions with this mock.
+
+	at com.digitalserverhost.plugins.managers.DatabaseManager.saveAndReleaseLock(DatabaseManager.java:123)
+	at com.digitalserverhost.plugins.listeners.PlayerFlowTest.testProxyMessageTriggersSaveAndSkipQuit(PlayerFlowTest.java:262)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+
+[[1;34mINFO[m] 
+[[1;34mINFO[m] Results:
+[[1;34mINFO[m] 
+[[1;31mERROR[m] [1;31mFailures: [m
+[[1;31mERROR[m] [1;31m  PlayerFlowTest.testProxyMessageTriggersSaveAndSkipQuit:262 
+Wanted but not invoked:
+mockDatabaseManager.saveAndReleaseLock(
+    <any string>,
+    <any string>,
+    <any string>,
+    c53ebe13-f86f-1b9f-d070-664e1ec3cdce,
+    <any string>
+);
+-> at com.digitalserverhost.plugins.managers.DatabaseManager.saveAndReleaseLock(DatabaseManager.java:123)
+Actually, there were zero interactions with this mock.
+[m
+[[1;34mINFO[m] 
+[[1;31mERROR[m] [1;31mTests run: 1, Failures: 1, Errors: 0, Skipped: 0[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;31mBUILD FAILURE[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  6.457 s
+[[1;34mINFO[m] Finished at: 2026-04-23T10:02:12-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;31mERROR[m] Failed to execute goal [32morg.apache.maven.plugins:maven-surefire-plugin:3.2.3:test[m [1m(default-test)[m on project [36mmc-data-bridge[m: [1;31mThere are test failures.[m
+[[1;31mERROR[m] [1;31m[m
+[[1;31mERROR[m] [1;31mPlease refer to /home/west/github.com/westkevin12/mc-data-bridge/target/surefire-reports for the individual test results.[m
+[[1;31mERROR[m] [1;31mPlease refer to dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.[m
+[[1;31mERROR[m] -> [1m[Help 1][m
+[[1;31mERROR[m] 
+[[1;31mERROR[m] To see the full stack trace of the errors, re-run Maven with the [1m-e[m switch.
+[[1;31mERROR[m] Re-run Maven using the [1m-X[m switch to enable full debug logging.
+[[1;31mERROR[m] 
+[[1;31mERROR[m] For more information about the errors and possible solutions, please read the following articles:
+[[1;31mERROR[m] [1m[Help 1][m http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

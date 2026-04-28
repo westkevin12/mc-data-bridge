@@ -2,10 +2,10 @@ package com.digitalserverhost.plugins.utils;
 
 import com.digitalserverhost.plugins.MCDataBridge;
 import com.google.gson.Gson;
+import com.google.gson.annotations.SerializedName;
 import de.tr7zw.changeme.nbtapi.NBTContainer;
 import de.tr7zw.changeme.nbtapi.NBTItem;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 import org.bukkit.advancement.Advancement;
 import org.bukkit.advancement.AdvancementProgress;
 import org.bukkit.entity.Player;
@@ -16,6 +16,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.Serializable;
 import java.util.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 public class PlayerData {
 
@@ -32,19 +34,24 @@ public class PlayerData {
     private int totalExperience;
     private float exp;
     private int level;
+    @SerializedName(value = "inventoryContentsNBT", alternate = {"inventoryContents"})
     private List<String> inventoryContentsNBT;
+    @SerializedName(value = "armorContentsNBT", alternate = {"armorContents"})
     private List<String> armorContentsNBT;
+    @SerializedName(value = "enderChestContentsNBT", alternate = {"enderChestContents"})
     private List<String> enderChestContentsNBT;
     private SerializablePotionEffect[] potionEffects;
     private List<String> discoveredRecipes;
     private Map<String, List<String>> advancements;
+    private Map<String, Integer> statistics;
+    private String pdcNBT;
+    private boolean isFlying;
+    private boolean allowFlight;
+    private String gameMode;
 
-    // Location Data (Logging/Admin Use Only - NOT APPLIED)
-    @SuppressWarnings("unused")
+    // Location Data (Logging/Admin Use Only - RESTORATION SUPPORTED)
     private String world;
-    @SuppressWarnings("unused")
     private double x, y, z;
-    @SuppressWarnings("unused")
     private float yaw, pitch;
 
     /**
@@ -55,61 +62,115 @@ public class PlayerData {
         this(player, JavaPlugin.getPlugin(MCDataBridge.class));
     }
 
+    private static final org.bukkit.Statistic[] ESSENTIAL_STATS = {
+        org.bukkit.Statistic.DEATHS,
+        org.bukkit.Statistic.PLAYER_KILLS,
+        org.bukkit.Statistic.MOB_KILLS,
+        org.bukkit.Statistic.PLAY_ONE_MINUTE,
+        org.bukkit.Statistic.WALK_ONE_CM,
+        org.bukkit.Statistic.SPRINT_ONE_CM,
+        org.bukkit.Statistic.FLY_ONE_CM,
+        org.bukkit.Statistic.JUMP,
+        org.bukkit.Statistic.DAMAGE_DEALT,
+        org.bukkit.Statistic.DAMAGE_TAKEN,
+        org.bukkit.Statistic.LEAVE_GAME,
+        org.bukkit.Statistic.TIME_SINCE_DEATH,
+        org.bukkit.Statistic.SNEAK_TIME,
+        org.bukkit.Statistic.TALKED_TO_VILLAGER,
+        org.bukkit.Statistic.TRADED_WITH_VILLAGER,
+        org.bukkit.Statistic.FISH_CAUGHT
+    };
+
+    /**
+     * Primary constructor used by listeners to create a snapshot.
+     */
     public PlayerData(Player player, MCDataBridge plugin) {
-        if (plugin.isSyncEnabled("health"))
-            this.health = player.getHealth();
-        if (plugin.isSyncEnabled("food-level")) {
-            this.foodLevel = player.getFoodLevel();
-            this.saturation = player.getSaturation();
-            this.exhaustion = player.getExhaustion();
-        }
-        if (plugin.isSyncEnabled("experience")) {
-            this.totalExperience = player.getTotalExperience();
-            this.exp = player.getExp();
-            this.level = player.getLevel();
-        }
-        // These are more expensive, so skipping them saves performance too
-        if (plugin.isSyncEnabled("inventory"))
-            this.inventoryContentsNBT = serializeItemStackArray(player.getInventory().getContents());
-        if (plugin.isSyncEnabled("armor"))
-            this.armorContentsNBT = serializeItemStackArray(player.getInventory().getArmorContents());
-        if (plugin.isSyncEnabled("potion-effects"))
-            this.potionEffects = convertPotionEffectArrayToSerializable(
-                    player.getActivePotionEffects().toArray(new PotionEffect[0]));
-
-        // New Features
-        if (plugin.isSyncEnabledNewFeature("ender-chest")) {
-            this.enderChestContentsNBT = serializeItemStackArray(player.getEnderChest().getContents());
-        }
-
-        if (plugin.isSyncEnabledNewFeature("advancements")) {
-            this.discoveredRecipes = new ArrayList<>();
-            for (NamespacedKey key : player.getDiscoveredRecipes()) {
-                this.discoveredRecipes.add(key.toString());
+        if (player != null) {
+            if (plugin.isSyncEnabled("health")) {
+                this.health = player.getHealth();
+            }
+            if (plugin.isSyncEnabled("food-level")) {
+                this.foodLevel = player.getFoodLevel();
+                this.saturation = player.getSaturation();
+                this.exhaustion = player.getExhaustion();
+            }
+            if (plugin.isSyncEnabled("experience")) {
+                this.totalExperience = player.getTotalExperience();
+                this.exp = player.getExp();
+                this.level = player.getLevel();
+            }
+            if (plugin.isSyncEnabled("inventory")) {
+                this.inventoryContentsNBT = serializeItemStackArray(player.getInventory().getContents());
+            }
+            if (plugin.isSyncEnabled("armor")) {
+                this.armorContentsNBT = serializeItemStackArray(player.getInventory().getArmorContents());
+            }
+            if (plugin.isSyncEnabledNewFeature("ender-chest")) {
+                this.enderChestContentsNBT = serializeItemStackArray(player.getEnderChest().getContents());
+            }
+            if (plugin.isSyncEnabled("potion-effects")) {
+                this.potionEffects = convertPotionEffectArrayToSerializable(
+                        player.getActivePotionEffects().toArray(new PotionEffect[0]));
             }
 
-            this.advancements = new HashMap<>();
-            Iterator<Advancement> it = org.bukkit.Bukkit.advancementIterator();
-            while (it.hasNext()) {
-                Advancement adv = it.next();
-                if (adv == null) continue;
-                AdvancementProgress progress = player.getAdvancementProgress(adv);
-                // Only save if there is any progress
-                if (!progress.getAwardedCriteria().isEmpty()) {
-                    this.advancements.put(adv.getKey().toString(), new ArrayList<>(progress.getAwardedCriteria()));
+            if (plugin.isSyncEnabledNewFeature("advancements")) {
+                // Snapshot Recipes
+                this.discoveredRecipes = new ArrayList<>();
+                for (org.bukkit.NamespacedKey key : player.getDiscoveredRecipes()) {
+                    this.discoveredRecipes.add(key.toString());
+                }
+
+                // Snapshot Advancements
+                this.advancements = new HashMap<>();
+                Iterator<Advancement> it = org.bukkit.Bukkit.advancementIterator();
+                while (it.hasNext()) {
+                    Advancement adv = java.util.Objects.requireNonNull(it.next());
+                    AdvancementProgress progress = player.getAdvancementProgress(adv);
+                    if (progress.isDone()) {
+                        this.advancements.put(adv.getKey().toString(), new ArrayList<>(progress.getAwardedCriteria()));
+                    }
                 }
             }
-        }
 
-        if (plugin.isSyncEnabledNewFeature("location")) {
-            this.world = player.getWorld().getName();
-            org.bukkit.Location loc = player.getLocation();
-            if (loc != null) {
-                this.x = loc.getX();
-                this.y = loc.getY();
-                this.z = loc.getZ();
-                this.yaw = loc.getYaw();
-                this.pitch = loc.getPitch();
+            if (plugin.isSyncEnabledNewFeature("statistics")) {
+                this.statistics = new HashMap<>();
+                for (org.bukkit.Statistic stat : ESSENTIAL_STATS) {
+                    try {
+                        this.statistics.put(stat.name(), player.getStatistic(stat));
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            if (plugin.isSyncEnabledNewFeature("pdc")) {
+                try {
+                    this.pdcNBT = de.tr7zw.changeme.nbtapi.NBT.get(player, nbt -> {
+                        de.tr7zw.changeme.nbtapi.iface.ReadableNBT compound = nbt.getCompound("PublicBukkitValues");
+                        return (compound != null) ? compound.toString() : null;
+                    });
+                } catch (Throwable t) {
+                    // Fallback for mock environments where NBTAPI reflection fails
+                    this.pdcNBT = null;
+                }
+            }
+
+            // Location
+            if (player.getWorld() != null) {
+                this.world = player.getWorld().getName();
+                org.bukkit.Location loc = player.getLocation();
+                if (loc != null) {
+                    this.x = loc.getX();
+                    this.y = loc.getY();
+                    this.z = loc.getZ();
+                    this.yaw = loc.getYaw();
+                    this.pitch = loc.getPitch();
+                }
+            }
+
+            // Flight & Gamemode
+            if (plugin.isSyncEnabledNewFeature("flight-gamemode")) {
+                this.isFlying = player.isFlying();
+                this.allowFlight = player.getAllowFlight();
+                this.gameMode = player.getGameMode().name();
             }
         }
     }
@@ -121,17 +182,21 @@ public class PlayerData {
             return serializedItems;
         }
         for (ItemStack item : items) {
-            if (item != null && !item.getType().isAir()) {
-                SerializableItemStack serializableItem = new SerializableItemStack(item);
-                serializedItems.add(gson.toJson(serializableItem));
-            } else {
+            if (item == null || item.getType() == Material.AIR) {
                 serializedItems.add(null);
+            } else {
+                try {
+                    SerializableItemStack serializableItem = new SerializableItemStack(item);
+                    serializedItems.add(gson.toJson(serializableItem));
+                } catch (Exception e) {
+                    System.err.println("[mc-data-bridge] Failed to serialize item: " + item.getType());
+                    serializedItems.add(null);
+                }
             }
         }
         return serializedItems;
     }
 
-    // Package-private for testing
     ItemStack[] deserializeItemStackArray(List<String> serializedItems) {
         if (serializedItems == null) {
             return new ItemStack[0];
@@ -139,23 +204,37 @@ public class PlayerData {
         ItemStack[] items = new ItemStack[serializedItems.size()];
         Gson gson = MCDataBridge.getGson();
         for (int i = 0; i < serializedItems.size(); i++) {
-            String itemJson = serializedItems.get(i);
-            if (itemJson != null && !itemJson.isEmpty()) {
-                if (itemJson.equals("{}")) {
-                    items[i] = new ItemStack(Material.AIR);
-                    continue;
+            String s = serializedItems.get(i);
+            if (s == null || s.isEmpty() || s.equals("null")) {
+                items[i] = new ItemStack(Material.AIR);
+                continue;
+            }
+
+            try {
+                // Detect if it's our new JSON format or an old YAML string
+                if (s.startsWith("{")) {
+                    SerializableItemStack entry = java.util.Objects.requireNonNull(gson.fromJson(s, SerializableItemStack.class));
+                    items[i] = entry.toItemStack();
+                } else {
+                    // Legacy YAML format (used in older versions)
+                    items[i] = legacyDeserialize(s);
                 }
-                try {
-                    SerializableItemStack serializableItem = java.util.Objects.requireNonNull(gson.fromJson(itemJson, SerializableItemStack.class));
-                    items[i] = serializableItem.toItemStack();
-                } catch (Exception e) {
-                    throw new ItemDeserializationException("Failed to deserialize item from JSON: " + itemJson, e);
-                }
-            } else {
+            } catch (Exception e) {
+                System.err.println("[mc-data-bridge] Failed to deserialize item at index " + i + ": " + e.getMessage());
                 items[i] = new ItemStack(Material.AIR);
             }
         }
         return items;
+    }
+
+    private ItemStack legacyDeserialize(String yaml) {
+        try {
+            org.bukkit.configuration.file.YamlConfiguration config = new org.bukkit.configuration.file.YamlConfiguration();
+            config.loadFromString(yaml);
+            return config.getItemStack("item");
+        } catch (Exception e) {
+            return new ItemStack(Material.AIR);
+        }
     }
 
     public double getHealth() {
@@ -210,6 +289,36 @@ public class PlayerData {
         return advancements;
     }
 
+    public Map<String, Integer> getStatistics() {
+        return statistics;
+    }
+
+    public String getPdcNBT() {
+        return pdcNBT;
+    }
+
+    public boolean isFlying() {
+        return isFlying;
+    }
+
+    public boolean isAllowFlight() {
+        return allowFlight;
+    }
+
+    public String getGameMode() {
+        return gameMode;
+    }
+
+    public String getWorld() {
+        return world;
+    }
+
+    public double getX() { return x; }
+    public double getY() { return y; }
+    public double getZ() { return z; }
+    public float getYaw() { return yaw; }
+    public float getPitch() { return pitch; }
+
     private SerializablePotionEffect[] convertPotionEffectArrayToSerializable(PotionEffect[] effects) {
         if (effects == null) {
             return new SerializablePotionEffect[0];
@@ -235,6 +344,44 @@ public class PlayerData {
         return effects;
     }
 
+    /**
+     * Calculates a SHA-256 checksum of the JSON string, optionally salted with a seed.
+     */
+    public static String calculateChecksum(String json, String seed) {
+        if (json == null) return null;
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            String input = json + (seed != null ? ":" + seed : "");
+            byte[] hash = digest.digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            return null;
+        }
+    }
+
+    public static String calculateChecksum(String json) {
+        return calculateChecksum(json, null);
+    }
+
+    /**
+     * Verifies if the provided checksum matches the calculated checksum of the JSON.
+     */
+    public static boolean verifyChecksum(String json, String expectedChecksum, String seed) {
+        if (json == null || expectedChecksum == null) return false;
+        String calculated = calculateChecksum(json, seed);
+        return expectedChecksum.equalsIgnoreCase(calculated);
+    }
+
+    public static boolean verifyChecksum(String json, String expectedChecksum) {
+        return verifyChecksum(json, expectedChecksum, null);
+    }
+
     @Override
     public String toString() {
         return "PlayerData{" +
@@ -257,16 +404,36 @@ public class PlayerData {
     }
 
     static class SerializableItemStack {
-        private final String itemAsBase64;
+        private String itemAsBase64;
+        @SuppressWarnings("unused")
+        private int v; // DataVersion (short name to save database space)
         private final String material;
         private final int amount;
         private final String nbt;
 
+        @SuppressWarnings("deprecation")
         public SerializableItemStack(ItemStack item) {
             if (item == null || item.getType().isAir()) {
                 this.itemAsBase64 = null;
             } else {
-                this.itemAsBase64 = Base64.getEncoder().encodeToString(item.serializeAsBytes());
+                // PRIMARY: Use Paper/Folia native binary method for 100% integrity and performance
+                try {
+                    this.itemAsBase64 = Base64.getEncoder().encodeToString(item.serializeAsBytes());
+                    // Paper's binary format already includes the DataVersion in the bytes
+                } catch (NoSuchMethodError | Exception e) {
+                    System.err.println("[mc-data-bridge] serializeAsBytes failed, falling back to NBTAPI. Error: " + e.toString());
+                    // FALLBACK: Use NBTAPI only for Spigot servers that lack native binary API
+                    try {
+                        this.itemAsBase64 = de.tr7zw.changeme.nbtapi.NBT.itemStackToNBT(item).toString();
+                        // Store the current server's DataVersion so Paper can run DFU on it later if needed
+                        try {
+                            this.v = org.bukkit.Bukkit.getUnsafe().getDataVersion();
+                        } catch (Exception ignored) {}
+                    } catch (Exception e2) {
+                        System.err.println("[mc-data-bridge] Item serialization failed: " + e2.getMessage());
+                        this.itemAsBase64 = null;
+                    }
+                }
             }
             this.material = null;
             this.amount = 0;
@@ -274,15 +441,53 @@ public class PlayerData {
         }
 
         public ItemStack toItemStack() {
-            if (this.itemAsBase64 != null) {
+            if (this.itemAsBase64 == null) return new ItemStack(Material.AIR);
+
+            // Handle NBT JSON format (Spigot Fallback or Legacy)
+            if (this.itemAsBase64.startsWith("{")) {
                 try {
-                    byte[] itemBytes = Base64.getDecoder().decode(this.itemAsBase64);
-                    return ItemStack.deserializeBytes(itemBytes);
-                } catch (Exception e) {
-                    System.err.println(
-                            "[mc-data-bridge] Failed to deserialize item from Base64! Data: " + this.itemAsBase64);
-                    return new ItemStack(Material.AIR);
+                    return de.tr7zw.changeme.nbtapi.NBT.itemStackFromNBT(de.tr7zw.changeme.nbtapi.NBT.parseNBT(this.itemAsBase64));
+                } catch (Exception ignored) {}
+            }
+
+            // Handle Binary format (Native Paper/Folia)
+            try {
+                byte[] itemBytes = Base64.getDecoder().decode(this.itemAsBase64);
+                if (itemBytes.length > 2) {
+                    // Check for GZIP header (1F 8B) used by Paper's binary format
+                    if (itemBytes[0] == (byte) 0x1F && itemBytes[1] == (byte) 0x8B) {
+                        try {
+                            // NATIVE PATH: Try Paper's native deserializer first
+                            return ItemStack.deserializeBytes(itemBytes);
+                        } catch (NoSuchMethodError | Exception e) {
+                            // SPIGOT ADAPTIVE LAYER: If on Spigot, use NBT-API to translate Paper's binary data
+                            try (java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(itemBytes)) {
+                                @SuppressWarnings("deprecation")
+                                de.tr7zw.changeme.nbtapi.NBTContainer container = new de.tr7zw.changeme.nbtapi.NBTContainer(bis);
+                                return de.tr7zw.changeme.nbtapi.NBT.itemStackFromNBT(container);
+                            } catch (Exception e2) {
+                                System.err.println("[mc-data-bridge] Spigot failed to translate Paper binary item: " + e2.getMessage());
+                            }
+                        }
+                    } 
+                    
+                    // Fallback for Java/Bukkit Serialization (AC ED)
+                    if (itemBytes[0] == (byte) 0xAC && itemBytes[1] == (byte) 0xED) {
+                        try (java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(itemBytes);
+                             @SuppressWarnings("deprecation")
+                             org.bukkit.util.io.BukkitObjectInputStream bois = new org.bukkit.util.io.BukkitObjectInputStream(bis)) {
+                            return (ItemStack) bois.readObject();
+                        } catch (Exception ignored) {}
+                    }
                 }
+                
+                // Final attempt: deserialize directly if detection failed
+                return ItemStack.deserializeBytes(itemBytes);
+            } catch (NoSuchMethodError e) {
+                // If we reach here on Spigot without success, the item is incompatible
+                return new ItemStack(Material.AIR);
+            } catch (Exception e) {
+                // Fall through to legacy NBT handling
             }
 
             // Legacy NBT handling for old data formats

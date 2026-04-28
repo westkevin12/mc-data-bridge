@@ -26,13 +26,13 @@ public class PlayerDataSerializationTest {
     @BeforeAll
     static void setupBukkit() {
         if (org.bukkit.Bukkit.getServer() == null) {
-            be.seeseemelk.mockbukkit.MockBukkit.mock();
+            org.mockbukkit.mockbukkit.MockBukkit.mock();
         }
     }
 
     @AfterAll
     static void tearDownBukkit() {
-        be.seeseemelk.mockbukkit.MockBukkit.unmock();
+        org.mockbukkit.mockbukkit.MockBukkit.unmock();
     }
 
     @Test

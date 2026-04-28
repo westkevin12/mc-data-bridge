@@ -1,0 +1,85 @@
+[SIZE=6][B]MC Data Bridge - Detailed Documentation[/B][/SIZE]
+
+[SIZE=5]► Configuration Breakdown[/SIZE]
+
+Below is a detailed explanation of the [I]config.yml[/I] settings. This file is generated on each backend server (Paper/Spigot/Folia). Proxies (Bungee/Velocity) do not require a config file; they use internal defaults.
+
+[SIZE=4][B]1. Database Connection[/B][/SIZE]
+[LIST]
+[*][B]database.type:[/B] Use [CODE]mysql[/CODE] for external databases (MariaDB/MySQL) or [CODE]sqlite[/CODE] for local file-based storage.
+[*][B]database.host/port/database:[/B] Standard credentials for your MySQL server.
+[*][B]database.sqlite-file:[/B] The filename used if the type is set to [I]sqlite[/I].
+[*][B]database.pool-settings:[/B] Advanced HikariCP settings. Defaults are highly optimized for resilience against network jitter.
+[*][B]database.optimizations:[/B] Fine-tuned JDBC driver settings to ensure non-blocking performance.
+[/LIST]
+
+[SIZE=4][B]2. Core Identity & Security[/B][/SIZE]
+[LIST]
+[*][B]server-id:[/B] [B]CRITICAL.[/B] Every server connected to the same database must have a unique identifier (e.g., "survival-1", "creative").
+[*][B]security.seed:[/B] A secret string used to salt all SHA-256 hashes. Changing this invalidates existing integrity checks until the data is re-saved.
+[*][B]security.verify-data-integrity:[/B] When enabled, the plugin will reject data loads if the SHA-256 checksum does not match, protecting against database tampering.
+[*][B]identity.mode:[/B]
+[LIST]
+[*][B]PREMIUM:[/B] Strictly enforces UUID consistency. Blocks logins if a name is claimed by a different UUID.
+[*][B]HYBRID:[/B] Allows for identity shifts (Name -> UUID), ideal for networks migrating from cracked to premium.
+[/LIST]
+[*][B]identity.auto-migrate-fastlogin:[/B] If true, automatically transfers data to a player's premium account once FastLogin verifies their session.
+[/LIST]
+
+[SIZE=4][B]3. Synchronization Control[/B][/SIZE]
+[LIST]
+[*][B]sync-data:*:[/B] Individual toggles for every data type. You can sync just inventories but keep health local to each server, or vice versa.
+[*][B]sync-blacklist.servers:[/B] List of [I]server-id[/I]s where data should never be loaded or saved.
+[*][B]sync-blacklist.worlds:[/B] List of world names where synchronization is temporarily suspended for the player.
+[/LIST]
+
+[SIZE=5]► Commands & Permissions[/SIZE]
+
+[SIZE=4][B]Administrator Commands[/B][/SIZE]
+[LIST]
+[*][B]/databridge inspect <player>[/B]
+[LIST]
+[*]Opens a GUI to view the saved stats and inventory of a player.
+[*]Works even if the player is offline.
+[*]Permission: [I]databridge.admin.inspect[/I]
+[/LIST]
+[*][B]/databridge migrate <source> <target>[/B]
+[LIST]
+[*]Manually move data between two identities (UUID or Name).
+[*]Permission: [I]databridge.admin.migrate[/I]
+[/LIST]
+[*][B]/databridge unlock <player>[/B]
+[LIST]
+[*]Releases a stuck data lock if a server crashed without releasing it.
+[*]Permission: [I]databridge.admin.unlock[/I]
+[/LIST]
+[*][B]/databridge reload[/B]
+[LIST]
+[*]Reloads the configuration and reconnects to the database.
+[*]Permission: [I]databridge.admin.reload[/I]
+[/LIST]
+[/LIST]
+
+[SIZE=4][B]Proxy Commands[/B][/SIZE]
+[LIST]
+[*][B]/databridge unlock <player>[/B] (Available on Bungee/Velocity)
+[*][B]/databridge forceunlock <player>[/B] (Relays a signal to the backend server to drop the lock immediately)
+[/LIST]
+
+[SIZE=5]► Database Schema Information[/SIZE]
+
+For administrators managing the database directly, the plugin maintains the [I]player_data[/I] table:
+
+[LIST]
+[*][B]uuid[/B] (VARCHAR(36), PK): The unique ID of the player.
+[*][B]data[/B] (LONGBLOB): The serialized binary data snapshot.
+[*][B]data_checksum[/B] (VARCHAR(64)): SHA-256 integrity hash of the data packet.
+[*][B]is_locked[/B] (BOOLEAN): Prevents concurrent writes from multiple servers.
+[*][B]locking_server[/B] (VARCHAR(255)): The ID of the server currently holding the lock.
+[*][B]lock_timestamp[/B] (BIGINT): Heartbeat timestamp to detect orphaned locks.
+[*][B]last_known_name[/B] (VARCHAR(16)): Used for identity tracking and /migrate.
+[*][B]identity_hash[/B] (VARCHAR(64)): Salted hash of the Name+UUID+Seed combination for secure identity verification.
+[/LIST]
+
+[CENTER]----------------------------------------------------------------[/CENTER]
+[I]For further assistance, please visit the official GitHub repository or join our support community.[/I]

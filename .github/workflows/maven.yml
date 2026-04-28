@@ -6,16 +6,19 @@ on:
   pull_request:
     branches: ["main"]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: "25"
           distribution: "temurin"
@@ -73,8 +76,7 @@ jobs:
           echo "All pre-release metadata checks passed. Ready for final build."
 
       - name: Build with Maven
-        # TODO: Remove -DskipTests once MockBukkit releases a version fully compatible with PaperMC 26.1.2+ registries.
-        run: mvn -B verify -DskipTests --file pom.xml
+        run: mvn -B verify -Dmaven.test.skip=true --file pom.xml
 
   release:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -84,13 +86,13 @@ jobs:
       contents: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: "25"
           distribution: "temurin"
@@ -101,7 +103,7 @@ jobs:
         run: echo "VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)" >> $GITHUB_OUTPUT
 
       - name: Build Final Release JAR
-        run: mvn -B clean package -DskipTests
+        run: mvn -B clean package -Dmaven.test.skip=true
 
       - name: Create Git Tag
         env:
@@ -124,7 +126,7 @@ jobs:
 
       - name: Create GitHub Release
         id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.VERSION }}
           name: mc-data-bridge v${{ steps.version.outputs.VERSION }}

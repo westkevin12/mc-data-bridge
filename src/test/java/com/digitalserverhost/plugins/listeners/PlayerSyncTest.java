@@ -42,9 +42,44 @@ class PlayerSyncTest {
 
     private static final Gson GSON = new GsonBuilder().create();
 
+    private org.mockito.MockedStatic<com.digitalserverhost.plugins.utils.SchedulerUtils> mockedSchedulerUtils;
+
     @BeforeEach
     void setup() {
+        // Initialize MockBukkit
+        if (org.bukkit.Bukkit.getServer() == null) {
+            org.mockbukkit.mockbukkit.MockBukkit.mock();
+        }
+
+        // Mock SchedulerUtils to return BukkitScheduler and NOT Folia
+        @SuppressWarnings("null")
+        org.mockito.MockedStatic<com.digitalserverhost.plugins.utils.SchedulerUtils> staticMock = mockStatic(com.digitalserverhost.plugins.utils.SchedulerUtils.class);
+        mockedSchedulerUtils = staticMock;
+        mockedSchedulerUtils.when(com.digitalserverhost.plugins.utils.SchedulerUtils::isFolia).thenReturn(false);
+        mockedSchedulerUtils.when(com.digitalserverhost.plugins.utils.SchedulerUtils::getScheduler).thenReturn(new com.digitalserverhost.plugins.utils.BukkitScheduler());
+        mockedSchedulerUtils.when(com.digitalserverhost.plugins.utils.SchedulerUtils::getBridge).thenReturn(new com.digitalserverhost.plugins.utils.BukkitBridge());
+        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(any(), any(), any())).thenAnswer(invocation -> {
+            Runnable runnable = invocation.getArgument(2);
+            runnable.run();
+            return null;
+        });
+        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(any(), any())).thenAnswer(invocation -> {
+            Runnable runnable = invocation.getArgument(1);
+            runnable.run();
+            return null;
+        });
+        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runLater(any(), any(), anyLong())).thenAnswer(invocation -> {
+            Runnable runnable = invocation.getArgument(1);
+            runnable.run();
+            return null;
+        });
+
         // Setup Plugin Mocks
+        org.bukkit.configuration.file.FileConfiguration mockConfig = mock(org.bukkit.configuration.file.FileConfiguration.class);
+        lenient().when(mockPlugin.getConfig()).thenReturn(mockConfig);
+        lenient().when(mockConfig.getBoolean(anyString(), anyBoolean())).thenReturn(true);
+        lenient().when(mockConfig.getBoolean(anyString())).thenReturn(true);
+
         lenient().doReturn(true).when(mockPlugin).isEnabled();
         lenient().when(mockPlugin.getLogger()).thenReturn(Logger.getLogger("MCDataBridge"));
         lenient().when(mockPlugin.getServerId()).thenReturn("test-server");
@@ -56,6 +91,14 @@ class PlayerSyncTest {
         // Default toggles
         lenient().when(mockPlugin.isSyncEnabled("food-level")).thenReturn(true);
         lenient().when(mockPlugin.isSyncEnabled(anyString())).thenReturn(true);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        if (mockedSchedulerUtils != null) {
+            mockedSchedulerUtils.close();
+        }
+        org.mockbukkit.mockbukkit.MockBukkit.unmock();
     }
 
     @Test
@@ -86,7 +129,8 @@ class PlayerSyncTest {
         when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
         when(mockStatement.executeQuery()).thenReturn(mockResultSet);
         when(mockResultSet.next()).thenReturn(true);
-        when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("data_checksum")).thenReturn(null);
         when(mockResultSet.getBytes("data")).thenReturn(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         // 3. Run PreLogin (Loads data into cache)
@@ -111,8 +155,13 @@ class PlayerSyncTest {
         // Mock inventory for application
         when(targetPlayer.getInventory()).thenReturn(mockInventory);
 
+        // Mock Attributes
+        org.bukkit.attribute.AttributeInstance maxHealthAttr = mock(org.bukkit.attribute.AttributeInstance.class);
+        when(targetPlayer.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH)).thenReturn(maxHealthAttr);
+        when(maxHealthAttr.getValue()).thenReturn(20.0);
+
         // Setup scheduler runTaskTimerAsynchronously
-        when(mockScheduler.runTaskTimerAsynchronously(any(org.bukkit.plugin.Plugin.class), any(Runnable.class),
+        lenient().when(mockScheduler.runTaskTimerAsynchronously(any(org.bukkit.plugin.Plugin.class), any(Runnable.class),
                 anyLong(), anyLong()))
                 .thenReturn(mock(org.bukkit.scheduler.BukkitTask.class));
 
@@ -155,7 +204,8 @@ class PlayerSyncTest {
         when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
         when(mockStatement.executeQuery()).thenReturn(mockResultSet);
         when(mockResultSet.next()).thenReturn(true);
-        when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("data_checksum")).thenReturn(null);
         when(mockResultSet.getBytes("data")).thenReturn(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         // 4. PreLogin
@@ -174,7 +224,7 @@ class PlayerSyncTest {
         when(mockWorld.getName()).thenReturn("world");
         when(targetPlayer.getInventory()).thenReturn(mockInventory);
 
-        when(mockScheduler.runTaskTimerAsynchronously(any(org.bukkit.plugin.Plugin.class), any(Runnable.class),
+        lenient().when(mockScheduler.runTaskTimerAsynchronously(any(org.bukkit.plugin.Plugin.class), any(Runnable.class),
                 anyLong(), anyLong()))
                 .thenReturn(mock(org.bukkit.scheduler.BukkitTask.class));
 
@@ -218,7 +268,8 @@ class PlayerSyncTest {
         when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
         when(mockStatement.executeQuery()).thenReturn(mockResultSet);
         when(mockResultSet.next()).thenReturn(true);
-        when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("data_checksum")).thenReturn(null);
         when(mockResultSet.getBytes("data")).thenReturn(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         // PreLogin
@@ -259,7 +310,7 @@ class PlayerSyncTest {
             return null;
         }).when(targetPlayer).setHealth(anyDouble());
 
-        when(mockScheduler.runTaskTimerAsynchronously(any(), any(Runnable.class),
+        lenient().when(mockScheduler.runTaskTimerAsynchronously(any(), any(Runnable.class),
                 anyLong(), anyLong()))
                 .thenReturn(mock(org.bukkit.scheduler.BukkitTask.class));
 

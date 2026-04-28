@@ -1,8 +1,8 @@
 package com.digitalserverhost.plugins.listeners;
 
-import be.seeseemelk.mockbukkit.MockBukkit;
-import be.seeseemelk.mockbukkit.ServerMock;
-import be.seeseemelk.mockbukkit.entity.PlayerMock;
+import org.mockbukkit.mockbukkit.MockBukkit;
+import org.mockbukkit.mockbukkit.ServerMock;
+import org.mockbukkit.mockbukkit.entity.PlayerMock;
 import com.digitalserverhost.plugins.MCDataBridge;
 import com.digitalserverhost.plugins.managers.DatabaseManager;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
@@ -42,21 +42,63 @@ class PlayerFlowTest {
     @Mock
     private ResultSet mockResultSet;
 
+    private org.mockito.MockedStatic<com.digitalserverhost.plugins.utils.SchedulerUtils> mockedSchedulerUtils;
+
     @BeforeEach
     void setup() {
         MockitoAnnotations.openMocks(this);
         server = MockBukkit.mock();
+
+        // Mock SchedulerUtils
+        @SuppressWarnings("null")
+        org.mockito.MockedStatic<com.digitalserverhost.plugins.utils.SchedulerUtils> staticMock = mockStatic(com.digitalserverhost.plugins.utils.SchedulerUtils.class);
+        mockedSchedulerUtils = staticMock;
+        mockedSchedulerUtils.when(com.digitalserverhost.plugins.utils.SchedulerUtils::isFolia).thenReturn(false);
+        mockedSchedulerUtils.when(com.digitalserverhost.plugins.utils.SchedulerUtils::getScheduler).thenReturn(new com.digitalserverhost.plugins.utils.BukkitScheduler());
+        mockedSchedulerUtils.when(com.digitalserverhost.plugins.utils.SchedulerUtils::getBridge).thenReturn(new com.digitalserverhost.plugins.utils.BukkitBridge());
+        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(any(), any(), any())).thenAnswer(invocation -> {
+            Runnable runnable = invocation.getArgument(2);
+            runnable.run();
+            return null;
+        });
+        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(any(), any())).thenAnswer(invocation -> {
+            Runnable runnable = invocation.getArgument(1);
+            runnable.run();
+            return null;
+        });
+        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runLater(any(), any(), anyLong())).thenAnswer(invocation -> {
+            Runnable runnable = invocation.getArgument(1);
+            runnable.run();
+            return null;
+        });
+
         // stub generic plugin methods
+        org.bukkit.configuration.file.FileConfiguration mockConfig = mock(org.bukkit.configuration.file.FileConfiguration.class);
+        lenient().when(mockPlugin.getConfig()).thenReturn(mockConfig);
+        lenient().when(mockConfig.getBoolean(anyString(), anyBoolean())).thenReturn(true);
+
         doReturn(true).when(mockPlugin).isEnabled();
         lenient().when(mockPlugin.getServer()).thenReturn(server);
         lenient().when(mockPlugin.getLogger()).thenReturn(Logger.getLogger("MCDataBridge"));
         lenient().when(mockPlugin.getServerId()).thenReturn("test-server");
         lenient().when(mockPlugin.getLockHeartbeatSeconds()).thenReturn(30);
         lenient().when(mockPlugin.isDebugMode()).thenReturn(true);
+        lenient().when(mockPlugin.isSyncEnabled(anyString())).thenReturn(true);
+        lenient().when(mockPlugin.isSyncEnabledNewFeature(anyString())).thenReturn(true);
+        // Explicitly disable features that fail in MockBukkit environment
+        lenient().when(mockPlugin.isSyncEnabledNewFeature("pdc")).thenReturn(false);
+        lenient().when(mockPlugin.isSyncEnabledNewFeature("advancements")).thenReturn(false);
+        lenient().when(mockPlugin.isSyncEnabledNewFeature("statistics")).thenReturn(false);
+        lenient().when(mockPlugin.isSyncEnabledNewFeature("ender-chest")).thenReturn(false);
+        lenient().when(mockPlugin.getIdentityMode()).thenReturn("HYBRID");
+        lenient().when(mockPlugin.getSecuritySeed()).thenReturn("test-seed");
     }
 
     @AfterEach
     void tearDown() {
+        if (mockedSchedulerUtils != null) {
+            mockedSchedulerUtils.close();
+        }
         MockBukkit.unmock();
     }
 
@@ -111,7 +153,8 @@ class PlayerFlowTest {
             lenient().when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
             lenient().when(mockStatement.executeQuery()).thenReturn(mockResultSet);
             lenient().when(mockResultSet.next()).thenReturn(false);
-        } catch (Exception e) {
+        } catch (Exception _) {
+            // Ignore setup errors in mock chaining
         }
 
         PlayerMock player = server.addPlayer();
@@ -139,7 +182,7 @@ class PlayerFlowTest {
 
         PlayerMock player = server.addPlayer();
 
-        when(mockDatabaseManager.saveAndReleaseLock(anyString(), eq(player.getUniqueId()), anyString()))
+        when(mockDatabaseManager.saveAndReleaseLock(anyString(), anyString(), anyString(), eq(player.getUniqueId()), anyString(), any()))
                 .thenReturn(true);
 
         PlayerQuitEvent event = new PlayerQuitEvent(player, net.kyori.adventure.text.Component.text("Quit"), org.bukkit.event.player.PlayerQuitEvent.QuitReason.DISCONNECTED);
@@ -147,8 +190,8 @@ class PlayerFlowTest {
         listener.onPlayerQuit(event);
 
         // Verify async save call with timeout
-        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), eq(player.getUniqueId()),
-                anyString());
+        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(player.getUniqueId()),
+                anyString(), any());
     }
 
     @Test
@@ -183,8 +226,8 @@ class PlayerFlowTest {
         listener.onPlayerQuit(quitEvent);
 
         // Wait for save to complete (async)
-        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), eq(player.getUniqueId()),
-                anyString());
+        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(player.getUniqueId()),
+                anyString(), any());
 
         // 3. Advance time again -> Heartbeat should NOT run
         server.getScheduler().performTicks(30 * 20L + 50);
@@ -215,7 +258,7 @@ class PlayerFlowTest {
         PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
 
         // Setup passing checks for save
-        lenient().when(mockDatabaseManager.saveAndReleaseLock(anyString(), any(UUID.class), anyString()))
+        lenient().when(mockDatabaseManager.saveAndReleaseLock(anyString(), anyString(), anyString(), any(UUID.class), anyString(), any()))
                 .thenReturn(true);
 
         PlayerMock player = server.addPlayer();
@@ -231,7 +274,7 @@ class PlayerFlowTest {
         // 1. Receive Message -> Triggers async save
         listener.onPluginMessageReceived("mc-data-bridge:main", player, message);
 
-        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), eq(uuid), anyString());
+        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(uuid), anyString(), any());
 
         // Clear invocations to verify Quit behavior
         clearInvocations(mockDatabaseManager);
@@ -241,6 +284,6 @@ class PlayerFlowTest {
         listener.onPlayerQuit(quitEvent);
 
         // Verify save was NOT called again
-        verify(mockDatabaseManager, never()).saveAndReleaseLock(anyString(), eq(uuid), anyString());
+        verify(mockDatabaseManager, never()).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(uuid), anyString(), any());
     }
 }

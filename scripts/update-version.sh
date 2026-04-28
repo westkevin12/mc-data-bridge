@@ -16,6 +16,10 @@ echo -e "${BLUE}===============================================${NC}"
 POM_FILE="pom.xml"
 PLUGIN_YML="src/main/resources/plugin.yml"
 BUNGEE_YML="src/main/resources/bungee.yml"
+VELOCITY_JSON="src/main/resources/velocity-plugin.json"
+VELOCITY_JAVA="src/main/java/com/digitalserverhost/plugins/proxy/velocity/VelocityMCDataBridge.java"
+WATERFALL_YML="src/main/resources/waterfall.yml"
+PURPUR_YML="src/main/resources/purpur.yml"
 
 # 1. Get Current Version from Maven
 echo -e "${YELLOW}Reading current version...${NC}"
@@ -82,6 +86,30 @@ sed -i "s/^version: .*/version: $NEW_VERSION/" "$PLUGIN_YML"
 # Update bungee.yml
 echo "Updating $BUNGEE_YML..."
 sed -i "s/^version: .*/version: $NEW_VERSION/" "$BUNGEE_YML"
+
+# Update velocity-plugin.json
+if [ -f "$VELOCITY_JSON" ]; then
+    echo "Updating $VELOCITY_JSON..."
+    sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" "$VELOCITY_JSON"
+fi
+
+# Update VelocityMCDataBridge.java
+if [ -f "$VELOCITY_JAVA" ]; then
+    echo "Updating $VELOCITY_JAVA..."
+    sed -i "s/version = \".*\"/version = \"$NEW_VERSION\"/" "$VELOCITY_JAVA"
+fi
+
+# Update waterfall.yml
+if [ -f "$WATERFALL_YML" ]; then
+    echo "Updating $WATERFALL_YML..."
+    sed -i "s/^version: .*/version: $NEW_VERSION/" "$WATERFALL_YML"
+fi
+
+# Update purpur.yml
+if [ -f "$PURPUR_YML" ]; then
+    echo "Updating $PURPUR_YML..."
+    sed -i "s/^version: .*/version: $NEW_VERSION/" "$PURPUR_YML"
+fi
 
 echo ""
 echo -e "${GREEN}Success! Version updated to $NEW_VERSION.${NC}"
