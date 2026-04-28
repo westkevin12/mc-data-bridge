@@ -12,7 +12,7 @@ Version 2.1.4 represents a major modernization and feature expansion of the MC D
 
 ### 🛡️ Advanced Security & Integrity
 *   **SHA-256 Checksums:** Implemented data integrity verification to detect and prevent manual database tampering or corruption.
-*   **Identity History Tracking:** Automatically tracks `last_known_name` to enable secure UUID change detection and migration warnings.
+*   **Identity History Tracking:** Automatically tracks `last_known_name` and a secure `identity_hash` (SHA-256) to enable secure UUID change detection and prevent identity hijacking in hybrid (Cracked/Premium) environments.
 *   **Automatic Lock Recovery:** The plugin now automatically identifies and releases orphaned locks held by the local server on startup, preventing stuck sessions after a crash.
 *   **New Migration System:** Added `/databridge migrate <source> <target>` to securely move data between player identities (UUID or Name).
 *   **Proxy Parity:** The `/databridge unlock` command is now available on **BungeeCord**, **Waterfall**, and **Velocity**.

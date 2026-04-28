@@ -103,6 +103,8 @@ public class MCDataBridge extends JavaPlugin {
                     "lock_timestamp INTEGER DEFAULT 0, " +
                     "last_known_name TEXT DEFAULT NULL, " +
                     "data_checksum TEXT DEFAULT NULL, " +
+                    "identity_hash TEXT DEFAULT NULL, " +
+                    "name_last_updated INTEGER DEFAULT 0, " +
                     "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);";
         } else {
             createTableSQL = "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
@@ -113,6 +115,8 @@ public class MCDataBridge extends JavaPlugin {
                     "lock_timestamp BIGINT DEFAULT 0, " +
                     "last_known_name VARCHAR(16) DEFAULT NULL, " +
                     "data_checksum VARCHAR(64) DEFAULT NULL, " +
+                    "identity_hash VARCHAR(64) DEFAULT NULL, " +
+                    "name_last_updated BIGINT DEFAULT 0, " +
                     "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
                     "PRIMARY KEY (uuid)) ENGINE=InnoDB;";
         }
@@ -168,6 +172,20 @@ public class MCDataBridge extends JavaPlugin {
                     statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN data_checksum TEXT DEFAULT NULL");
                 } else {
                     statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN data_checksum VARCHAR(64) DEFAULT NULL");
+                }
+            }
+            if (!connection.getMetaData().getColumns(null, null, tableName, "identity_hash").next()) {
+                if (dbType.equals("sqlite")) {
+                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN identity_hash TEXT DEFAULT NULL");
+                } else {
+                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN identity_hash VARCHAR(64) DEFAULT NULL");
+                }
+            }
+            if (!connection.getMetaData().getColumns(null, null, tableName, "name_last_updated").next()) {
+                if (dbType.equals("sqlite")) {
+                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN name_last_updated INTEGER DEFAULT 0");
+                } else {
+                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN name_last_updated BIGINT DEFAULT 0");
                 }
             }
             if (!connection.getMetaData().getColumns(null, null, tableName, "last_updated").next()) {

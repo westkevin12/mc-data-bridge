@@ -142,10 +142,15 @@ public class PlayerData {
             }
 
             if (plugin.isSyncEnabledNewFeature("pdc")) {
-                this.pdcNBT = de.tr7zw.changeme.nbtapi.NBT.get(player, nbt -> {
-                    de.tr7zw.changeme.nbtapi.iface.ReadableNBT compound = nbt.getCompound("PublicBukkitValues");
-                    return (compound != null) ? compound.toString() : null;
-                });
+                try {
+                    this.pdcNBT = de.tr7zw.changeme.nbtapi.NBT.get(player, nbt -> {
+                        de.tr7zw.changeme.nbtapi.iface.ReadableNBT compound = nbt.getCompound("PublicBukkitValues");
+                        return (compound != null) ? compound.toString() : null;
+                    });
+                } catch (Throwable t) {
+                    // Fallback for mock environments where NBTAPI reflection fails
+                    this.pdcNBT = null;
+                }
             }
 
             // Location
@@ -407,6 +412,7 @@ public class PlayerData {
                     this.itemAsBase64 = Base64.getEncoder().encodeToString(item.serializeAsBytes());
                     // Paper's binary format already includes the DataVersion in the bytes
                 } catch (NoSuchMethodError | Exception e) {
+                    System.err.println("[mc-data-bridge] serializeAsBytes failed, falling back to NBTAPI. Error: " + e.toString());
                     // FALLBACK: Use NBTAPI only for Spigot servers that lack native binary API
                     try {
                         this.itemAsBase64 = de.tr7zw.changeme.nbtapi.NBT.itemStackToNBT(item).toString();

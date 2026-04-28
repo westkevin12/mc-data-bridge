@@ -1,5 +1,6 @@
 package com.digitalserverhost.plugins.managers;
 
+import com.digitalserverhost.plugins.utils.HashUtils;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -121,14 +122,16 @@ public class DatabaseManager {
 
     public boolean saveAndReleaseLock(String json, String checksum, String name, UUID uuid, String serverId) throws SQLException {
         String sql = "UPDATE " + tableName
-                + " SET data = ?, data_checksum = ?, last_known_name = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
+                + " SET data = ?, data_checksum = ?, last_known_name = ?, identity_hash = ?, name_last_updated = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setBytes(1, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             statement.setString(2, checksum);
             statement.setString(3, name);
-            statement.setString(4, uuid.toString());
-            statement.setString(5, serverId);
+            statement.setString(4, HashUtils.generateIdentityHash(name, uuid));
+            statement.setLong(5, System.currentTimeMillis());
+            statement.setString(6, uuid.toString());
+            statement.setString(7, serverId);
             return statement.executeUpdate() > 0;
         }
     }
@@ -191,11 +194,13 @@ public class DatabaseManager {
     }
 
     public void updateLastKnownName(UUID uuid, String name) {
-        String sql = "UPDATE " + tableName + " SET last_known_name = ? WHERE uuid = ?";
+        String sql = "UPDATE " + tableName + " SET last_known_name = ?, identity_hash = ?, name_last_updated = ? WHERE uuid = ?";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, name);
-            statement.setString(2, uuid.toString());
+            statement.setString(2, HashUtils.generateIdentityHash(name, uuid));
+            statement.setLong(3, System.currentTimeMillis());
+            statement.setString(4, uuid.toString());
             statement.executeUpdate();
         } catch (SQLException e) {
             System.err.println("[mc-data-bridge] Failed to update last known name for " + uuid + ": " + e.getMessage());
@@ -203,7 +208,7 @@ public class DatabaseManager {
     }
 
     public UUID getUuidByName(String name) {
-        String sql = "SELECT uuid FROM " + tableName + " WHERE last_known_name = ? ORDER BY last_updated DESC LIMIT 1";
+        String sql = "SELECT uuid FROM " + tableName + " WHERE last_known_name = ? ORDER BY name_last_updated DESC, last_updated DESC LIMIT 1";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, name);
@@ -216,6 +221,42 @@ public class DatabaseManager {
             System.err.println("[mc-data-bridge] Failed to get UUID by name: " + e.getMessage());
         }
         return null;
+    }
+
+    public IdentityRecord getIdentityRecord(UUID uuid) {
+        String sql = "SELECT last_known_name, identity_hash, name_last_updated FROM " + tableName + " WHERE uuid = ?";
+        try (Connection connection = getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, uuid.toString());
+            try (java.sql.ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return new IdentityRecord(
+                            rs.getString("last_known_name"),
+                            rs.getString("identity_hash"),
+                            rs.getLong("name_last_updated")
+                    );
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[mc-data-bridge] Failed to get identity record for " + uuid + ": " + e.getMessage());
+        }
+        return null;
+    }
+
+    public static class IdentityRecord {
+        private final String lastKnownName;
+        private final String identityHash;
+        private final long nameLastUpdated;
+
+        public IdentityRecord(String lastKnownName, String identityHash, long nameLastUpdated) {
+            this.lastKnownName = lastKnownName;
+            this.identityHash = identityHash;
+            this.nameLastUpdated = nameLastUpdated;
+        }
+
+        public String getLastKnownName() { return lastKnownName; }
+        public String getIdentityHash() { return identityHash; }
+        public long getNameLastUpdated() { return nameLastUpdated; }
     }
 
     public boolean migrateData(UUID oldUuid, UUID newUuid) throws SQLException {

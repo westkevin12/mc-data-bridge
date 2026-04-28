@@ -125,17 +125,34 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 return;
             }
 
-            // UUID Switch Detection
-            UUID existingUuid = databaseManager.getUuidByName(name);
-            if (existingUuid != null && !existingUuid.equals(uuid)) {
+            // --- IDENTITY & SECURITY CHECKS ---
+            
+            // 1. Collision Detection: Is this name already known under a different UUID?
+            UUID nameOwnerUuid = databaseManager.getUuidByName(name);
+            if (nameOwnerUuid != null && !nameOwnerUuid.equals(uuid)) {
                 if (plugin.getConfig().getBoolean("security.log-uuid-mismatches", true)) {
                     plugin.getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-                    plugin.getLogger().warning("!!! SECURITY ALERT: Player '" + name + "' UUID mismatch !!!");
-                    plugin.getLogger().warning("!!! Incoming UUID: " + uuid);
-                    plugin.getLogger().warning("!!! Known DB UUID: " + existingUuid);
-                    plugin.getLogger().warning("!!! Data will NOT be synced automatically for safety. !!!");
-                    plugin.getLogger().warning("!!! Use '/databridge migrate' to link these accounts. !!!");
+                    plugin.getLogger().warning("!!! IDENTITY COLLISION: Player '" + name + "' joined with new UUID !!!");
+                    plugin.getLogger().warning("!!! Current UUID:  " + uuid);
+                    plugin.getLogger().warning("!!! Previous UUID: " + nameOwnerUuid);
+                    plugin.getLogger().warning("!!! This is common in Cracked -> Premium transitions.   !!!");
+                    plugin.getLogger().warning("!!! Data is SECURE (tied to UUID), but sync is paused. !!!");
+                    plugin.getLogger().warning("!!! Use '/databridge migrate' to transfer data safely. !!!");
                     plugin.getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                }
+            }
+
+            // 2. Identity Verification: Has this UUID used this name before?
+            DatabaseManager.IdentityRecord identityRecord = databaseManager.getIdentityRecord(uuid);
+            if (identityRecord != null) {
+                String currentHash = com.digitalserverhost.plugins.utils.HashUtils.generateIdentityHash(name, uuid);
+                String storedHash = identityRecord.getIdentityHash();
+                
+                if (storedHash != null && !currentHash.equals(storedHash)) {
+                    if (plugin.isDebugMode()) {
+                        plugin.getLogger().info("Verified name change for " + uuid + ": " + 
+                            identityRecord.getLastKnownName() + " -> " + name);
+                    }
                 }
             }
 
@@ -229,6 +246,11 @@ public class PlayerListener implements Listener, PluginMessageListener {
             plugin.getLogger()
                     .info("Player " + player.getName() + " joining with fresh profile. Lock will be released on quit.");
         }
+
+        // Update identity record on join to ensure name/hash/timestamp are current
+        com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
+            databaseManager.updateLastKnownName(uuid, player.getName());
+        });
 
         // Start heartbeat task to periodically update the lock via the scheduler bridge
         long heartbeatTicks = plugin.getLockHeartbeatSeconds() * 20L;

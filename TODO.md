@@ -25,7 +25,7 @@
 ### 5. Security & Identity (COMPLETED - v2.1.4-RC3)
 
 - [x] **Data Integrity Verification:** SHA-256 checksums prevent manual database tampering.
-- [x] **Identity History Tracking:** Tracking `last_known_name` enables automatic UUID change detection.
+- [x] **Identity History Tracking:** Tracking `last_known_name` and SHA-256 `identity_hash` enables automatic UUID change detection and secure hybrid support.
 - [x] **Manual Migration System:** Admins can securely link different UUIDs via `/databridge migrate`.
 - [x] **Standalone Sync Parity:** Improved data flush logic for servers running without proxies.
 

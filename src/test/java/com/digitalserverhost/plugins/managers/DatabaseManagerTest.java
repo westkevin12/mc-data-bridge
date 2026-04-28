@@ -110,13 +110,15 @@ public class DatabaseManagerTest {
         boolean result = databaseManager.saveAndReleaseLock(json, checksum, playerName, uuid, serverId);
 
         assertTrue(result);
-        verify(mockConnection).prepareStatement(contains("UPDATE `player_data` SET data = ?"));
+        verify(mockConnection).prepareStatement(contains("UPDATE `player_data` SET data = ?, data_checksum = ?, last_known_name = ?, identity_hash = ?, name_last_updated = ?, is_locked = 0"));
         // cannot easily verify setBytes with argument matchers for specific content but
         // we verify interactions
         verify(mockStatement).setString(2, checksum);
         verify(mockStatement).setString(3, playerName);
-        verify(mockStatement).setString(4, uuid.toString());
-        verify(mockStatement).setString(5, serverId);
+        verify(mockStatement).setString(eq(4), anyString()); // identity_hash
+        verify(mockStatement).setLong(eq(5), anyLong()); // name_last_updated
+        verify(mockStatement).setString(6, uuid.toString());
+        verify(mockStatement).setString(7, serverId);
     }
 
     @Test

@@ -20,6 +20,7 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 ## Features
 
 - **Hybrid Plugin:** A single JAR file works on your PaperMC/Purpur/Spigot/Folia servers and your BungeeCord/Waterfall/Velocity proxy, automatically activating the correct functionality for each platform.
+- **Identity History Tracking:** Automatically tracks `last_known_name` and a secure `identity_hash` (SHA-256) to enable secure UUID change detection and prevent identity hijacking in hybrid (Cracked/Premium) environments.
 - **Folia Support:** Built-in compatibility for Folia's regionalized threading model, ensuring safe operation on high-performance multi-threaded servers.
 - **Database Flexibility:** Supports **MySQL**, **MariaDB**, and **SQLite**. Choose the backend that best fits your network size.
 - **Proxy-Initiated Saves:** The proxy (BungeeCord/Velocity) orchestrates the data saving process, ensuring that a player's data is saved from their source server _before_ they connect to the destination server. This eliminates race conditions and ensures data is never lost during a server switch.
@@ -273,4 +274,4 @@ MC Data Bridge uses a consolidated command hub for all administrative tasks.
 - **Security Best Practice:** For production MySQL servers, use a dedicated user with limited permissions (`SELECT`, `INSERT`, `UPDATE`, `CREATE`, `ALTER`).
 - **Backups:** Use the provided configuration documentation to implement true offsite backups.
 - **Connectivity & Firewalls:** Ensure your Minecraft servers and proxy can open a network connection to your database's `host` and `port`.
-- **Automatic Schema:** The plugin will automatically create and update the `player_data` table. The schema includes `uuid`, `data`, `is_locked`, `locking_server`, `lock_timestamp`, and `last_updated`.
+- **Automatic Schema:** The plugin will automatically create and update the `player_data` table. The schema includes `uuid`, `data`, `is_locked`, `locking_server`, `lock_timestamp`, `last_known_name`, `identity_hash`, `name_last_updated`, `data_checksum`, and `last_updated`.
