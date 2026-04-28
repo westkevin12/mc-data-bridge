@@ -21,6 +21,9 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 
 - **Hybrid Plugin:** A single JAR file works on your PaperMC/Purpur/Spigot/Folia servers and your BungeeCord/Waterfall/Velocity proxy, automatically activating the correct functionality for each platform.
 - **Identity History Tracking:** Automatically tracks `last_known_name` and a secure `identity_hash` (SHA-256) to enable secure UUID change detection and prevent identity hijacking in hybrid (Cracked/Premium) environments.
+- **Identity Modes (PREMIUM/HYBRID):** Toggle between strict UUID enforcement for premium servers or flexible identity shifts for hybrid/cracked networks.
+- **FastLogin & AuthMe Auto-Migration:** Automatically migrates player data from offline to premium UUIDs when a player is verified by FastLogin (PreLogin) or AuthMe (Login).
+- **TOTP Support:** Compatible with AuthMe's native TOTP/2FA system; auto-migration triggers only after full multi-factor authentication is completed.
 - **Folia Support:** Built-in compatibility for Folia's regionalized threading model, ensuring safe operation on high-performance multi-threaded servers.
 - **Database Flexibility:** Supports **MySQL**, **MariaDB**, and **SQLite**. Choose the backend that best fits your network size.
 - **Proxy-Initiated Saves:** The proxy (BungeeCord/Velocity) orchestrates the data saving process, ensuring that a player's data is saved from their source server _before_ they connect to the destination server. This eliminates race conditions and ensures data is never lost during a server switch.
@@ -58,7 +61,7 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 
 ## 🛠 Technical Deep Dive
 
-MC Data Bridge is built with a **Security-First** approach to player state. It utilizes SHA-256 data checksums to prevent manual database tampering and a Proxy-orchestrated handshake to eliminate data loss and duplication exploits.
+MC Data Bridge is built with a **Security-First** approach to player state. It utilizes SHA-256 data checksums to prevent manual database tampering, a Proxy-orchestrated handshake to eliminate data loss, and **Server-Side Salting** (via a configurable `security.seed`) to protect against rainbow table and pre-computation attacks on player identities.
 
 ### 1. The Secure Handshake (Happy Path)
 
@@ -232,6 +235,31 @@ sync-data:
   statistics: true
   pdc: true
   flight-gamemode: true
+
+# Security Settings
+security:
+  # A secret seed used to salt all cryptographic hashes.
+  # CHANGE THIS to a long, random string to secure your network.
+  seed: "change-me-to-a-long-random-string"
+  # Log identity collisions (name-UUID mismatches) to the console.
+  log-uuid-mismatches: true
+  # Verify data integrity checksums before loading.
+  verify-data-integrity: true
+
+# Identity & Migration Settings
+identity:
+  # PREMIUM: UUID for a name should NEVER change. Collisions require manual /migrate.
+  # HYBRID: Allows flexible identity shifts (useful for Cracked -> Premium transitions).
+  mode: PREMIUM
+
+  # If true, and FastLogin is installed, the plugin will attempt to 
+  # auto-migrate data if FastLogin confirms the player is a verified premium user.
+  auto-migrate-fastlogin: false
+
+  # If true, and AuthMe is installed, the plugin will attempt to 
+  # auto-migrate data once the player successfully logs in via AuthMe.
+  # This supports AuthMe's native TOTP/2FA as well.
+  auto-migrate-authme: false
 
 # Blacklist servers/worlds from syncing
 sync-blacklist:

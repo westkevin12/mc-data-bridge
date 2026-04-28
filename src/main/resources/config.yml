@@ -123,3 +123,23 @@ security:
   # Verify SHA-256 checksums of player data before loading.
   # This prevents data manipulation or corruption from being synced.
   verify-data-integrity: true
+
+# Identity & Migration Settings
+identity:
+  # PREMIUM: UUID for a name should NEVER change. Collisions require manual /migrate.
+  # HYBRID: Allows flexible identity shifts (useful for Cracked -> Premium transitions).
+  mode: PREMIUM
+
+  # If true, and FastLogin is installed, the plugin will attempt to 
+  # auto-migrate data if FastLogin confirms the player is a verified premium user.
+  auto-migrate-fastlogin: false
+
+  # If true, and AuthMe is installed, the plugin will attempt to 
+  # auto-migrate data once the player successfully logs in via AuthMe.
+  auto-migrate-authme: false
+
+  # A secret seed used to salt all cryptographic hashes (Identity Hash and Checksums).
+  # CHANGE THIS to a long, random string to secure your network.
+  # WARNING: If you change this later, existing identity hashes will be updated on next join,
+  # but data integrity checks will fall back to legacy mode until the data is re-saved.
+  seed: "change-me-to-a-long-random-string"

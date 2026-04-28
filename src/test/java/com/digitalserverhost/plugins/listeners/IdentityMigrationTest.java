@@ -47,6 +47,8 @@ class IdentityMigrationTest {
         lenient().when(mockPlugin.getConfig()).thenReturn(mock(org.bukkit.configuration.file.FileConfiguration.class));
         lenient().when(mockPlugin.isEnabled()).thenReturn(true);
         lenient().when(mockPlugin.isServerBlacklisted(anyString())).thenReturn(false);
+        lenient().when(mockPlugin.getIdentityMode()).thenReturn("HYBRID");
+        lenient().when(mockPlugin.getSecuritySeed()).thenReturn("test-seed");
     }
 
     @AfterEach

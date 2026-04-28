@@ -11,6 +11,7 @@ import java.util.UUID;
 
 public class BridgeCommand implements CommandExecutor {
 
+    private static final String PLUGIN_NAME = "mc-data-bridge";
     private final DatabaseManager databaseManager;
 
     public BridgeCommand(DatabaseManager databaseManager) {
@@ -43,10 +44,8 @@ public class BridgeCommand implements CommandExecutor {
                 handleMigrate(sender, args);
                 break;
             default:
-                com.digitalserverhost.plugins.utils.MessageUtils.sendMessage(sender, "&cUnknown subcommand. Usage: /databridge <unlock|inspect|migrate>");
-                break;
+                return false;
         }
-
         return true;
     }
 
@@ -56,7 +55,7 @@ public class BridgeCommand implements CommandExecutor {
             return;
         }
         String targetName = args[1];
-        Bukkit.getScheduler().runTaskAsynchronously(Bukkit.getPluginManager().getPlugin("mc-data-bridge"), () -> {
+        Bukkit.getScheduler().runTaskAsynchronously(Bukkit.getPluginManager().getPlugin(PLUGIN_NAME), () -> {
             UUID uuid = resolveUuid(targetName);
             if (uuid == null) {
                 com.digitalserverhost.plugins.utils.MessageUtils.sendMessage(sender, "&cCould not resolve player " + targetName);
@@ -86,14 +85,14 @@ public class BridgeCommand implements CommandExecutor {
         org.bukkit.entity.Player admin = (org.bukkit.entity.Player) sender;
         String targetName = args[1];
         
-        Bukkit.getScheduler().runTaskAsynchronously(Bukkit.getPluginManager().getPlugin("mc-data-bridge"), () -> {
+        Bukkit.getScheduler().runTaskAsynchronously(Bukkit.getPluginManager().getPlugin(PLUGIN_NAME), () -> {
             UUID uuid = resolveUuid(targetName);
             if (uuid == null) {
                 com.digitalserverhost.plugins.utils.MessageUtils.sendMessage(admin, "&cCould not resolve player " + targetName);
                 return;
             }
 
-            com.digitalserverhost.plugins.MCDataBridge plugin = (com.digitalserverhost.plugins.MCDataBridge) Bukkit.getPluginManager().getPlugin("mc-data-bridge");
+            com.digitalserverhost.plugins.MCDataBridge plugin = (com.digitalserverhost.plugins.MCDataBridge) Bukkit.getPluginManager().getPlugin(PLUGIN_NAME);
             new com.digitalserverhost.plugins.utils.DataManagementGUI(plugin, databaseManager).openPlayerInspector(admin, uuid, targetName);
         });
     }
@@ -106,7 +105,7 @@ public class BridgeCommand implements CommandExecutor {
         String sourceInput = args[1];
         String targetInput = args[2];
 
-        Bukkit.getScheduler().runTaskAsynchronously(Bukkit.getPluginManager().getPlugin("mc-data-bridge"), () -> {
+        Bukkit.getScheduler().runTaskAsynchronously(Bukkit.getPluginManager().getPlugin(PLUGIN_NAME), () -> {
             UUID sourceUuid = resolveUuid(sourceInput);
             UUID targetUuid = resolveUuid(targetInput);
 
@@ -135,7 +134,7 @@ public class BridgeCommand implements CommandExecutor {
     private UUID resolveUuid(String input) {
         try {
             return UUID.fromString(input);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             // Try DB first
             UUID dbUuid = databaseManager.getUuidByName(input);
             if (dbUuid != null) return dbUuid;

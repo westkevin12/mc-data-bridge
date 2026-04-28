@@ -26,6 +26,8 @@
 
 - [x] **Data Integrity Verification:** SHA-256 checksums prevent manual database tampering.
 - [x] **Identity History Tracking:** Tracking `last_known_name` and SHA-256 `identity_hash` enables automatic UUID change detection and secure hybrid support.
+- [x] **Identity Modes & FastLogin Integration:** Introduced PREMIUM/HYBRID modes and automated data migration for verified premium users.
+- [x] **Server-Side Salting (Security Seed):** Configurable `security.seed` salts all hashes, preventing pre-computation attacks and securing data even in cases of database exposure.
 - [x] **Manual Migration System:** Admins can securely link different UUIDs via `/databridge migrate`.
 - [x] **Standalone Sync Parity:** Improved data flush logic for servers running without proxies.
 
@@ -33,7 +35,6 @@
 
 ### 6. Future Roadmap
 
-- [ ] **External Auth Addons:** Modular support for linking accounts via FastLogin, AuthMe, or TOTP.
+- [x] **External Auth Addons:** Modular support for linking accounts via FastLogin, AuthMe, and TOTP (via AuthMe).
 - [ ] **Global Locking Service:** Dedicated micro-service for ultra-fast locking in massive networks.
 - [ ] **Additional Database Drivers:** PostgreSQL and MongoDB support.
-

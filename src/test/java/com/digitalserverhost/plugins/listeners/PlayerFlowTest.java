@@ -90,6 +90,8 @@ class PlayerFlowTest {
         lenient().when(mockPlugin.isSyncEnabledNewFeature("advancements")).thenReturn(false);
         lenient().when(mockPlugin.isSyncEnabledNewFeature("statistics")).thenReturn(false);
         lenient().when(mockPlugin.isSyncEnabledNewFeature("ender-chest")).thenReturn(false);
+        lenient().when(mockPlugin.getIdentityMode()).thenReturn("HYBRID");
+        lenient().when(mockPlugin.getSecuritySeed()).thenReturn("test-seed");
     }
 
     @AfterEach
@@ -151,7 +153,8 @@ class PlayerFlowTest {
             lenient().when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
             lenient().when(mockStatement.executeQuery()).thenReturn(mockResultSet);
             lenient().when(mockResultSet.next()).thenReturn(false);
-        } catch (Exception e) {
+        } catch (Exception _) {
+            // Ignore setup errors in mock chaining
         }
 
         PlayerMock player = server.addPlayer();
@@ -179,7 +182,7 @@ class PlayerFlowTest {
 
         PlayerMock player = server.addPlayer();
 
-        when(mockDatabaseManager.saveAndReleaseLock(anyString(), anyString(), anyString(), eq(player.getUniqueId()), anyString()))
+        when(mockDatabaseManager.saveAndReleaseLock(anyString(), anyString(), anyString(), eq(player.getUniqueId()), anyString(), any()))
                 .thenReturn(true);
 
         PlayerQuitEvent event = new PlayerQuitEvent(player, net.kyori.adventure.text.Component.text("Quit"), org.bukkit.event.player.PlayerQuitEvent.QuitReason.DISCONNECTED);
@@ -188,7 +191,7 @@ class PlayerFlowTest {
 
         // Verify async save call with timeout
         verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(player.getUniqueId()),
-                anyString());
+                anyString(), any());
     }
 
     @Test
@@ -224,7 +227,7 @@ class PlayerFlowTest {
 
         // Wait for save to complete (async)
         verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(player.getUniqueId()),
-                anyString());
+                anyString(), any());
 
         // 3. Advance time again -> Heartbeat should NOT run
         server.getScheduler().performTicks(30 * 20L + 50);
@@ -255,7 +258,7 @@ class PlayerFlowTest {
         PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
 
         // Setup passing checks for save
-        lenient().when(mockDatabaseManager.saveAndReleaseLock(anyString(), anyString(), anyString(), any(UUID.class), anyString()))
+        lenient().when(mockDatabaseManager.saveAndReleaseLock(anyString(), anyString(), anyString(), any(UUID.class), anyString(), any()))
                 .thenReturn(true);
 
         PlayerMock player = server.addPlayer();
@@ -271,7 +274,7 @@ class PlayerFlowTest {
         // 1. Receive Message -> Triggers async save
         listener.onPluginMessageReceived("mc-data-bridge:main", player, message);
 
-        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(uuid), anyString());
+        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(uuid), anyString(), any());
 
         // Clear invocations to verify Quit behavior
         clearInvocations(mockDatabaseManager);
@@ -281,6 +284,6 @@ class PlayerFlowTest {
         listener.onPlayerQuit(quitEvent);
 
         // Verify save was NOT called again
-        verify(mockDatabaseManager, never()).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(uuid), anyString());
+        verify(mockDatabaseManager, never()).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(uuid), anyString(), any());
     }
 }

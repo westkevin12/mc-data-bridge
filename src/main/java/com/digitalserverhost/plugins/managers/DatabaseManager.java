@@ -7,10 +7,15 @@ import org.bukkit.configuration.file.FileConfiguration;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.UUID;
+import java.util.logging.Logger;
 
 public class DatabaseManager {
+
+    private static final Logger LOGGER = Logger.getLogger("mc-data-bridge");
+    private static final String UPDATE_SQL_PREFIX = "UPDATE ";
 
     private final HikariDataSource dataSource;
     private final long lockTimeout;
@@ -91,49 +96,59 @@ public class DatabaseManager {
     public boolean acquireLock(UUID uuid, String serverId) throws SQLException {
         try (Connection connection = getConnection()) {
             // Use database-side time to prevent race conditions caused by clock drift between servers
-            PreparedStatement updateStmt = connection.prepareStatement(
-                    "UPDATE " + tableName
-                            + " SET is_locked = 1, locking_server = ?, lock_timestamp = " + currentTimeFunction
-                            + " WHERE uuid = ? AND (is_locked = 0 OR is_locked IS NULL OR lock_timestamp < " + currentTimeFunction + " - ?)");
-            updateStmt.setString(1, serverId);
-            updateStmt.setString(2, uuid.toString());
-            updateStmt.setLong(3, lockTimeout);
+            String updateSql = UPDATE_SQL_PREFIX + tableName
+                    + " SET is_locked = 1, locking_server = ?, lock_timestamp = " + currentTimeFunction
+                    + " WHERE uuid = ? AND (is_locked = 0 OR is_locked IS NULL OR lock_timestamp < " + currentTimeFunction + " - ?)";
+            
+            try (PreparedStatement updateStmt = connection.prepareStatement(updateSql)) {
+                updateStmt.setString(1, serverId);
+                updateStmt.setString(2, uuid.toString());
+                updateStmt.setLong(3, lockTimeout);
 
-            if (updateStmt.executeUpdate() > 0) {
-                return true; // Lock acquired on existing row
+                if (updateStmt.executeUpdate() > 0) {
+                    return true; // Lock acquired on existing row
+                }
             }
 
             try {
-                PreparedStatement insertStmt = connection.prepareStatement(
-                        "INSERT INTO " + tableName
-                                + " (uuid, data, is_locked, locking_server, lock_timestamp) VALUES (?, NULL, 1, ?, " + currentTimeFunction + ")");
-                insertStmt.setString(1, uuid.toString());
-                insertStmt.setString(2, serverId);
-                insertStmt.executeUpdate();
-                return true; // Lock acquired via new row
-            } catch (SQLException e) {
-                // This is expected if a race condition occurred and another server inserted the
-                // row first.
+                String insertSql = "INSERT INTO " + tableName
+                        + " (uuid, data, is_locked, locking_server, lock_timestamp) VALUES (?, NULL, 1, ?, " + currentTimeFunction + ")";
+                try (PreparedStatement insertStmt = connection.prepareStatement(insertSql)) {
+                    insertStmt.setString(1, uuid.toString());
+                    insertStmt.setString(2, serverId);
+                    return insertStmt.executeUpdate() > 0;
+                }
+            } catch (SQLException _) {
+                // Potential race condition: someone else inserted the row while we were trying.
+                // Re-attempting the update one last time.
+                try (PreparedStatement retryUpdateStmt = connection.prepareStatement(updateSql)) {
+                    retryUpdateStmt.setString(1, serverId);
+                    retryUpdateStmt.setString(2, uuid.toString());
+                    retryUpdateStmt.setLong(3, lockTimeout);
+                    return retryUpdateStmt.executeUpdate() > 0;
+                }
             }
-
-            return false;
         }
     }
 
-    public boolean saveAndReleaseLock(String json, String checksum, String name, UUID uuid, String serverId) throws SQLException {
-        String sql = "UPDATE " + tableName
+    public boolean saveAndReleaseLock(String json, String checksum, String name, UUID uuid, String serverId, String seed) throws SQLException {
+        String sql = UPDATE_SQL_PREFIX + tableName
                 + " SET data = ?, data_checksum = ?, last_known_name = ?, identity_hash = ?, name_last_updated = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setBytes(1, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             statement.setString(2, checksum);
             statement.setString(3, name);
-            statement.setString(4, HashUtils.generateIdentityHash(name, uuid));
+            statement.setString(4, HashUtils.generateIdentityHash(name, uuid, seed));
             statement.setLong(5, System.currentTimeMillis());
             statement.setString(6, uuid.toString());
             statement.setString(7, serverId);
             return statement.executeUpdate() > 0;
         }
+    }
+
+    public boolean saveAndReleaseLock(String json, String checksum, String name, UUID uuid, String serverId) throws SQLException {
+        return saveAndReleaseLock(json, checksum, name, uuid, serverId, null);
     }
 
     public boolean saveAndReleaseLock(String json, UUID uuid, String serverId) throws SQLException {
@@ -142,13 +157,11 @@ public class DatabaseManager {
 
     public void releaseLock(UUID uuid, String serverId) {
         if (serverId == null || serverId.isEmpty()) {
-            System.err.println(
-                    "[mc-data-bridge] CRITICAL: releaseLock was called with a null or empty serverId for UUID: "
-                            + uuid);
+            LOGGER.log(java.util.logging.Level.SEVERE, "CRITICAL: releaseLock was called with a null or empty serverId for UUID: {0}", uuid);
             return;
         }
 
-        String sql = "UPDATE " + tableName
+        String sql = UPDATE_SQL_PREFIX + tableName
                 + " SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
                 PreparedStatement releaseStatement = connection.prepareStatement(sql)) {
@@ -156,8 +169,7 @@ public class DatabaseManager {
             releaseStatement.setString(2, serverId);
             releaseStatement.executeUpdate();
         } catch (Exception e) {
-            System.err.println("[mc-data-bridge] Failed to release lock for " + uuid + " on server " + serverId + ": "
-                    + e.getMessage());
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed to release lock for {0} on server {1}: {2}", new Object[]{uuid, serverId, e.getMessage()});
         }
     }
 
@@ -167,44 +179,47 @@ public class DatabaseManager {
      * Used by the admin unlock command.
      */
     public boolean releaseLock(UUID uuid) {
-        String sql = "UPDATE " + tableName
+        String sql = UPDATE_SQL_PREFIX + tableName
                 + " SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ?";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, uuid.toString());
             int rows = statement.executeUpdate();
-            return rows > 0; // Return true if a row was actually updated (lock released or at least row
-                             // touched)
+            return rows > 0;
         } catch (SQLException e) {
-            System.err.println("[mc-data-bridge] Failed to force release lock for " + uuid + ": " + e.getMessage());
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed to force release lock for {0}: {1}", new Object[]{uuid, e.getMessage()});
             return false;
         }
     }
 
     public void updateLock(UUID uuid, String serverId) {
-        String sql = "UPDATE " + tableName + " SET lock_timestamp = " + currentTimeFunction + " WHERE uuid = ? AND locking_server = ?";
+        String sql = UPDATE_SQL_PREFIX + tableName + " SET lock_timestamp = " + currentTimeFunction + " WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, uuid.toString());
             statement.setString(2, serverId);
             statement.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("[mc-data-bridge] Failed to update lock for " + uuid + ": " + e.getMessage());
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed to update lock for {0}: {1}", new Object[]{uuid, e.getMessage()});
         }
     }
 
-    public void updateLastKnownName(UUID uuid, String name) {
-        String sql = "UPDATE " + tableName + " SET last_known_name = ?, identity_hash = ?, name_last_updated = ? WHERE uuid = ?";
+    public void updateLastKnownName(UUID uuid, String name, String seed) {
+        String sql = UPDATE_SQL_PREFIX + tableName + " SET last_known_name = ?, identity_hash = ?, name_last_updated = ? WHERE uuid = ?";
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, name);
-            statement.setString(2, HashUtils.generateIdentityHash(name, uuid));
+            statement.setString(2, HashUtils.generateIdentityHash(name, uuid, seed));
             statement.setLong(3, System.currentTimeMillis());
             statement.setString(4, uuid.toString());
             statement.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("[mc-data-bridge] Failed to update last known name for " + uuid + ": " + e.getMessage());
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed to update last known name for {0}: {1}", new Object[]{uuid, e.getMessage()});
         }
+    }
+
+    public void updateLastKnownName(UUID uuid, String name) {
+        updateLastKnownName(uuid, name, null);
     }
 
     public UUID getUuidByName(String name) {
@@ -218,7 +233,7 @@ public class DatabaseManager {
                 }
             }
         } catch (Exception e) {
-            System.err.println("[mc-data-bridge] Failed to get UUID by name: " + e.getMessage());
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed to get UUID by name: {0}", e.getMessage());
         }
         return null;
     }
@@ -238,7 +253,7 @@ public class DatabaseManager {
                 }
             }
         } catch (Exception e) {
-            System.err.println("[mc-data-bridge] Failed to get identity record for " + uuid + ": " + e.getMessage());
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed to get identity record for {0}: {1}", new Object[]{uuid, e.getMessage()});
         }
         return null;
     }
@@ -259,38 +274,29 @@ public class DatabaseManager {
         public long getNameLastUpdated() { return nameLastUpdated; }
     }
 
+
     public boolean migrateData(UUID oldUuid, UUID newUuid) throws SQLException {
-        try (Connection connection = getConnection()) {
-            connection.setAutoCommit(false);
-            try {
-                // Check if target UUID already has data. If so, we might want to backup or delete it.
-                // For now, we'll assume we are overwriting the target or merging.
-                // A safe approach is to delete the target's existing data row if it exists.
-                String deleteSql = "DELETE FROM " + tableName + " WHERE uuid = ?";
-                try (PreparedStatement deleteStmt = connection.prepareStatement(deleteSql)) {
-                    deleteStmt.setString(1, newUuid.toString());
-                    deleteStmt.executeUpdate();
+        if (oldUuid == null || newUuid == null) return false;
+        
+        // 1. Check if newUuid already has data (don't overwrite)
+        String checkSql = "SELECT uuid FROM " + tableName + " WHERE uuid = ?";
+        try (Connection connection = getConnection();
+                PreparedStatement checkStmt = connection.prepareStatement(checkSql)) {
+            checkStmt.setString(1, newUuid.toString());
+            try (ResultSet rs = checkStmt.executeQuery()) {
+                if (rs.next()) {
+                    return false; // Target UUID already has data
                 }
-
-                // Update the old row to the new UUID
-                String updateSql = "UPDATE " + tableName + " SET uuid = ? WHERE uuid = ?";
-                try (PreparedStatement updateStmt = connection.prepareStatement(updateSql)) {
-                    updateStmt.setString(1, newUuid.toString());
-                    updateStmt.setString(2, oldUuid.toString());
-                    if (updateStmt.executeUpdate() == 0) {
-                        connection.rollback();
-                        return false;
-                    }
-                }
-
-                connection.commit();
-                return true;
-            } catch (SQLException e) {
-                connection.rollback();
-                throw e;
-            } finally {
-                connection.setAutoCommit(true);
             }
+        }
+
+        // 2. Perform migration
+        String migrateSql = UPDATE_SQL_PREFIX + tableName + " SET uuid = ? WHERE uuid = ?";
+        try (Connection connection = getConnection();
+                PreparedStatement migrateStmt = connection.prepareStatement(migrateSql)) {
+            migrateStmt.setString(1, newUuid.toString());
+            migrateStmt.setString(2, oldUuid.toString());
+            return migrateStmt.executeUpdate() > 0;
         }
     }
 

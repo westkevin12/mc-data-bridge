@@ -4,6 +4,7 @@ name: mc-data-bridge
 author: DigitalServerHost
 api-version: 1.21
 folia-supported: true
+softdepend: [FastLogin, AuthMe]
 permissions:
   databridge.admin:
     description: Allows use of admin commands for MC Data Bridge

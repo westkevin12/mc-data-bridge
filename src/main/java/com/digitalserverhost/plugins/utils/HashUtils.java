@@ -15,12 +15,13 @@ public class HashUtils {
      * @param uuid The player's UUID.
      * @return A hexadecimal representation of the SHA-256 hash.
      */
-    public static String generateIdentityHash(String name, UUID uuid) {
+    public static String generateIdentityHash(String name, UUID uuid, String seed) {
         if (name == null || uuid == null) {
             return null;
         }
 
-        String input = name.toLowerCase() + ":" + uuid.toString();
+        // Salt the input with the server seed
+        String input = name.toLowerCase() + ":" + uuid.toString() + (seed != null ? ":" + seed : "");
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] encodedHash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
@@ -28,6 +29,10 @@ public class HashUtils {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 algorithm not found", e);
         }
+    }
+
+    public static String generateIdentityHash(String name, UUID uuid) {
+        return generateIdentityHash(name, uuid, null);
     }
 
     private static String bytesToHex(byte[] hash) {

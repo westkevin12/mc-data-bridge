@@ -9,6 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 
 public class MCDataBridge extends JavaPlugin {
@@ -17,8 +18,20 @@ public class MCDataBridge extends JavaPlugin {
     private boolean debugMode;
     private String serverId;
     private String tableName;
+    private String securitySeed;
+    private String identityMode;
+    private boolean autoMigrateFastLogin;
+    private boolean autoMigrateAuthMe;
     private PlayerListener playerListener;
     private static final Gson GSON = new GsonBuilder().create();
+    private static final String BANNER = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
+    private static final String DEFAULT_TABLE_NAME = "player_data";
+    private static final String PLUGIN_CHANNEL = "mc-data-bridge:main";
+    private static final String SQLITE = "sqlite";
+    private static final String ALTER_TABLE_SQL = "ALTER TABLE ";
+    private static final String SYNC_DATA_PREFIX = "sync-data.";
+    private static final String INTEGER_DEFAULT_0 = "INTEGER DEFAULT 0";
+    private static final String TEXT_DEFAULT_NULL = "TEXT DEFAULT NULL";
 
     @Override
     public void onEnable() {
@@ -32,22 +45,26 @@ public class MCDataBridge extends JavaPlugin {
         this.debugMode = getConfig().getBoolean("debug", false);
         this.serverId = getConfig().getString("server-id", "default-server");
         String tablePrefix = getConfig().getString("table-prefix", "");
-        if (!tablePrefix.matches("^[a-zA-Z0-9_]*$")) {
-            getLogger().severe("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-            getLogger().severe("!!! INVALID table-prefix: '" + tablePrefix + "'");
+        if (!tablePrefix.isEmpty() && !tablePrefix.matches("\\w+")) {
+            getLogger().severe(BANNER);
+            getLogger().log(java.util.logging.Level.SEVERE, "!!! INVALID table-prefix: {0}", tablePrefix);
             getLogger().severe("!!! Only alphanumeric characters and underscores are allowed.");
             getLogger().severe("!!! Plugin will now disable to prevent SQL errors.   !!!");
-            getLogger().severe("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            getLogger().severe(BANNER);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        this.tableName = tablePrefix + "player_data";
+        this.tableName = tablePrefix + DEFAULT_TABLE_NAME;
         if (this.serverId.equals("default-server")) {
-            getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            getLogger().warning(BANNER);
             getLogger().warning("!!! Server-id is not set in config.yml. Using default. !!!");
             getLogger().warning("!!! This is UNSAFE for multi-server setups.           !!!");
-            getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            getLogger().warning(BANNER);
         }
+        this.securitySeed = getConfig().getString("security.seed", "change-me-to-a-long-random-string");
+        this.identityMode = getConfig().getString("identity.mode", "PREMIUM").toUpperCase();
+        this.autoMigrateFastLogin = getConfig().getBoolean("identity.auto-migrate-fastlogin", false);
+        this.autoMigrateAuthMe = getConfig().getBoolean("identity.auto-migrate-authme", false);
         databaseManager = new DatabaseManager(getConfig(), this.tableName);
         
         // Ensure table and columns exist synchronously before events are registered
@@ -61,14 +78,20 @@ public class MCDataBridge extends JavaPlugin {
         // Register its Bukkit events
         getServer().getPluginManager().registerEvents(this.playerListener, this);
 
+        // Register AuthMe auto-migration listener if enabled
+        if (getServer().getPluginManager().isPluginEnabled("AuthMe")) {
+            getServer().getPluginManager().registerEvents(new com.digitalserverhost.plugins.listeners.AuthMeListener(this, databaseManager), this);
+            getLogger().info("AuthMe integration enabled for auto-migration.");
+        }
+
         org.bukkit.command.PluginCommand cmd = getCommand("databridge");
         if (cmd != null) {
             cmd.setExecutor(new com.digitalserverhost.plugins.commands.BridgeCommand(databaseManager));
         }
 
         // Register it as the listener for our custom plugin channel
-        this.getServer().getMessenger().registerIncomingPluginChannel(this, "mc-data-bridge:main", this.playerListener);
-        this.getServer().getMessenger().registerOutgoingPluginChannel(this, "mc-data-bridge:main");
+        this.getServer().getMessenger().registerIncomingPluginChannel(this, PLUGIN_CHANNEL, this.playerListener);
+        this.getServer().getMessenger().registerOutgoingPluginChannel(this, PLUGIN_CHANNEL);
 
         // Initialize Backup Manager
         new com.digitalserverhost.plugins.managers.BackupManager(this, databaseManager);
@@ -78,8 +101,8 @@ public class MCDataBridge extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        this.getServer().getMessenger().unregisterIncomingPluginChannel(this, "mc-data-bridge:main");
-        this.getServer().getMessenger().unregisterOutgoingPluginChannel(this, "mc-data-bridge:main");
+        this.getServer().getMessenger().unregisterIncomingPluginChannel(this, PLUGIN_CHANNEL);
+        this.getServer().getMessenger().unregisterOutgoingPluginChannel(this, PLUGIN_CHANNEL);
         if (playerListener != null) {
             playerListener.shutdown();
         }
@@ -91,11 +114,37 @@ public class MCDataBridge extends JavaPlugin {
 
     private void createServerTable() {
         String escapedTableName = "`" + tableName + "`";
-        String createTableSQL;
         String dbType = getConfig().getString("database.type", "mysql").toLowerCase();
 
-        if (dbType.equals("sqlite")) {
-            createTableSQL = "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
+        try (Connection connection = databaseManager.getConnection();
+                Statement statement = connection.createStatement()) {
+
+            migrateFromLegacyTable(connection, statement, escapedTableName);
+            
+            String createTableSQL = getCreateTableSQL(dbType, escapedTableName);
+            statement.executeUpdate(createTableSQL);
+            getLogger().log(java.util.logging.Level.INFO, "Successfully verified or created the {0} table.", tableName);
+
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "is_locked", "BOOLEAN DEFAULT 0", INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "locking_server", "VARCHAR(255) DEFAULT NULL", TEXT_DEFAULT_NULL);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "lock_timestamp", "BIGINT DEFAULT 0", INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "last_known_name", "VARCHAR(16) DEFAULT NULL", TEXT_DEFAULT_NULL);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "data_checksum", "VARCHAR(64) DEFAULT NULL", TEXT_DEFAULT_NULL);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "identity_hash", "VARCHAR(64) DEFAULT NULL", TEXT_DEFAULT_NULL);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "name_last_updated", "BIGINT DEFAULT 0", INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "last_updated", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "DATETIME DEFAULT CURRENT_TIMESTAMP");
+
+            migrateDataColumn(connection, statement, escapedTableName, dbType);
+            
+        } catch (Exception e) {
+            getLogger().log(java.util.logging.Level.SEVERE, "CRITICAL: Error creating or updating player_data table: {0}", e.getMessage());
+            getServer().getPluginManager().disablePlugin(this);
+        }
+    }
+
+    private String getCreateTableSQL(String dbType, String escapedTableName) {
+        if (dbType.equals(SQLITE)) {
+            return "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
                     "uuid TEXT PRIMARY KEY, " +
                     "data BLOB, " +
                     "is_locked INTEGER DEFAULT 0, " +
@@ -107,7 +156,7 @@ public class MCDataBridge extends JavaPlugin {
                     "name_last_updated INTEGER DEFAULT 0, " +
                     "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);";
         } else {
-            createTableSQL = "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
+            return "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
                     "uuid VARCHAR(36) NOT NULL, " +
                     "data LONGBLOB, " +
                     "is_locked BOOLEAN DEFAULT 0, " +
@@ -120,113 +169,62 @@ public class MCDataBridge extends JavaPlugin {
                     "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
                     "PRIMARY KEY (uuid)) ENGINE=InnoDB;";
         }
+    }
 
-        try (Connection connection = databaseManager.getConnection();
-                Statement statement = connection.createStatement()) {
+    private void migrateFromLegacyTable(Connection connection, Statement statement, String escapedTableName) throws SQLException {
+        if (!tableName.equals(DEFAULT_TABLE_NAME)) {
+            try {
+                ResultSet oldTable = connection.getMetaData().getTables(null, null, DEFAULT_TABLE_NAME, null);
+                boolean oldExists = oldTable.next();
+                oldTable.close();
 
-            // Check for migration from default 'player_data' to prefixed table
-            if (!tableName.equals("player_data")) {
-                try {
-                    ResultSet oldTable = connection.getMetaData().getTables(null, null, "player_data", null);
-                    boolean oldExists = oldTable.next();
-                    oldTable.close();
+                ResultSet newTable = connection.getMetaData().getTables(null, null, tableName, null);
+                boolean newExists = newTable.next();
+                newTable.close();
 
-                    ResultSet newTable = connection.getMetaData().getTables(null, null, tableName, null);
-                    boolean newExists = newTable.next();
-                    newTable.close();
-
-                    if (oldExists && !newExists) {
-                        getLogger().warning("Detected old 'player_data' table and new prefix setting.");
-                        getLogger().warning("Migrating 'player_data' to '" + tableName + "'...");
-                        statement.executeUpdate("RENAME TABLE `player_data` TO " + escapedTableName);
-                        getLogger().info("Migration successful!");
-                    }
-                } catch (Exception e) {
-                    getLogger().severe("Failed to migrate table: " + e.getMessage());
+                if (oldExists && !newExists) {
+                    getLogger().warning("Detected old 'player_data' table and new prefix setting. Migrating...");
+                    statement.executeUpdate("RENAME TABLE `" + DEFAULT_TABLE_NAME + "` TO " + escapedTableName);
+                    getLogger().info("Migration successful!");
                 }
+            } catch (Exception e) {
+                getLogger().log(java.util.logging.Level.SEVERE, "Failed to migrate table: {0}", e.getMessage());
             }
+        }
+    }
 
-            statement.executeUpdate(createTableSQL);
-            getLogger().info("Successfully verified or created the '" + tableName + "' table.");
+    private void ensureColumnExists(Connection connection, Statement statement, String escapedTableName, String dbType, 
+                                  String column, String mysqlType, String sqliteType) throws SQLException {
+        if (!connection.getMetaData().getColumns(null, null, tableName, column).next()) {
+            String type = dbType.equals(SQLITE) ? sqliteType : mysqlType;
+            statement.executeUpdate(ALTER_TABLE_SQL + escapedTableName + " ADD COLUMN " + column + " " + type);
+        }
+    }
 
-            if (!connection.getMetaData().getColumns(null, null, tableName, "is_locked").next()) {
-                statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN is_locked BOOLEAN DEFAULT 0");
-            }
-            if (!connection.getMetaData().getColumns(null, null, tableName, "locking_server").next()) {
-                statement.executeUpdate(
-                        "ALTER TABLE " + escapedTableName + " ADD COLUMN locking_server VARCHAR(255) DEFAULT NULL");
-            }
-            if (!connection.getMetaData().getColumns(null, null, tableName, "lock_timestamp").next()) {
-                statement.executeUpdate(
-                        "ALTER TABLE " + escapedTableName + " ADD COLUMN lock_timestamp BIGINT DEFAULT 0");
-            }
-            if (!connection.getMetaData().getColumns(null, null, tableName, "last_known_name").next()) {
-                if (dbType.equals("sqlite")) {
-                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN last_known_name TEXT DEFAULT NULL");
-                } else {
-                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN last_known_name VARCHAR(16) DEFAULT NULL");
-                }
-            }
-            if (!connection.getMetaData().getColumns(null, null, tableName, "data_checksum").next()) {
-                if (dbType.equals("sqlite")) {
-                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN data_checksum TEXT DEFAULT NULL");
-                } else {
-                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN data_checksum VARCHAR(64) DEFAULT NULL");
-                }
-            }
-            if (!connection.getMetaData().getColumns(null, null, tableName, "identity_hash").next()) {
-                if (dbType.equals("sqlite")) {
-                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN identity_hash TEXT DEFAULT NULL");
-                } else {
-                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN identity_hash VARCHAR(64) DEFAULT NULL");
-                }
-            }
-            if (!connection.getMetaData().getColumns(null, null, tableName, "name_last_updated").next()) {
-                if (dbType.equals("sqlite")) {
-                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN name_last_updated INTEGER DEFAULT 0");
-                } else {
-                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN name_last_updated BIGINT DEFAULT 0");
-                }
-            }
-            if (!connection.getMetaData().getColumns(null, null, tableName, "last_updated").next()) {
-                if (dbType.equals("sqlite")) {
-                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN last_updated DATETIME DEFAULT CURRENT_TIMESTAMP");
-                } else {
-                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " ADD COLUMN last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
-                }
-            }
-
-            ResultSet columns = connection.getMetaData().getColumns(null, null, tableName, "data");
+    private void migrateDataColumn(Connection connection, Statement statement, String escapedTableName, String dbType) throws SQLException {
+        try (ResultSet columns = connection.getMetaData().getColumns(null, null, tableName, "data")) {
             if (columns.next()) {
                 String typeName = columns.getString("TYPE_NAME");
                 boolean needsMigration = "LONGTEXT".equalsIgnoreCase(typeName) || "TEXT".equalsIgnoreCase(typeName);
 
                 if (needsMigration) {
                     if (getConfig().getBoolean("auto-update-schema", false)) {
-                        if (dbType.equals("sqlite")) {
-                            // SQLite BLOB is dynamic and doesn't need explicit 'LONGBLOB' migration
-                            return;
-                        }
-                        getLogger().info("Migrating 'data' column from " + typeName + " to LONGBLOB as requested...");
-                        statement
-                                .executeUpdate("ALTER TABLE " + escapedTableName + " MODIFY COLUMN data LONGBLOB NULL");
-                        getLogger().info("Migration complete! 'data' is now LONGBLOB.");
+                        if (dbType.equals(SQLITE)) return;
+                        getLogger().log(java.util.logging.Level.INFO, "Migrating 'data' column from {0} to LONGBLOB as requested...", typeName);
+                        statement.executeUpdate(ALTER_TABLE_SQL + escapedTableName + " MODIFY COLUMN data LONGBLOB NULL");
                     } else {
-                        getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-                        getLogger().warning("!!! YOUR DATABASE IS USING '" + typeName + "' FOR 'data' COLUMN. !!!");
+                        getLogger().warning(BANNER);
+                        getLogger().log(java.util.logging.Level.WARNING, "!!! YOUR DATABASE IS USING {0} FOR 'data' COLUMN. !!!", typeName);
                         getLogger().warning("!!! IT IS RECOMMENDED TO SWITCH TO 'LONGBLOB' !!!");
                         getLogger().warning("!!! ENABLE 'auto-update-schema: true' IN CONFIG TO FIX AUTOMATICALLY !!!");
-                        getLogger().warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                        getLogger().warning(BANNER);
                     }
                 }
 
                 if ("NO".equalsIgnoreCase(columns.getString("IS_NULLABLE"))) {
-                    statement.executeUpdate("ALTER TABLE " + escapedTableName + " MODIFY COLUMN data LONGBLOB NULL");
+                    statement.executeUpdate(ALTER_TABLE_SQL + escapedTableName + " MODIFY COLUMN data LONGBLOB NULL");
                 }
             }
-        } catch (Exception e) {
-            getLogger().severe("CRITICAL: Error creating or updating player_data table: " + e.getMessage());
-            getServer().getPluginManager().disablePlugin(this);
         }
     }
 
@@ -242,14 +240,12 @@ public class MCDataBridge extends JavaPlugin {
             int affectedRows = statement.executeUpdate();
 
             if (affectedRows > 0) {
-                getLogger()
-                        .info("Released " + affectedRows + " orphaned player data locks for server: " + this.serverId);
+                getLogger().log(java.util.logging.Level.INFO, "Released {0} orphaned player data locks for server: {1}", new Object[]{affectedRows, this.serverId});
             } else {
-                getLogger().info("No orphaned player data locks found for server: " + this.serverId);
+                getLogger().log(java.util.logging.Level.INFO, "No orphaned player data locks found for server: {0}", this.serverId);
             }
         } catch (Exception e) {
-            getLogger().severe("CRITICAL: Could not release player data locks for " + this.serverId + "! Error: "
-                    + e.getMessage());
+            getLogger().log(java.util.logging.Level.SEVERE, "CRITICAL: Could not release player data locks for {0}! Error: {1}", new Object[]{this.serverId, e.getMessage()});
         }
     }
 
@@ -265,12 +261,32 @@ public class MCDataBridge extends JavaPlugin {
         return getConfig().getInt("lock-heartbeat-seconds", 30);
     }
 
+    public String getSecuritySeed() {
+        return securitySeed;
+    }
+
+    public String getIdentityMode() {
+        return identityMode;
+    }
+
+    public PlayerListener getPlayerListener() {
+        return playerListener;
+    }
+
+    public boolean isAutoMigrateFastLogin() {
+        return autoMigrateFastLogin;
+    }
+
+    public boolean isAutoMigrateAuthMe() {
+        return autoMigrateAuthMe;
+    }
+
     public boolean isSyncEnabled(String key) {
-        return getConfig().getBoolean("sync-data." + key, true); // Default to true for safety
+        return getConfig().getBoolean(SYNC_DATA_PREFIX + key, true); // Default to true for safety
     }
 
     public boolean isSyncEnabledNewFeature(String key) {
-        return getConfig().getBoolean("sync-data." + key, false); // Default to false for new features
+        return getConfig().getBoolean(SYNC_DATA_PREFIX + key, false); // Default to false for new features
     }
 
     public boolean isServerBlacklisted(String serverName) {
@@ -283,13 +299,9 @@ public class MCDataBridge extends JavaPlugin {
 
     private void updateConfig() {
         java.io.File configFile = new java.io.File(getDataFolder(), "config.yml");
-        if (!configFile.exists())
-            return;
+        if (!configFile.exists()) return;
 
-        // Load strictly from file to check valid keys without defaults interference
-        org.bukkit.configuration.file.YamlConfiguration fileConfig = org.bukkit.configuration.file.YamlConfiguration
-                .loadConfiguration(configFile);
-
+        org.bukkit.configuration.file.YamlConfiguration fileConfig = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(configFile);
         java.util.List<String> lines;
         try {
             lines = java.nio.file.Files.readAllLines(configFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
@@ -298,81 +310,96 @@ public class MCDataBridge extends JavaPlugin {
             return;
         }
 
-        boolean updated = false;
-
-        // 1. Check for top-level keys (Append to end if missing)
         StringBuilder topLevelAppends = new StringBuilder();
+        boolean updated = checkTopLevelKeys(fileConfig, topLevelAppends);
+        updated |= checkSyncKeys(fileConfig, lines, topLevelAppends);
+
+        if (updated) {
+            saveUpdatedConfig(configFile, lines, topLevelAppends);
+        }
+    }
+
+    private boolean checkTopLevelKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig, StringBuilder appends) {
+        boolean updated = false;
         if (!fileConfig.contains("debug")) {
-            topLevelAppends.append("\n# Enable debug mode for verbose logging.\ndebug: false\n");
+            appends.append("\n# Enable debug mode for verbose logging.\ndebug: false\n");
             updated = true;
         }
         if (!fileConfig.contains("server-id")) {
-            topLevelAppends.append("\n# Unique identifier for this server (Required).\nserver-id: \"default-server\"\n");
+            appends.append("\n# Unique identifier for this server (Required).\nserver-id: \"default-server\"\n");
             updated = true;
         }
         if (!fileConfig.contains("table-prefix")) {
-            topLevelAppends.append("\n# Set to prefix the player_data table (e.g., 'mc_data_bridge_').\ntable-prefix: \"\"\n");
+            appends.append("\n# Set to prefix the player_data table (e.g., 'mc_data_bridge_').\ntable-prefix: \"\"\n");
             updated = true;
         }
         if (!fileConfig.contains("lock-timeout")) {
-            topLevelAppends.append("\n# Lock expiration in milliseconds.\nlock-timeout: 60000\n");
+            appends.append("\n# Lock expiration in milliseconds.\nlock-timeout: 60000\n");
             updated = true;
         }
         if (!fileConfig.contains("lock-heartbeat-seconds")) {
-            topLevelAppends.append("\n# Interval between lock updates.\nlock-heartbeat-seconds: 30\n");
+            appends.append("\n# Interval between lock updates.\nlock-heartbeat-seconds: 30\n");
             updated = true;
         }
         if (!fileConfig.contains("auto-update-schema")) {
-            topLevelAppends.append("\n# Automatically migrate database schema.\nauto-update-schema: true\n");
+            appends.append("\n# Automatically migrate database schema.\nauto-update-schema: true\n");
             updated = true;
         }
+        if (!fileConfig.contains("security.seed")) {
+            appends.append("\n# A secret seed used to salt all cryptographic hashes.\nsecurity:\n  seed: \"change-me-to-a-long-random-string\"\n");
+            updated = true;
+        }
+        if (!fileConfig.contains("identity.mode")) {
+            appends.append("\n# Identity and Migration Settings\nidentity:\n  mode: PREMIUM\n  auto-migrate-fastlogin: false\n");
+            updated = true;
+        }
+        return updated;
+    }
 
-        // 2. Check for nested sync-data keys (Structural insertion)
+    private boolean checkSyncKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig, java.util.List<String> lines, StringBuilder appends) {
         String[] syncKeys = {"statistics", "pdc", "flight-gamemode"};
-        java.util.List<String> missingSyncKeys = new java.util.ArrayList<>();
+        java.util.List<String> missing = new java.util.ArrayList<>();
         for (String key : syncKeys) {
-            if (!fileConfig.contains("sync-data." + key)) {
-                missingSyncKeys.add(key);
+            if (!fileConfig.contains(SYNC_DATA_PREFIX + key)) {
+                missing.add(key);
             }
         }
 
-        if (!missingSyncKeys.isEmpty()) {
-            int syncDataLine = -1;
-            for (int i = 0; i < lines.size(); i++) {
-                if (lines.get(i).trim().startsWith("sync-data:")) {
-                    syncDataLine = i;
-                    break;
-                }
-            }
+        if (missing.isEmpty()) return false;
 
-            if (syncDataLine != -1) {
-                // Insert after the header
-                for (String key : missingSyncKeys) {
-                    lines.add(syncDataLine + 1, "  " + key + ": false");
-                }
-                updated = true;
-            } else {
-                // If section itself is missing, append it to top-level
-                topLevelAppends.append("\nsync-data:\n");
-                for (String key : missingSyncKeys) {
-                    topLevelAppends.append("  ").append(key).append(": false\n");
-                }
-                updated = true;
+        int syncDataLine = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            if (lines.get(i).trim().startsWith("sync-data:")) {
+                syncDataLine = i;
+                break;
             }
         }
 
-        if (updated) {
-            try {
-                java.util.List<String> finalLines = new java.util.ArrayList<>(lines);
-                if (topLevelAppends.length() > 0) {
-                    finalLines.add(topLevelAppends.toString());
-                }
-                java.nio.file.Files.write(configFile.toPath(), finalLines, java.nio.charset.StandardCharsets.UTF_8);
-                getLogger().info("Successfully updated config.yml with missing settings.");
-                reloadConfig();
-            } catch (java.io.IOException e) {
-                getLogger().severe("Failed to write updated config.yml: " + e.getMessage());
+        if (syncDataLine != -1) {
+            for (String key : missing) {
+                lines.add(syncDataLine + 1, "  " + key + ": false");
             }
+            return true;
+        } else {
+            appends.append("\nsync-data:\n");
+            for (String key : missing) {
+                appends.append("  ").append(key).append(": false\n");
+            }
+            return true;
+        }
+    }
+
+    private void saveUpdatedConfig(java.io.File configFile, java.util.List<String> lines, StringBuilder appends) {
+        try {
+            java.util.List<String> finalLines = new java.util.ArrayList<>(lines);
+            if (!appends.isEmpty()) {
+                finalLines.add(appends.toString());
+            }
+            java.nio.file.Files.write(configFile.toPath(), finalLines, java.nio.charset.StandardCharsets.UTF_8);
+            getLogger().info("Successfully updated config.yml with missing settings.");
+            reloadConfig();
+        } catch (java.io.IOException e) {
+            getLogger().severe("Failed to write updated config.yml: " + e.getMessage());
         }
     }
 

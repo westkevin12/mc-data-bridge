@@ -345,13 +345,14 @@ public class PlayerData {
     }
 
     /**
-     * Calculates a SHA-256 checksum of the JSON string.
+     * Calculates a SHA-256 checksum of the JSON string, optionally salted with a seed.
      */
-    public static String calculateChecksum(String json) {
+    public static String calculateChecksum(String json, String seed) {
         if (json == null) return null;
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            String input = json + (seed != null ? ":" + seed : "");
+            byte[] hash = digest.digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             StringBuilder hexString = new StringBuilder();
             for (byte b : hash) {
                 String hex = Integer.toHexString(0xff & b);
@@ -364,13 +365,21 @@ public class PlayerData {
         }
     }
 
+    public static String calculateChecksum(String json) {
+        return calculateChecksum(json, null);
+    }
+
     /**
      * Verifies if the provided checksum matches the calculated checksum of the JSON.
      */
-    public static boolean verifyChecksum(String json, String expectedChecksum) {
+    public static boolean verifyChecksum(String json, String expectedChecksum, String seed) {
         if (json == null || expectedChecksum == null) return false;
-        String calculated = calculateChecksum(json);
+        String calculated = calculateChecksum(json, seed);
         return expectedChecksum.equalsIgnoreCase(calculated);
+    }
+
+    public static boolean verifyChecksum(String json, String expectedChecksum) {
+        return verifyChecksum(json, expectedChecksum, null);
     }
 
     @Override

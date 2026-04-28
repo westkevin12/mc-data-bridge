@@ -129,7 +129,8 @@ class PlayerSyncTest {
         when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
         when(mockStatement.executeQuery()).thenReturn(mockResultSet);
         when(mockResultSet.next()).thenReturn(true);
-        when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("data_checksum")).thenReturn(null);
         when(mockResultSet.getBytes("data")).thenReturn(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         // 3. Run PreLogin (Loads data into cache)
@@ -203,7 +204,8 @@ class PlayerSyncTest {
         when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
         when(mockStatement.executeQuery()).thenReturn(mockResultSet);
         when(mockResultSet.next()).thenReturn(true);
-        when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("data_checksum")).thenReturn(null);
         when(mockResultSet.getBytes("data")).thenReturn(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         // 4. PreLogin
@@ -266,7 +268,8 @@ class PlayerSyncTest {
         when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
         when(mockStatement.executeQuery()).thenReturn(mockResultSet);
         when(mockResultSet.next()).thenReturn(true);
-        when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("locking_server")).thenReturn("test-server");
+        lenient().when(mockResultSet.getString("data_checksum")).thenReturn(null);
         when(mockResultSet.getBytes("data")).thenReturn(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         // PreLogin
