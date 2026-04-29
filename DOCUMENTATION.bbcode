@@ -21,7 +21,7 @@ Below is a detailed explanation of the [I]config.yml[/I] settings. This file is 
 [*][B]identity.mode:[/B]
 [LIST]
 [*][B]PREMIUM:[/B] Strictly enforces UUID consistency. Blocks logins if a name is claimed by a different UUID.
-[*][B]HYBRID:[/B] Allows for identity shifts (Name -> UUID), ideal for networks migrating from cracked to premium.
+[*][B]HYBRID:[/B] Allows for identity shifts (Name -> UUID), ideal for networks migrating from cracked to premium. [B]Note: HYBRID mode is required for auto-migration features (FastLogin/AuthMe).[/B]
 [/LIST]
 [*][B]identity.auto-migrate-fastlogin:[/B] If true, automatically transfers data to a player's premium account once FastLogin verifies their session.
 [/LIST]

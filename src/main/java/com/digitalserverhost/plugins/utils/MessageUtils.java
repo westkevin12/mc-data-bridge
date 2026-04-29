@@ -9,6 +9,10 @@ import org.jetbrains.annotations.NotNull;
  * Utility for sending messages in a platform-agnostic way.
  */
 public class MessageUtils {
+    
+    private MessageUtils() {
+        throw new UnsupportedOperationException("Utility class");
+    }
 
     public static void sendMessage(@NotNull CommandSender sender, @NotNull String message) {
         // We use legacy section symbol for color codes
