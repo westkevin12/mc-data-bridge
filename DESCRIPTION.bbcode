@@ -9,6 +9,7 @@ MC Data Bridge is a robust, high-performance hybrid synchronization suite for [B
 [*][B]Universal Hybrid Plugin:[/B] A single JAR file detects its environment and activates correct logic for Spigot, Paper, Folia, BungeeCord, or Velocity.
 [*][B]SHA-256 Data Integrity:[/B] Every data packet is verified with a SHA-256 checksum and a server-side salt, preventing manual database tampering or corruption from affecting your players.
 [*][B]Industrial Identity Protection:[/B] Secure tracking of [I]last_known_name[/I] and identity hashes allows for reliable UUID change detection and prevention of identity hijacking in hybrid environments.
+[*][B]Zero-Tick Identity Verification:[/B] Database locks and identity checks are performed during the [I]AsyncPlayerPreLoginEvent[/I], ensuring that player state is verified and ready before they even reach the server's "Join" state.
 [*][B]Regionalized Folia Support:[/B] Fully compatible with Folia's regionalized threading, ensuring safe data handling on modern multi-threaded server clusters.
 [*][B]Administrative Inspector GUI (NEW):[/B] Visual tools for administrators to inspect player data (inventory, stats, PDC) directly from the database without the player needing to be online.
 [*][B]Proxy-Orchestrated Saves:[/B] The proxy (Bungee/Velocity) ensures data is flushed and verified before a player connects to the destination server, eliminating race conditions.

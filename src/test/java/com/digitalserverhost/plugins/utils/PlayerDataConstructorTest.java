@@ -16,7 +16,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-public class PlayerDataConstructorTest {
+class PlayerDataConstructorTest {
 
     @Mock
     private MCDataBridge mockPlugin;
@@ -42,9 +42,7 @@ public class PlayerDataConstructorTest {
         lenient().when(mockPlugin.getLogger()).thenReturn(java.util.logging.Logger.getLogger("MCDataBridge"));
     }
 
-    @org.junit.jupiter.api.AfterEach
-    void tearDown() {
-    }
+
 
     @Test
     void testPlayerDataSnapshotWhenSyncEnabled() {
