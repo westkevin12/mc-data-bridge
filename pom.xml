@@ -135,9 +135,9 @@
             </activation>
             <dependencies>
                 <dependency>
-                    <groupId>org.mockbukkit.mockbukkit</groupId>
-                    <artifactId>mockbukkit-v26.1</artifactId>
-                    <version>dev-27dfd07c4</version>
+                    <groupId>io.github.secondlifegaming</groupId>
+                    <artifactId>mockmc-v26.1</artifactId>
+                    <version>dev-dee37368b</version>
                     <scope>test</scope>
                 </dependency>
             </dependencies>
