@@ -1,8 +1,8 @@
 package com.digitalserverhost.plugins.listeners;
 
-import org.mockbukkit.mockbukkit.MockBukkit;
-import org.mockbukkit.mockbukkit.ServerMock;
-import org.mockbukkit.mockbukkit.entity.PlayerMock;
+import org.mockmc.mockmc.MockMC;
+import org.mockmc.mockmc.ServerMock;
+import org.mockmc.mockmc.entity.PlayerMock;
 import com.digitalserverhost.plugins.MCDataBridge;
 import com.digitalserverhost.plugins.managers.DatabaseManager;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
@@ -47,7 +47,7 @@ class PlayerFlowTest {
     @BeforeEach
     void setup() {
         MockitoAnnotations.openMocks(this);
-        server = MockBukkit.mock();
+        server = MockMC.mock();
 
         // Mock SchedulerUtils
         @SuppressWarnings("null")
@@ -99,7 +99,7 @@ class PlayerFlowTest {
         if (mockedSchedulerUtils != null) {
             mockedSchedulerUtils.close();
         }
-        MockBukkit.unmock();
+        MockMC.unmock();
     }
 
     @Test

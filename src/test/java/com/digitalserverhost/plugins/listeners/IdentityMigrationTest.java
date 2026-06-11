@@ -9,7 +9,7 @@ import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockbukkit.mockbukkit.MockBukkit;
+import org.mockmc.mockmc.MockMC;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
@@ -34,7 +34,7 @@ class IdentityMigrationTest {
     @BeforeEach
     void setup() {
         MockitoAnnotations.openMocks(this);
-        MockBukkit.mock();
+        MockMC.mock();
         
         @SuppressWarnings("null")
         org.mockito.MockedStatic<com.digitalserverhost.plugins.utils.SchedulerUtils> staticMock = mockStatic(com.digitalserverhost.plugins.utils.SchedulerUtils.class);
@@ -56,7 +56,7 @@ class IdentityMigrationTest {
         if (mockedSchedulerUtils != null) {
             mockedSchedulerUtils.close();
         }
-        MockBukkit.unmock();
+        MockMC.unmock();
     }
 
     @Test

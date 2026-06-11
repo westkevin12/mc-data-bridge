@@ -48,7 +48,7 @@ class PlayerSyncTest {
     void setup() {
         // Initialize MockBukkit
         if (org.bukkit.Bukkit.getServer() == null) {
-            org.mockbukkit.mockbukkit.MockBukkit.mock();
+            org.mockmc.mockmc.MockMC.mock();
         }
 
         // Mock SchedulerUtils to return BukkitScheduler and NOT Folia
@@ -98,7 +98,7 @@ class PlayerSyncTest {
         if (mockedSchedulerUtils != null) {
             mockedSchedulerUtils.close();
         }
-        org.mockbukkit.mockbukkit.MockBukkit.unmock();
+        org.mockmc.mockmc.MockMC.unmock();
     }
 
     @Test

@@ -14,8 +14,8 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.junit.jupiter.api.Test;
-import org.mockbukkit.mockbukkit.MockBukkit;
-import org.mockbukkit.mockbukkit.entity.PlayerMock;
+import org.mockmc.mockmc.MockMC;
+import org.mockmc.mockmc.entity.PlayerMock;
 
 import java.util.List;
 import java.util.logging.Logger;
@@ -28,10 +28,9 @@ import static org.mockito.Mockito.when;
 class ModernSyncParityTest {
 
     @Test
-    @SuppressWarnings("all")
+    @SuppressWarnings("null")
     void testFullPlayerParityWithModernComponents() {
-        System.out.println("DEBUG: Starting testFullPlayerParityWithModernComponents");
-        MockBukkit.mock();
+        MockMC.mock();
         try {
             MCDataBridge mockPlugin = mock(MCDataBridge.class);
             when(mockPlugin.isSyncEnabled(anyString())).thenReturn(false);
@@ -45,7 +44,7 @@ class ModernSyncParityTest {
             when(mockPlugin.isSyncEnabledNewFeature(anyString())).thenReturn(false);
             when(mockPlugin.isDebugMode()).thenReturn(true);
 
-            PlayerMock source = MockBukkit.getMock().addPlayer("SourcePlayer");
+            PlayerMock source = MockMC.getMock().addPlayer("SourcePlayer");
 
             ItemStack item = new ItemStack(Material.DIAMOND_CHESTPLATE);
             ItemMeta meta = item.getItemMeta();
@@ -72,7 +71,7 @@ class ModernSyncParityTest {
             Gson gson = new GsonBuilder().create();
             String json = gson.toJson(data);
 
-            PlayerMock target = MockBukkit.getMock().addPlayer("TargetPlayer");
+            PlayerMock target = MockMC.getMock().addPlayer("TargetPlayer");
             PlayerData deserializedData = gson.fromJson(json, PlayerData.class);
 
             target.setHealth(deserializedData.getHealth());
@@ -92,16 +91,10 @@ class ModernSyncParityTest {
             assertTrue(targetMeta.hasAttributeModifiers());
 
             String storedValue = targetMeta.getPersistentDataContainer().get(itemKey,
-                    (PersistentDataType<String, String>) PersistentDataType.STRING);
+                    PersistentDataType.STRING);
             assertEquals("ItemValue", storedValue);
-
-            System.out.println("DEBUG: Test completed successfully");
-        } catch (Throwable t) {
-            System.out.println("DEBUG: Test failed with: " + t.getClass().getName() + ": " + t.getMessage());
-            t.printStackTrace();
-            throw t;
         } finally {
-            MockBukkit.unmock();
+            MockMC.unmock();
         }
     }
 }

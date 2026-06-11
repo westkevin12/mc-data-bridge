@@ -25,13 +25,13 @@ class PlayerDataConstructorTest {
     @BeforeAll
     static void setupBukkit() {
         if (org.bukkit.Bukkit.getServer() == null) {
-            org.mockbukkit.mockbukkit.MockBukkit.mock();
+            org.mockmc.mockmc.MockMC.mock();
         }
     }
 
     @AfterAll
     static void tearDownBukkit() {
-        org.mockbukkit.mockbukkit.MockBukkit.unmock();
+        org.mockmc.mockmc.MockMC.unmock();
     }
 
     @BeforeEach
@@ -47,7 +47,7 @@ class PlayerDataConstructorTest {
     @Test
     void testPlayerDataSnapshotWhenSyncEnabled() {
         // Create a MockBukkit player
-        org.mockbukkit.mockbukkit.ServerMock server = org.mockbukkit.mockbukkit.MockBukkit.getMock();
+        org.mockmc.mockmc.ServerMock server = org.mockmc.mockmc.MockMC.getMock();
         Player originalPlayer = server.addPlayer();
 
         // Spy on the player to allow stubbing of unimplemented methods
@@ -86,7 +86,7 @@ class PlayerDataConstructorTest {
     @Test
     void testPlayerDataSnapshotWhenSyncDisabled() {
         // Create a MockBukkit player
-        org.mockbukkit.mockbukkit.ServerMock server = org.mockbukkit.mockbukkit.MockBukkit.getMock();
+        org.mockmc.mockmc.ServerMock server = org.mockmc.mockmc.MockMC.getMock();
         Player player = server.addPlayer();
 
         // Setup Plugin Toggles to FALSE

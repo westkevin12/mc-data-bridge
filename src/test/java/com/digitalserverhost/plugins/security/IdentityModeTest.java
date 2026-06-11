@@ -7,7 +7,7 @@ import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockbukkit.mockbukkit.MockBukkit;
+import org.mockmc.mockmc.MockMC;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
  
@@ -42,7 +42,7 @@ class IdentityModeTest {
     @BeforeEach
     void setup() throws java.sql.SQLException {
         MockitoAnnotations.openMocks(this);
-        MockBukkit.mock();
+        MockMC.mock();
         logger = spy(Logger.getLogger("MCDataBridgeTest"));
  
         var mocked = mockStatic(com.digitalserverhost.plugins.utils.SchedulerUtils.class);
@@ -66,7 +66,7 @@ class IdentityModeTest {
     @AfterEach
     void tearDown() {
         mockedSchedulerUtils.close();
-        MockBukkit.unmock();
+        MockMC.unmock();
     }
  
     @Test

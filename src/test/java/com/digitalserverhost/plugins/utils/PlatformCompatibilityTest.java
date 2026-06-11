@@ -5,8 +5,8 @@ import org.bukkit.entity.Player;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockbukkit.mockbukkit.MockBukkit;
-import org.mockbukkit.mockbukkit.ServerMock;
+import org.mockmc.mockmc.MockMC;
+import org.mockmc.mockmc.ServerMock;
 import static org.mockito.ArgumentMatchers.*;
 
 
@@ -19,12 +19,12 @@ class PlatformCompatibilityTest {
 
     @BeforeEach
     void setup() {
-        server = MockBukkit.mock();
+        server = MockMC.mock();
     }
 
     @AfterEach
     void tearDown() {
-        MockBukkit.unmock();
+        MockMC.unmock();
     }
 
     @Test
