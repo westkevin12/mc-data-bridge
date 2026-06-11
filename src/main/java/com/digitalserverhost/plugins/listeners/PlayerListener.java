@@ -15,6 +15,7 @@ import org.bukkit.event.player.PlayerKickEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.plugin.messaging.PluginMessageListener;
+import com.digitalserverhost.plugins.managers.MetricsManager;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.ByteArrayDataInput;
 
@@ -136,6 +137,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
             if (databaseManager.acquireLock(uuid, serverId)) {
                 return true;
             }
+
+            MetricsManager.getInstance().incrementLockContentionRetries();
 
             if (plugin.isDebugMode()) {
                 plugin.getLogger().log(Level.INFO, "{0}{1}''s data is locked. Waiting... (Attempt {2})", new Object[]{PLAYER_PREFIX, name, attempts + 1});
@@ -593,6 +596,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
         if (!PlayerData.verifyChecksum(json, checksum, seed)) {
             // Legacy Fallback
             if (!PlayerData.verifyChecksum(json, checksum, null)) {
+                MetricsManager.getInstance().incrementSyncFailures();
                 plugin.getLogger().log(Level.SEVERE, "CRITICAL: Data integrity violation for {0}! Checksum mismatch.", uuid);
                 return false;
             }

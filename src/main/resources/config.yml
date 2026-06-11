@@ -143,3 +143,16 @@ identity:
   # WARNING: If you change this later, existing identity hashes will be updated on next join,
   # but data integrity checks will fall back to legacy mode until the data is re-saved.
   seed: "change-me-to-a-long-random-string"
+
+# Prometheus Metrics Exporter
+metrics:
+  # Enable or disable the Prometheus metrics exporter.
+  # If enabled, an embedded HTTP server will start at the specified port and path.
+  enabled: false
+  
+  # The port on which the metrics server will listen.
+  port: 8080
+  
+  # The HTTP endpoint path for scraping metrics.
+  path: "/metrics"
+

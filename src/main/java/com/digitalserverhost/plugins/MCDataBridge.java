@@ -39,6 +39,17 @@ public class MCDataBridge extends JavaPlugin {
         startSpigot();
     }
 
+    private static final java.util.Map<String, java.util.Map.Entry<String, String>> COLUMN_WHITELIST = java.util.Map.of(
+        "is_locked", java.util.Map.entry("BOOLEAN DEFAULT 0", "INTEGER DEFAULT 0"),
+        "locking_server", java.util.Map.entry("VARCHAR(255) DEFAULT NULL", "TEXT DEFAULT NULL"),
+        "lock_timestamp", java.util.Map.entry("BIGINT DEFAULT 0", "INTEGER DEFAULT 0"),
+        "last_known_name", java.util.Map.entry("VARCHAR(16) DEFAULT NULL", "TEXT DEFAULT NULL"),
+        "data_checksum", java.util.Map.entry("VARCHAR(64) DEFAULT NULL", "TEXT DEFAULT NULL"),
+        "identity_hash", java.util.Map.entry("VARCHAR(64) DEFAULT NULL", "TEXT DEFAULT NULL"),
+        "name_last_updated", java.util.Map.entry("BIGINT DEFAULT 0", "INTEGER DEFAULT 0"),
+        "last_updated", java.util.Map.entry("TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "DATETIME DEFAULT CURRENT_TIMESTAMP")
+    );
+
     private void startSpigot() {
         saveDefaultConfig();
         updateConfig(); // Check and update config if missing new keys
@@ -61,12 +72,37 @@ public class MCDataBridge extends JavaPlugin {
             getLogger().warning("!!! This is UNSAFE for multi-server setups.           !!!");
             getLogger().warning(BANNER);
         }
+        
         this.securitySeed = getConfig().getString("security.seed", "change-me-to-a-long-random-string");
+        if (this.securitySeed == null || this.securitySeed.isEmpty() || this.securitySeed.equals("change-me-to-a-long-random-string")) {
+            String envSeed = System.getenv("DATABRIDGE_SEED");
+            if (envSeed != null && !envSeed.isEmpty() && !envSeed.equals("change-me-to-a-long-random-string")) {
+                this.securitySeed = envSeed;
+                getLogger().info("Loaded secure security seed from environment variable DATABRIDGE_SEED.");
+            } else {
+                getLogger().severe(BANNER);
+                getLogger().severe("!!! CRITICAL SECURITY ERROR: security.seed IS NOT CONFIGURED !!!");
+                getLogger().severe("!!! You must set a custom security seed in config.yml or    !!!");
+                getLogger().severe("!!! pass it via the DATABRIDGE_SEED environment variable.    !!!");
+                getLogger().severe("!!! The engine will now forcefully disable itself immediately. !!!");
+                getLogger().severe(BANNER);
+                getServer().getPluginManager().disablePlugin(this);
+                return;
+            }
+        }
+
         this.identityMode = getConfig().getString("identity.mode", "PREMIUM").toUpperCase();
         this.autoMigrateFastLogin = getConfig().getBoolean("identity.auto-migrate-fastlogin", false);
         this.autoMigrateAuthMe = getConfig().getBoolean("identity.auto-migrate-authme", false);
         databaseManager = new DatabaseManager(getConfig(), this.tableName);
         
+        // Initialize Metrics Exporter if enabled
+        if (getConfig().getBoolean("metrics.enabled", false)) {
+            int metricsPort = getConfig().getInt("metrics.port", 8080);
+            String metricsPath = getConfig().getString("metrics.path", "/metrics");
+            com.digitalserverhost.plugins.managers.MetricsManager.getInstance().start(this, databaseManager, metricsPort, metricsPath);
+        }
+
         // Ensure table and columns exist synchronously before events are registered
         createServerTable();
         
@@ -109,10 +145,14 @@ public class MCDataBridge extends JavaPlugin {
         if (databaseManager != null) {
             databaseManager.close();
         }
+        com.digitalserverhost.plugins.managers.MetricsManager.getInstance().stop();
         getLogger().info("mc-data-bridge has been disabled!");
     }
 
     private void createServerTable() {
+        if (!tableName.matches("\\w+")) {
+            throw new SecurityException("Invalid table name: " + tableName);
+        }
         String escapedTableName = "`" + tableName + "`";
         String dbType = getConfig().getString("database.type", "mysql").toLowerCase();
 
@@ -195,6 +235,14 @@ public class MCDataBridge extends JavaPlugin {
 
     private void ensureColumnExists(Connection connection, Statement statement, String escapedTableName, String dbType, 
                                   String column, String mysqlType, String sqliteType) throws SQLException {
+        java.util.Map.Entry<String, String> allowedTypes = COLUMN_WHITELIST.get(column);
+        if (allowedTypes == null) {
+            throw new SecurityException("Blocked attempt to add un-whitelisted column: " + column);
+        }
+        if (!allowedTypes.getKey().equals(mysqlType) || !allowedTypes.getValue().equals(sqliteType)) {
+            throw new SecurityException("Blocked attempt to add column " + column + " with un-whitelisted types.");
+        }
+
         if (!connection.getMetaData().getColumns(null, null, tableName, column).next()) {
             String type = dbType.equals(SQLITE) ? sqliteType : mysqlType;
             statement.executeUpdate(ALTER_TABLE_SQL + escapedTableName + " ADD COLUMN " + column + " " + type);

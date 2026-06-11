@@ -83,6 +83,20 @@ public class DatabaseManager {
         this.currentTimeFunction = "(UNIX_TIMESTAMP() * 1000)"; // Default for tests
     }
 
+    public int getActiveConnections() {
+        if (dataSource != null && dataSource.getHikariPoolMXBean() != null) {
+            return dataSource.getHikariPoolMXBean().getActiveConnections();
+        }
+        return 0;
+    }
+
+    public int getPendingThreads() {
+        if (dataSource != null && dataSource.getHikariPoolMXBean() != null) {
+            return dataSource.getHikariPoolMXBean().getThreadsAwaitingConnection();
+        }
+        return 0;
+    }
+
     public Connection getConnection() throws SQLException {
         return dataSource.getConnection();
     }
@@ -94,6 +108,16 @@ public class DatabaseManager {
     }
 
     public boolean acquireLock(UUID uuid, String serverId) throws SQLException {
+        long startTime = System.currentTimeMillis();
+        try {
+            return acquireLockInternal(uuid, serverId);
+        } finally {
+            long duration = System.currentTimeMillis() - startTime;
+            MetricsManager.getInstance().recordLockAcquisitionLatency(duration);
+        }
+    }
+
+    private boolean acquireLockInternal(UUID uuid, String serverId) throws SQLException {
         try (Connection connection = getConnection()) {
             // Use database-side time to prevent race conditions caused by clock drift between servers
             String updateSql = UPDATE_SQL_PREFIX + tableName
