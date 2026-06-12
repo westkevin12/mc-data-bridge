@@ -48,7 +48,7 @@ public class DatabaseManager {
 
     public DatabaseManager(FileConfiguration config, String tableName) {
         this.tableName = "`" + tableName.replace("`", "") + "`"; // Escape table name
-        this.tablePrefix = config.getString("table-prefix", "");
+        this.tablePrefix = config.getString("table-prefix", "").replace("`", "");
         this.inventoriesTable = "`" + this.tablePrefix + "databridge_inventories`";
         this.statisticsTable = "`" + this.tablePrefix + "databridge_statistics`";
         this.metadataTable = "`" + this.tablePrefix + "databridge_metadata`";
@@ -567,14 +567,12 @@ public class DatabaseManager {
             targetXpTotal = data.getTotalExperience();
         }
 
-        PlayerData jsonStatsData = null;
+        PlayerData jsonStatsData;
         try {
-            jsonStatsData = GSON.fromJson(dbVanillaStatsJson, PlayerData.class);
+            PlayerData parsed = GSON.fromJson(dbVanillaStatsJson, PlayerData.class);
+            jsonStatsData = (parsed != null) ? parsed : new PlayerData();
         } catch (Exception e) {
-            LOGGER.log(java.util.logging.Level.WARNING, "Failed to parse vanilla statistics JSON, resetting to defaults: {0}", e.getMessage());
-        }
-        if (jsonStatsData == null) {
-            jsonStatsData = new PlayerData();
+            throw new SQLException("Failed to parse vanilla statistics JSON from database, aborting save to prevent data loss: " + e.getMessage(), e);
         }
         if (plugin.isSyncEnabled("potion-effects")) jsonStatsData.setPotionEffects(data.getPotionEffects());
         if (plugin.isSyncEnabled("flight-gamemode")) {
@@ -720,12 +718,13 @@ public class DatabaseManager {
     }
 
     private CompanionSnapshot[] parseCompanionSnapshots(String json) {
-        if (json == null || json.isEmpty()) return null;
+        if (json == null || json.isEmpty()) return new CompanionSnapshot[0];
         try {
-            return GSON.fromJson(json, CompanionSnapshot[].class);
+            CompanionSnapshot[] result = GSON.fromJson(json, CompanionSnapshot[].class);
+            return result != null ? result : new CompanionSnapshot[0];
         } catch (Exception e) {
             LOGGER.log(java.util.logging.Level.WARNING, "Failed to parse companion snapshots: {0}", e.getMessage());
-            return null;
+            return new CompanionSnapshot[0];
         }
     }
 
