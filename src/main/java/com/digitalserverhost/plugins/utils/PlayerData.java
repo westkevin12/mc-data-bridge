@@ -227,8 +227,7 @@ public class PlayerData {
         if (!plugin.isSyncEnabledNewFeature("companions")) return;
         double radius = 32.0;
         try {
-            org.bukkit.configuration.file.FileConfiguration cfg = plugin.getConfig();
-            if (cfg != null) radius = cfg.getDouble("companions.scan-radius", 32.0);
+            radius = plugin.getConfig().getDouble("companions.scan-radius", 32.0);
         } catch (Exception _) { /* test environment — use default */ }
         java.util.List<CompanionSnapshot> snapshots = new java.util.ArrayList<>();
         for (org.bukkit.entity.Entity entity : player.getNearbyEntities(radius, radius, radius)) {
@@ -540,8 +539,8 @@ public class PlayerData {
             String serializedNbt = null;
             try {
                 serializedNbt = de.tr7zw.changeme.nbtapi.NBT.get(entity,
-                        (java.util.function.Function<de.tr7zw.changeme.nbtapi.iface.ReadableNBT, String>) nbt -> nbt.toString());
-            } catch (Throwable _) {
+                        (java.util.function.Function<de.tr7zw.changeme.nbtapi.iface.ReadableNBT, String>) Object::toString);
+            } catch (Exception _) {
                 // NBTAPI unavailable or failed — companion saved without raw NBT
             }
             this.nbtData = serializedNbt;
