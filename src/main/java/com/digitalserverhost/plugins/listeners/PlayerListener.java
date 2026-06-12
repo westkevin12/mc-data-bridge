@@ -3,8 +3,8 @@ package com.digitalserverhost.plugins.listeners;
 import com.digitalserverhost.plugins.MCDataBridge;
 import com.digitalserverhost.plugins.managers.DatabaseManager;
 import com.digitalserverhost.plugins.utils.PlayerData;
-import com.google.gson.Gson;
 import org.bukkit.Bukkit;
+import org.jetbrains.annotations.NotNull;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -15,6 +15,7 @@ import org.bukkit.event.player.PlayerKickEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.plugin.messaging.PluginMessageListener;
+import com.digitalserverhost.plugins.managers.MetricsManager;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.ByteArrayDataInput;
 
@@ -34,7 +35,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
     private final DatabaseManager databaseManager;
     private final MCDataBridge plugin;
-    private final Gson gson;
     private final Map<UUID, PlayerData> loadingCache = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> savingPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> switchingPlayers = new ConcurrentHashMap<>();
@@ -42,7 +42,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
     public PlayerListener(DatabaseManager databaseManager, MCDataBridge plugin) {
         this.databaseManager = databaseManager;
         this.plugin = plugin;
-        this.gson = MCDataBridge.getGson();
     }
 
     @Override
@@ -136,6 +135,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
             if (databaseManager.acquireLock(uuid, serverId)) {
                 return true;
             }
+
+            MetricsManager.getInstance().incrementLockContentionRetries();
 
             if (plugin.isDebugMode()) {
                 plugin.getLogger().log(Level.INFO, "{0}{1}''s data is locked. Waiting... (Attempt {2})", new Object[]{PLAYER_PREFIX, name, attempts + 1});
@@ -317,10 +318,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
         com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
             try {
-                String json = gson.toJson(finalData);
                 String seed = plugin.getSecuritySeed();
-                String checksum = PlayerData.calculateChecksum(json, seed);
-                boolean success = databaseManager.saveAndReleaseLock(json, checksum, name, uuid, serverId, seed);
+                boolean success = databaseManager.saveAndReleaseLockComponents(plugin, finalData, name, uuid, serverId, seed);
 
                 if (success) {
                     if (plugin.isDebugMode()) {
@@ -347,10 +346,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
         try {
             PlayerData finalData = new PlayerData(player, plugin);
-            String json = gson.toJson(finalData);
             String seed = plugin.getSecuritySeed();
-            String checksum = PlayerData.calculateChecksum(json, seed);
-            databaseManager.saveAndReleaseLock(json, checksum, name, uuid, serverId, seed);
+            databaseManager.saveAndReleaseLockComponents(plugin, finalData, name, uuid, serverId, seed);
             if (plugin.isDebugMode()) {
                 plugin.getLogger().log(Level.INFO, "Synchronously saved data for {0}.", name);
             }
@@ -391,6 +388,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 applyPersistentData(player, data);
                 applyFlightAndGameMode(player, data);
                 applyLocation(player, data);
+                applyCompanions(player, data);
  
                 plugin.getLogger().log(Level.INFO, "Successfully applied data to player {0}", player.getName());
             } catch (Exception e) {
@@ -493,13 +491,55 @@ public class PlayerListener implements Listener, PluginMessageListener {
  
     private void applyStatistics(Player player, PlayerData data) {
         if (plugin.isSyncEnabledNewFeature("statistics") && data.getStatistics() != null) {
-            for (Map.Entry<String, Integer> entry : data.getStatistics().entrySet()) {
+            Map<String, Integer> dbStats = data.getStatistics();
+            for (org.bukkit.Statistic stat : org.bukkit.Statistic.values()) {
                 try {
-                    org.bukkit.Statistic stat = org.bukkit.Statistic.valueOf(entry.getKey());
-                    player.setStatistic(stat, entry.getValue());
+                    applySingleStatistic(player, stat, dbStats);
                 } catch (Exception _) {
-                    // Skip invalid statistics
+                    // Ignore unsupported statistics on this server version
                 }
+            }
+        }
+    }
+
+    private void applySingleStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat, @NotNull Map<String, Integer> dbStats) {
+        if (stat.getType() == org.bukkit.Statistic.Type.UNTYPED) {
+            String key = stat.name();
+            int dbVal = dbStats.getOrDefault(key, 0);
+            if (player.getStatistic(stat) != dbVal) {
+                player.setStatistic(stat, dbVal);
+            }
+        } else if (stat.getType() == org.bukkit.Statistic.Type.BLOCK || stat.getType() == org.bukkit.Statistic.Type.ITEM) {
+            applyMaterialStatistic(player, stat, dbStats);
+        } else if (stat.getType() == org.bukkit.Statistic.Type.ENTITY) {
+            applyEntityStatistic(player, stat, dbStats);
+        }
+    }
+
+    private void applyMaterialStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat, @NotNull Map<String, Integer> dbStats) {
+        for (org.bukkit.Material mat : org.bukkit.Material.values()) {
+            try {
+                String key = stat.name() + ":" + mat.name();
+                int dbVal = dbStats.getOrDefault(key, 0);
+                if (player.getStatistic(stat, mat) != dbVal) {
+                    player.setStatistic(stat, mat, dbVal);
+                }
+            } catch (IllegalArgumentException _) {
+                // Material not valid for this statistic
+            }
+        }
+    }
+
+    private void applyEntityStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat, @NotNull Map<String, Integer> dbStats) {
+        for (org.bukkit.entity.EntityType entityType : org.bukkit.entity.EntityType.values()) {
+            try {
+                String key = stat.name() + ":" + entityType.name();
+                int dbVal = dbStats.getOrDefault(key, 0);
+                if (player.getStatistic(stat, entityType) != dbVal) {
+                    player.setStatistic(stat, entityType, dbVal);
+                }
+            } catch (IllegalArgumentException _) {
+                // EntityType not valid for this statistic
             }
         }
     }
@@ -548,58 +588,114 @@ public class PlayerListener implements Listener, PluginMessageListener {
         }
     }
 
+    private void applyCompanions(Player player, PlayerData data) {
+        if (!plugin.isSyncEnabledNewFeature("companions")) return;
+        String mode = plugin.getConfig().getString("companions.mode", "follow").toLowerCase();
+        if (mode.equals("untracked") || mode.equals("off")) return;
+
+        String companionsNbt = data.getCompanionsNBT();
+        if (companionsNbt == null || companionsNbt.isEmpty()) return;
+
+        PlayerData.CompanionSnapshot[] snapshots;
+        try {
+            snapshots = new com.google.gson.Gson().fromJson(companionsNbt, PlayerData.CompanionSnapshot[].class);
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to parse companions NBT for {0}: {1}",
+                    new Object[]{player.getName(), e.getMessage()});
+            return;
+        }
+        if (snapshots == null || snapshots.length == 0) return;
+
+        com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
+            if (!player.isOnline()) return;
+            for (PlayerData.CompanionSnapshot snap : snapshots) {
+                spawnCompanion(player, snap);
+            }
+        });
+    }
+
+    private void spawnCompanion(Player player, PlayerData.CompanionSnapshot snap) {
+        try {
+            org.bukkit.entity.EntityType entityType =
+                    org.bukkit.entity.EntityType.valueOf(snap.entityType);
+            Class<? extends org.bukkit.entity.Entity> entityClass = entityType.getEntityClass();
+            org.bukkit.Location loc = player.getLocation();
+            if (entityClass != null && loc != null) {
+                player.getWorld().spawn(
+                        loc,
+                        entityClass,
+                        org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.CUSTOM,
+                        entity -> {
+                            if (entity != null) {
+                                applyCompanionProperties(player, entity, snap);
+                            }
+                        });
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "[mc-data-bridge] Failed to reconstruct companion {0}: {1}",
+                    new Object[]{snap.entityType, e.getMessage()});
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void applyCompanionProperties(Player player, org.bukkit.entity.Entity entity, PlayerData.CompanionSnapshot snap) {
+        // Inject NBT before entity enters world tick
+        if (snap.nbtData != null && !snap.nbtData.isEmpty()) {
+            try {
+                de.tr7zw.changeme.nbtapi.NBT.modify(entity, (java.util.function.Consumer<de.tr7zw.changeme.nbtapi.iface.ReadWriteNBT>) nbt -> {
+                    de.tr7zw.changeme.nbtapi.iface.ReadWriteNBT sourceNbt = de.tr7zw.changeme.nbtapi.NBT.parseNBT(snap.nbtData);
+                    sourceNbt.removeKey("UUID");
+                    sourceNbt.removeKey("UUIDMost");
+                    sourceNbt.removeKey("UUIDLeast");
+                    sourceNbt.removeKey("Pos");
+                    sourceNbt.removeKey("Motion");
+                    sourceNbt.removeKey("Rotation");
+                    sourceNbt.removeKey("Dimension");
+                    sourceNbt.removeKey("WorldUUIDMost");
+                    sourceNbt.removeKey("WorldUUIDLeast");
+                    sourceNbt.removeKey("OnGround");
+                    sourceNbt.removeKey("FallDistance");
+                    sourceNbt.removeKey("PortalCooldown");
+                    nbt.mergeCompound(sourceNbt);
+                });
+            } catch (Exception _) { /* NBT injection failed — spawn bare entity */ }
+        }
+        // Re-bind ownership
+        if (entity instanceof org.bukkit.entity.Tameable tame) {
+            tame.setTamed(true);
+            tame.setOwner(player);
+        }
+        if (entity instanceof org.bukkit.entity.Sittable sittable) {
+            sittable.setSitting(snap.isSitting);
+        }
+        if (snap.customName != null) {
+            entity.setCustomName(snap.customName);
+            entity.setCustomNameVisible(true);
+        }
+
+        // Attach to shoulder if it was on shoulder
+        try {
+            if (snap.getIsOnShoulderLeft() != null && snap.getIsOnShoulderLeft()) {
+                player.setShoulderEntityLeft(entity);
+            } else if (snap.getIsOnShoulderRight() != null && snap.getIsOnShoulderRight()) {
+                player.setShoulderEntityRight(entity);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to set shoulder entity for {0}: {1}",
+                    new Object[]{player.getName(), e.getMessage()});
+        }
+    }
+
     public PlayerData loadPlayerData(UUID uuid) {
         return loadPlayerData(uuid, null);
     }
  
     public PlayerData loadPlayerData(UUID uuid, String name) {
-        try (Connection connection = databaseManager.getConnection()) {
-            String query = "SELECT data, data_checksum FROM " + databaseManager.getTableName() + " WHERE uuid = ?";
-            try (PreparedStatement statement = connection.prepareStatement(query)) {
-                statement.setString(1, uuid.toString());
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    if (resultSet.next()) {
-                        return processPlayerDataResultSet(resultSet, uuid, name);
-                    }
-                }
-            }
+        try {
+            return databaseManager.loadPlayerDataComponents(plugin, uuid, name);
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "Failed to load player data for {0}: {1}", new Object[]{uuid, e.getMessage()});
         }
         return null;
-    }
-
-    private PlayerData processPlayerDataResultSet(ResultSet resultSet, UUID uuid, String name) throws SQLException {
-        byte[] dataBytes = resultSet.getBytes("data");
-        String json = (dataBytes != null) ? new String(dataBytes, java.nio.charset.StandardCharsets.UTF_8) : null;
-
-        if (json != null && !json.trim().isEmpty() && !"{}".equals(json)) {
-            if (shouldVerifyIntegrity() && !verifyAndMigrateChecksum(json, resultSet.getString("data_checksum"), uuid, name)) {
-                return null;
-            }
-            return gson.fromJson(json, PlayerData.class);
-        }
-        return null;
-    }
-
-    private boolean shouldVerifyIntegrity() {
-        return plugin.getConfig().getBoolean("security.verify-data-integrity", true);
-    }
-
-    private boolean verifyAndMigrateChecksum(String json, String checksum, UUID uuid, String name) {
-        if (checksum == null) return true;
-        
-        String seed = plugin.getSecuritySeed();
-        if (!PlayerData.verifyChecksum(json, checksum, seed)) {
-            // Legacy Fallback
-            if (!PlayerData.verifyChecksum(json, checksum, null)) {
-                plugin.getLogger().log(Level.SEVERE, "CRITICAL: Data integrity violation for {0}! Checksum mismatch.", uuid);
-                return false;
-            }
-            if (name != null) {
-                plugin.getLogger().log(Level.INFO, "Migrating data for {0} to salted checksum format", name);
-            }
-        }
-        return true;
     }
 }

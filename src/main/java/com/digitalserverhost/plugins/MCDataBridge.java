@@ -32,6 +32,11 @@ public class MCDataBridge extends JavaPlugin {
     private static final String SYNC_DATA_PREFIX = "sync-data.";
     private static final String INTEGER_DEFAULT_0 = "INTEGER DEFAULT 0";
     private static final String TEXT_DEFAULT_NULL = "TEXT DEFAULT NULL";
+    private static final String BIGINT_DEFAULT_0 = "BIGINT DEFAULT 0";
+    private static final String VARCHAR64_DEFAULT_NULL = "VARCHAR(64) DEFAULT NULL";
+    private static final String CONFIG_TABLE_PREFIX = "table-prefix";
+    private static final String DEFAULT_SEED = "change-me-to-a-long-random-string";
+    private static final String CREATE_TABLE_IF_NOT_EXISTS = "CREATE TABLE IF NOT EXISTS ";
 
     @Override
     public void onEnable() {
@@ -39,12 +44,23 @@ public class MCDataBridge extends JavaPlugin {
         startSpigot();
     }
 
+    private static final java.util.Map<String, java.util.Map.Entry<String, String>> COLUMN_WHITELIST = java.util.Map.of(
+        "is_locked", java.util.Map.entry("BOOLEAN DEFAULT 0", INTEGER_DEFAULT_0),
+        "locking_server", java.util.Map.entry("VARCHAR(255) DEFAULT NULL", TEXT_DEFAULT_NULL),
+        "lock_timestamp", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
+        "last_known_name", java.util.Map.entry("VARCHAR(16) DEFAULT NULL", TEXT_DEFAULT_NULL),
+        "data_checksum", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
+        "identity_hash", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
+        "name_last_updated", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
+        "last_updated", java.util.Map.entry("TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "DATETIME DEFAULT CURRENT_TIMESTAMP")
+    );
+
     private void startSpigot() {
         saveDefaultConfig();
         updateConfig(); // Check and update config if missing new keys
         this.debugMode = getConfig().getBoolean("debug", false);
         this.serverId = getConfig().getString("server-id", "default-server");
-        String tablePrefix = getConfig().getString("table-prefix", "");
+        String tablePrefix = getConfig().getString(CONFIG_TABLE_PREFIX, "");
         if (!tablePrefix.isEmpty() && !tablePrefix.matches("\\w+")) {
             getLogger().severe(BANNER);
             getLogger().log(java.util.logging.Level.SEVERE, "!!! INVALID table-prefix: {0}", tablePrefix);
@@ -61,12 +77,37 @@ public class MCDataBridge extends JavaPlugin {
             getLogger().warning("!!! This is UNSAFE for multi-server setups.           !!!");
             getLogger().warning(BANNER);
         }
-        this.securitySeed = getConfig().getString("security.seed", "change-me-to-a-long-random-string");
+        
+        this.securitySeed = getConfig().getString("security.seed", DEFAULT_SEED);
+        if (this.securitySeed == null || this.securitySeed.isEmpty() || this.securitySeed.equals(DEFAULT_SEED)) {
+            String envSeed = System.getenv("DATABRIDGE_SEED");
+            if (envSeed != null && !envSeed.isEmpty() && !envSeed.equals(DEFAULT_SEED)) {
+                this.securitySeed = envSeed;
+                getLogger().info("Loaded secure security seed from environment variable DATABRIDGE_SEED.");
+            } else {
+                getLogger().severe(BANNER);
+                getLogger().severe("!!! CRITICAL SECURITY ERROR: security.seed IS NOT CONFIGURED !!!");
+                getLogger().severe("!!! You must set a custom security seed in config.yml or    !!!");
+                getLogger().severe("!!! pass it via the DATABRIDGE_SEED environment variable.    !!!");
+                getLogger().severe("!!! The engine will now forcefully disable itself immediately. !!!");
+                getLogger().severe(BANNER);
+                getServer().getPluginManager().disablePlugin(this);
+                return;
+            }
+        }
+
         this.identityMode = getConfig().getString("identity.mode", "PREMIUM").toUpperCase();
         this.autoMigrateFastLogin = getConfig().getBoolean("identity.auto-migrate-fastlogin", false);
         this.autoMigrateAuthMe = getConfig().getBoolean("identity.auto-migrate-authme", false);
         databaseManager = new DatabaseManager(getConfig(), this.tableName);
         
+        // Initialize Metrics Exporter if enabled
+        if (getConfig().getBoolean("metrics.enabled", false)) {
+            int metricsPort = getConfig().getInt("metrics.port", 8080);
+            String metricsPath = getConfig().getString("metrics.path", "/metrics");
+            com.digitalserverhost.plugins.managers.MetricsManager.getInstance().start(this, databaseManager, metricsPort, metricsPath);
+        }
+
         // Ensure table and columns exist synchronously before events are registered
         createServerTable();
         
@@ -109,10 +150,14 @@ public class MCDataBridge extends JavaPlugin {
         if (databaseManager != null) {
             databaseManager.close();
         }
+        com.digitalserverhost.plugins.managers.MetricsManager.getInstance().stop();
         getLogger().info("mc-data-bridge has been disabled!");
     }
 
     private void createServerTable() {
+        if (!tableName.matches("\\w+")) {
+            throw new SecurityException("Invalid table name: " + tableName);
+        }
         String escapedTableName = "`" + tableName + "`";
         String dbType = getConfig().getString("database.type", "mysql").toLowerCase();
 
@@ -127,14 +172,81 @@ public class MCDataBridge extends JavaPlugin {
 
             ensureColumnExists(connection, statement, escapedTableName, dbType, "is_locked", "BOOLEAN DEFAULT 0", INTEGER_DEFAULT_0);
             ensureColumnExists(connection, statement, escapedTableName, dbType, "locking_server", "VARCHAR(255) DEFAULT NULL", TEXT_DEFAULT_NULL);
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "lock_timestamp", "BIGINT DEFAULT 0", INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "lock_timestamp", BIGINT_DEFAULT_0, INTEGER_DEFAULT_0);
             ensureColumnExists(connection, statement, escapedTableName, dbType, "last_known_name", "VARCHAR(16) DEFAULT NULL", TEXT_DEFAULT_NULL);
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "data_checksum", "VARCHAR(64) DEFAULT NULL", TEXT_DEFAULT_NULL);
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "identity_hash", "VARCHAR(64) DEFAULT NULL", TEXT_DEFAULT_NULL);
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "name_last_updated", "BIGINT DEFAULT 0", INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "data_checksum", VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "identity_hash", VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "name_last_updated", BIGINT_DEFAULT_0, INTEGER_DEFAULT_0);
             ensureColumnExists(connection, statement, escapedTableName, dbType, "last_updated", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "DATETIME DEFAULT CURRENT_TIMESTAMP");
 
             migrateDataColumn(connection, statement, escapedTableName, dbType);
+            
+            // Create component tables for normalized schema
+            String tablePrefix = getConfig().getString(CONFIG_TABLE_PREFIX, "");
+            String escapedInventories = "`" + tablePrefix + "databridge_inventories`";
+            String escapedStatistics = "`" + tablePrefix + "databridge_statistics`";
+            String escapedMetadata = "`" + tablePrefix + "databridge_metadata`";
+            String escapedCompanions = "`" + tablePrefix + "databridge_companions`";
+
+            if (dbType.equals(SQLITE)) {
+                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedInventories + " (" +
+                        "uuid TEXT PRIMARY KEY, " +
+                        "inventory_blob TEXT, " +
+                        "armor_blob TEXT, " +
+                        "ender_chest_blob TEXT, " +
+                        "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);");
+                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedStatistics + " (" +
+                        "uuid TEXT PRIMARY KEY, " +
+                        "health REAL DEFAULT 20.0, " +
+                        "food_level INTEGER DEFAULT 20, " +
+                        "xp_level INTEGER DEFAULT 0, " +
+                        "xp_exp REAL DEFAULT 0.0, " +
+                        "xp_total INTEGER DEFAULT 0, " +
+                        "saturation REAL DEFAULT 5.0, " +
+                        "exhaustion REAL DEFAULT 0.0, " +
+                        "vanilla_stats_json TEXT DEFAULT NULL, " +
+                        "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);");
+                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedMetadata + " (" +
+                        "uuid TEXT PRIMARY KEY, " +
+                        "pdc_data TEXT DEFAULT NULL, " +
+                        "advancements TEXT DEFAULT NULL, " +
+                        "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);");
+                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedCompanions + " (" +
+                        "uuid TEXT PRIMARY KEY, " +
+                        "companions_nbt TEXT DEFAULT NULL, " +
+                        "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);");
+            } else {
+                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedInventories + " (" +
+                        "uuid VARCHAR(36) NOT NULL, " +
+                        "inventory_blob LONGBLOB DEFAULT NULL, " +
+                        "armor_blob LONGBLOB DEFAULT NULL, " +
+                        "ender_chest_blob LONGBLOB DEFAULT NULL, " +
+                        "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                        "PRIMARY KEY (uuid)) ENGINE=InnoDB;");
+                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedStatistics + " (" +
+                        "uuid VARCHAR(36) NOT NULL, " +
+                        "health DOUBLE DEFAULT 20.0, " +
+                        "food_level INT DEFAULT 20, " +
+                        "xp_level INT DEFAULT 0, " +
+                        "xp_exp FLOAT DEFAULT 0.0, " +
+                        "xp_total INT DEFAULT 0, " +
+                        "saturation FLOAT DEFAULT 5.0, " +
+                        "exhaustion FLOAT DEFAULT 0.0, " +
+                        "vanilla_stats_json TEXT DEFAULT NULL, " +
+                        "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                        "PRIMARY KEY (uuid)) ENGINE=InnoDB;");
+                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedMetadata + " (" +
+                        "uuid VARCHAR(36) NOT NULL, " +
+                        "pdc_data LONGTEXT DEFAULT NULL, " +
+                        "advancements LONGTEXT DEFAULT NULL, " +
+                        "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                        "PRIMARY KEY (uuid)) ENGINE=InnoDB;");
+                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedCompanions + " (" +
+                        "uuid VARCHAR(36) NOT NULL, " +
+                        "companions_nbt LONGTEXT DEFAULT NULL, " +
+                        "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                        "PRIMARY KEY (uuid)) ENGINE=InnoDB;");
+            }
             
         } catch (Exception e) {
             getLogger().log(java.util.logging.Level.SEVERE, "CRITICAL: Error creating or updating player_data table: {0}", e.getMessage());
@@ -144,7 +256,7 @@ public class MCDataBridge extends JavaPlugin {
 
     private String getCreateTableSQL(String dbType, String escapedTableName) {
         if (dbType.equals(SQLITE)) {
-            return "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
+            return CREATE_TABLE_IF_NOT_EXISTS + escapedTableName + " (" +
                     "uuid TEXT PRIMARY KEY, " +
                     "data BLOB, " +
                     "is_locked INTEGER DEFAULT 0, " +
@@ -156,7 +268,7 @@ public class MCDataBridge extends JavaPlugin {
                     "name_last_updated INTEGER DEFAULT 0, " +
                     "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);";
         } else {
-            return "CREATE TABLE IF NOT EXISTS " + escapedTableName + " (" +
+            return CREATE_TABLE_IF_NOT_EXISTS + escapedTableName + " (" +
                     "uuid VARCHAR(36) NOT NULL, " +
                     "data LONGBLOB, " +
                     "is_locked BOOLEAN DEFAULT 0, " +
@@ -195,6 +307,14 @@ public class MCDataBridge extends JavaPlugin {
 
     private void ensureColumnExists(Connection connection, Statement statement, String escapedTableName, String dbType, 
                                   String column, String mysqlType, String sqliteType) throws SQLException {
+        java.util.Map.Entry<String, String> allowedTypes = COLUMN_WHITELIST.get(column);
+        if (allowedTypes == null) {
+            throw new SecurityException("Blocked attempt to add un-whitelisted column: " + column);
+        }
+        if (!allowedTypes.getKey().equals(mysqlType) || !allowedTypes.getValue().equals(sqliteType)) {
+            throw new SecurityException("Blocked attempt to add column " + column + " with un-whitelisted types.");
+        }
+
         if (!connection.getMetaData().getColumns(null, null, tableName, column).next()) {
             String type = dbType.equals(SQLITE) ? sqliteType : mysqlType;
             statement.executeUpdate(ALTER_TABLE_SQL + escapedTableName + " ADD COLUMN " + column + " " + type);
@@ -329,7 +449,7 @@ public class MCDataBridge extends JavaPlugin {
             appends.append("\n# Unique identifier for this server (Required).\nserver-id: \"default-server\"\n");
             updated = true;
         }
-        if (!fileConfig.contains("table-prefix")) {
+        if (!fileConfig.contains(CONFIG_TABLE_PREFIX)) {
             appends.append("\n# Set to prefix the player_data table (e.g., 'mc_data_bridge_').\ntable-prefix: \"\"\n");
             updated = true;
         }
@@ -346,18 +466,25 @@ public class MCDataBridge extends JavaPlugin {
             updated = true;
         }
         if (!fileConfig.contains("security.seed")) {
-            appends.append("\n# A secret seed used to salt all cryptographic hashes.\nsecurity:\n  seed: \"change-me-to-a-long-random-string\"\n");
+            appends.append("\n# A secret seed used to salt all cryptographic hashes.\nsecurity:\n  seed: \"" + DEFAULT_SEED + "\"\n");
             updated = true;
         }
         if (!fileConfig.contains("identity.mode")) {
             appends.append("\n# Identity and Migration Settings\nidentity:\n  mode: PREMIUM\n  auto-migrate-fastlogin: false\n");
             updated = true;
         }
+        if (!fileConfig.contains("companions.scan-radius")) {
+            appends.append("\n# Companion/pet sync settings. Requires sync-data.companions: true.\ncompanions:\n  scan-radius: 32\n  mode: \"follow\"\n");
+            updated = true;
+        } else if (!fileConfig.contains("companions.mode")) {
+            appends.append("\ncompanions:\n  mode: \"follow\"\n");
+            updated = true;
+        }
         return updated;
     }
 
     private boolean checkSyncKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig, java.util.List<String> lines, StringBuilder appends) {
-        String[] syncKeys = {"statistics", "pdc", "flight-gamemode"};
+        String[] syncKeys = {"statistics", "pdc", "flight-gamemode", "companions"};
         java.util.List<String> missing = new java.util.ArrayList<>();
         for (String key : syncKeys) {
             if (!fileConfig.contains(SYNC_DATA_PREFIX + key)) {

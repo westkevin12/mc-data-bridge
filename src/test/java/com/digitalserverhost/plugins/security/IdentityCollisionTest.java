@@ -7,7 +7,7 @@ import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockbukkit.mockbukkit.MockBukkit;
+import org.mockmc.mockmc.MockMC;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
@@ -44,7 +44,7 @@ class IdentityCollisionTest {
     @BeforeEach
     void setup() {
         MockitoAnnotations.openMocks(this);
-        MockBukkit.mock();
+        MockMC.mock();
         logger = spy(Logger.getLogger("MCDataBridgeTest"));
 
         // Mock SchedulerUtils
@@ -67,7 +67,7 @@ class IdentityCollisionTest {
     @AfterEach
     void tearDown() {
         mockedSchedulerUtils.close();
-        MockBukkit.unmock();
+        MockMC.unmock();
     }
 
     @Test

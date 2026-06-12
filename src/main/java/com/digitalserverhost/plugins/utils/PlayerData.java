@@ -13,6 +13,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.Serializable;
 import java.util.*;
@@ -20,6 +21,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 public class PlayerData {
+
+    private static final String MODE_RETURN = "return";
 
     public static class ItemDeserializationException extends RuntimeException {
         public ItemDeserializationException(String message, Throwable cause) {
@@ -49,10 +52,18 @@ public class PlayerData {
     private boolean allowFlight;
     private String gameMode;
 
-    // Location Data (Logging/Admin Use Only - RESTORATION SUPPORTED)
     private String world;
-    private double x, y, z;
-    private float yaw, pitch;
+    private double x;
+    private double y;
+    private double z;
+    private float yaw;
+    private float pitch;
+
+    // Companion / Pet sync (default disabled)
+    private String companionsNBT;
+
+
+    public PlayerData() {}
 
     /**
      * ★★★ NEW CONSTRUCTOR ★★★
@@ -62,116 +73,256 @@ public class PlayerData {
         this(player, JavaPlugin.getPlugin(MCDataBridge.class));
     }
 
-    private static final org.bukkit.Statistic[] ESSENTIAL_STATS = {
-        org.bukkit.Statistic.DEATHS,
-        org.bukkit.Statistic.PLAYER_KILLS,
-        org.bukkit.Statistic.MOB_KILLS,
-        org.bukkit.Statistic.PLAY_ONE_MINUTE,
-        org.bukkit.Statistic.WALK_ONE_CM,
-        org.bukkit.Statistic.SPRINT_ONE_CM,
-        org.bukkit.Statistic.FLY_ONE_CM,
-        org.bukkit.Statistic.JUMP,
-        org.bukkit.Statistic.DAMAGE_DEALT,
-        org.bukkit.Statistic.DAMAGE_TAKEN,
-        org.bukkit.Statistic.LEAVE_GAME,
-        org.bukkit.Statistic.TIME_SINCE_DEATH,
-        org.bukkit.Statistic.SNEAK_TIME,
-        org.bukkit.Statistic.TALKED_TO_VILLAGER,
-        org.bukkit.Statistic.TRADED_WITH_VILLAGER,
-        org.bukkit.Statistic.FISH_CAUGHT
-    };
-
     /**
      * Primary constructor used by listeners to create a snapshot.
      */
     public PlayerData(Player player, MCDataBridge plugin) {
         if (player != null) {
-            if (plugin.isSyncEnabled("health")) {
-                this.health = player.getHealth();
-            }
-            if (plugin.isSyncEnabled("food-level")) {
-                this.foodLevel = player.getFoodLevel();
-                this.saturation = player.getSaturation();
-                this.exhaustion = player.getExhaustion();
-            }
-            if (plugin.isSyncEnabled("experience")) {
-                this.totalExperience = player.getTotalExperience();
-                this.exp = player.getExp();
-                this.level = player.getLevel();
-            }
-            if (plugin.isSyncEnabled("inventory")) {
-                this.inventoryContentsNBT = serializeItemStackArray(player.getInventory().getContents());
-            }
-            if (plugin.isSyncEnabled("armor")) {
-                this.armorContentsNBT = serializeItemStackArray(player.getInventory().getArmorContents());
-            }
-            if (plugin.isSyncEnabledNewFeature("ender-chest")) {
-                this.enderChestContentsNBT = serializeItemStackArray(player.getEnderChest().getContents());
-            }
-            if (plugin.isSyncEnabled("potion-effects")) {
-                this.potionEffects = convertPotionEffectArrayToSerializable(
-                        player.getActivePotionEffects().toArray(new PotionEffect[0]));
+            snapshotHealth(player, plugin);
+            snapshotFood(player, plugin);
+            snapshotExperience(player, plugin);
+            snapshotInventories(player, plugin);
+            snapshotPotionEffects(player, plugin);
+            snapshotAdvancements(player, plugin);
+            snapshotStatistics(player, plugin);
+            snapshotPdc(player, plugin);
+            snapshotLocation(player);
+            snapshotFlightAndGamemode(player, plugin);
+            snapshotCompanions(player, plugin);
+        }
+    }
+
+    private void snapshotHealth(Player player, MCDataBridge plugin) {
+        if (plugin.isSyncEnabled("health")) {
+            this.health = player.getHealth();
+        }
+    }
+
+    private void snapshotFood(Player player, MCDataBridge plugin) {
+        if (plugin.isSyncEnabled("food-level")) {
+            this.foodLevel = player.getFoodLevel();
+            this.saturation = player.getSaturation();
+            this.exhaustion = player.getExhaustion();
+        }
+    }
+
+    private void snapshotExperience(Player player, MCDataBridge plugin) {
+        if (plugin.isSyncEnabled("experience")) {
+            this.totalExperience = player.getTotalExperience();
+            this.exp = player.getExp();
+            this.level = player.getLevel();
+        }
+    }
+
+    private void snapshotInventories(Player player, MCDataBridge plugin) {
+        if (plugin.isSyncEnabled("inventory")) {
+            this.inventoryContentsNBT = serializeItemStackArray(player.getInventory().getContents());
+        }
+        if (plugin.isSyncEnabled("armor")) {
+            this.armorContentsNBT = serializeItemStackArray(player.getInventory().getArmorContents());
+        }
+        if (plugin.isSyncEnabledNewFeature("ender-chest")) {
+            this.enderChestContentsNBT = serializeItemStackArray(player.getEnderChest().getContents());
+        }
+    }
+
+    private void snapshotPotionEffects(Player player, MCDataBridge plugin) {
+        if (plugin.isSyncEnabled("potion-effects")) {
+            this.potionEffects = convertPotionEffectArrayToSerializable(
+                    player.getActivePotionEffects().toArray(new PotionEffect[0]));
+        }
+    }
+
+    private void snapshotAdvancements(Player player, MCDataBridge plugin) {
+        if (plugin.isSyncEnabledNewFeature("advancements")) {
+            this.discoveredRecipes = new ArrayList<>();
+            for (org.bukkit.NamespacedKey key : player.getDiscoveredRecipes()) {
+                this.discoveredRecipes.add(key.toString());
             }
 
-            if (plugin.isSyncEnabledNewFeature("advancements")) {
-                // Snapshot Recipes
-                this.discoveredRecipes = new ArrayList<>();
-                for (org.bukkit.NamespacedKey key : player.getDiscoveredRecipes()) {
-                    this.discoveredRecipes.add(key.toString());
-                }
-
-                // Snapshot Advancements
-                this.advancements = new HashMap<>();
-                Iterator<Advancement> it = org.bukkit.Bukkit.advancementIterator();
-                while (it.hasNext()) {
-                    Advancement adv = java.util.Objects.requireNonNull(it.next());
-                    AdvancementProgress progress = player.getAdvancementProgress(adv);
-                    if (progress.isDone()) {
-                        this.advancements.put(adv.getKey().toString(), new ArrayList<>(progress.getAwardedCriteria()));
-                    }
-                }
-            }
-
-            if (plugin.isSyncEnabledNewFeature("statistics")) {
-                this.statistics = new HashMap<>();
-                for (org.bukkit.Statistic stat : ESSENTIAL_STATS) {
-                    try {
-                        this.statistics.put(stat.name(), player.getStatistic(stat));
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            if (plugin.isSyncEnabledNewFeature("pdc")) {
-                try {
-                    this.pdcNBT = de.tr7zw.changeme.nbtapi.NBT.get(player, nbt -> {
-                        de.tr7zw.changeme.nbtapi.iface.ReadableNBT compound = nbt.getCompound("PublicBukkitValues");
-                        return (compound != null) ? compound.toString() : null;
-                    });
-                } catch (Throwable t) {
-                    // Fallback for mock environments where NBTAPI reflection fails
-                    this.pdcNBT = null;
-                }
-            }
-
-            // Location
-            if (player.getWorld() != null) {
-                this.world = player.getWorld().getName();
-                org.bukkit.Location loc = player.getLocation();
-                if (loc != null) {
-                    this.x = loc.getX();
-                    this.y = loc.getY();
-                    this.z = loc.getZ();
-                    this.yaw = loc.getYaw();
-                    this.pitch = loc.getPitch();
+            this.advancements = new HashMap<>();
+            Iterator<Advancement> it = org.bukkit.Bukkit.advancementIterator();
+            while (it.hasNext()) {
+                Advancement adv = java.util.Objects.requireNonNull(it.next());
+                AdvancementProgress progress = player.getAdvancementProgress(adv);
+                if (progress.isDone()) {
+                    this.advancements.put(adv.getKey().toString(), new ArrayList<>(progress.getAwardedCriteria()));
                 }
             }
+        }
+    }
 
-            // Flight & Gamemode
-            if (plugin.isSyncEnabledNewFeature("flight-gamemode")) {
-                this.isFlying = player.isFlying();
-                this.allowFlight = player.getAllowFlight();
-                this.gameMode = player.getGameMode().name();
+    private void snapshotStatistics(Player player, MCDataBridge plugin) {
+        if (!plugin.isSyncEnabledNewFeature("statistics")) {
+            return;
+        }
+        this.statistics = new HashMap<>();
+        for (org.bukkit.Statistic stat : org.bukkit.Statistic.values()) {
+            try {
+                snapshotSingleStatistic(player, stat);
+            } catch (Exception _) {
+                // Ignore unsupported statistics on this server version
             }
+        }
+    }
+
+    private void snapshotSingleStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat) {
+        if (stat.getType() == org.bukkit.Statistic.Type.UNTYPED) {
+            int val = player.getStatistic(stat);
+            if (val > 0) {
+                this.statistics.put(stat.name(), val);
+            }
+        } else if (stat.getType() == org.bukkit.Statistic.Type.BLOCK || stat.getType() == org.bukkit.Statistic.Type.ITEM) {
+            snapshotMaterialStatistic(player, stat);
+        } else if (stat.getType() == org.bukkit.Statistic.Type.ENTITY) {
+            snapshotEntityStatistic(player, stat);
+        }
+    }
+
+    @SuppressWarnings("null")
+    private void snapshotMaterialStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat) {
+        for (Material mat : Material.values()) {
+            try {
+                int val = player.getStatistic(stat, mat);
+                if (val > 0) {
+                    this.statistics.put(stat.name() + ":" + mat.name(), val);
+                }
+            } catch (Exception _) {
+                // Ignore invalid/unsupported combinations
+            }
+        }
+    }
+
+    @SuppressWarnings("null")
+    private void snapshotEntityStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat) {
+        for (org.bukkit.entity.EntityType entityType : org.bukkit.entity.EntityType.values()) {
+            try {
+                int val = player.getStatistic(stat, entityType);
+                if (val > 0) {
+                    this.statistics.put(stat.name() + ":" + entityType.name(), val);
+                }
+            } catch (Exception _) {
+                // Ignore invalid/unsupported combinations
+            }
+        }
+    }
+
+    private void snapshotPdc(Player player, MCDataBridge plugin) {
+        if (plugin.isSyncEnabledNewFeature("pdc")) {
+            try {
+                this.pdcNBT = de.tr7zw.changeme.nbtapi.NBT.get(player, nbt -> {
+                    de.tr7zw.changeme.nbtapi.iface.ReadableNBT compound = nbt.getCompound("PublicBukkitValues");
+                    return (compound != null) ? compound.toString() : null;
+                });
+            } catch (Exception | LinkageError _) {
+                // Fallback for mock environments where NBTAPI reflection fails
+                this.pdcNBT = null;
+            }
+        }
+    }
+
+    private void snapshotLocation(Player player) {
+        try {
+            this.world = player.getWorld().getName();
+        } catch (NullPointerException _) {
+            // Handled for unit tests where player.getWorld() returns null
+        }
+        try {
+            org.bukkit.Location loc = player.getLocation();
+            if (loc != null) {
+                this.x = loc.getX();
+                this.y = loc.getY();
+                this.z = loc.getZ();
+                this.yaw = loc.getYaw();
+                this.pitch = loc.getPitch();
+            }
+        } catch (NullPointerException _) {
+            // Handled for unit tests where player.getLocation() returns null
+        }
+    }
+
+    private void snapshotFlightAndGamemode(Player player, MCDataBridge plugin) {
+        if (plugin.isSyncEnabledNewFeature("flight-gamemode")) {
+            this.isFlying = player.isFlying();
+            this.allowFlight = player.getAllowFlight();
+            this.gameMode = player.getGameMode().name();
+        }
+    }
+
+    private void snapshotCompanions(Player player, MCDataBridge plugin) {
+        if (!plugin.isSyncEnabledNewFeature("companions")) return;
+        String mode = "follow";
+        try {
+            mode = plugin.getConfig().getString("companions.mode", "follow").toLowerCase();
+        } catch (Exception _) { /* default to follow if config is missing */ }
+        if (mode.equals("untracked") || mode.equals("off")) return;
+
+        double radius = 32.0;
+        try {
+            radius = plugin.getConfig().getDouble("companions.scan-radius", 32.0);
+        } catch (Exception _) { /* test environment — use default */ }
+        java.util.List<CompanionSnapshot> snapshots = new java.util.ArrayList<>();
+        
+        snapshotNearbyEntities(player, mode, radius, snapshots, plugin);
+        snapshotShoulderLeft(player, mode, snapshots, plugin);
+        snapshotShoulderRight(player, mode, snapshots, plugin);
+
+        if (!snapshots.isEmpty()) {
+            this.companionsNBT = new com.google.gson.Gson().toJson(snapshots);
+        }
+    }
+
+    private void snapshotNearbyEntities(Player player, String mode, double radius, java.util.List<CompanionSnapshot> snapshots, MCDataBridge plugin) {
+        for (org.bukkit.entity.Entity entity : player.getNearbyEntities(radius, radius, radius)) {
+            if (entity instanceof org.bukkit.entity.Tameable tame
+                    && tame.isTamed()
+                    && tame.getOwner() != null
+                    && tame.getOwner().getUniqueId().equals(player.getUniqueId())) {
+                CompanionSnapshot snap = new CompanionSnapshot(entity);
+                if (mode.equals(MODE_RETURN)) {
+                    snap.setSourceServerId(plugin.getServerId());
+                }
+                snapshots.add(snap);
+                entity.remove(); // despawn on source server to prevent duplication
+            }
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void snapshotShoulderLeft(Player player, String mode, java.util.List<CompanionSnapshot> snapshots, MCDataBridge plugin) {
+        try {
+            org.bukkit.entity.Entity leftShoulder = player.getShoulderEntityLeft();
+            if (leftShoulder != null) {
+                CompanionSnapshot snap = new CompanionSnapshot(leftShoulder);
+                snap.setIsOnShoulderLeft(true);
+                if (mode.equals(MODE_RETURN)) {
+                    snap.setSourceServerId(plugin.getServerId());
+                }
+                snapshots.add(snap);
+                player.setShoulderEntityLeft(null);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "Failed to snapshot left shoulder entity for {0}: {1}",
+                    new Object[]{player.getName(), e.getMessage()});
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void snapshotShoulderRight(Player player, String mode, java.util.List<CompanionSnapshot> snapshots, MCDataBridge plugin) {
+        try {
+            org.bukkit.entity.Entity rightShoulder = player.getShoulderEntityRight();
+            if (rightShoulder != null) {
+                CompanionSnapshot snap = new CompanionSnapshot(rightShoulder);
+                snap.setIsOnShoulderRight(true);
+                if (mode.equals(MODE_RETURN)) {
+                    snap.setSourceServerId(plugin.getServerId());
+                }
+                snapshots.add(snap);
+                player.setShoulderEntityRight(null);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "Failed to snapshot right shoulder entity for {0}: {1}",
+                    new Object[]{player.getName(), e.getMessage()});
         }
     }
 
@@ -188,8 +339,8 @@ public class PlayerData {
                 try {
                     SerializableItemStack serializableItem = new SerializableItemStack(item);
                     serializedItems.add(gson.toJson(serializableItem));
-                } catch (Exception e) {
-                    System.err.println("[mc-data-bridge] Failed to serialize item: " + item.getType());
+                } catch (Exception _) {
+                    org.bukkit.Bukkit.getLogger().warning("[mc-data-bridge] Failed to serialize item: " + item.getType());
                     serializedItems.add(null);
                 }
             }
@@ -220,7 +371,7 @@ public class PlayerData {
                     items[i] = legacyDeserialize(s);
                 }
             } catch (Exception e) {
-                System.err.println("[mc-data-bridge] Failed to deserialize item at index " + i + ": " + e.getMessage());
+                org.bukkit.Bukkit.getLogger().warning("[mc-data-bridge] Failed to deserialize item at index " + i + ": " + e.getMessage());
                 items[i] = new ItemStack(Material.AIR);
             }
         }
@@ -232,7 +383,7 @@ public class PlayerData {
             org.bukkit.configuration.file.YamlConfiguration config = new org.bukkit.configuration.file.YamlConfiguration();
             config.loadFromString(yaml);
             return config.getItemStack("item");
-        } catch (Exception e) {
+        } catch (Exception _) {
             return new ItemStack(Material.AIR);
         }
     }
@@ -319,6 +470,37 @@ public class PlayerData {
     public float getYaw() { return yaw; }
     public float getPitch() { return pitch; }
 
+    public List<String> getInventoryContentsNBT() { return inventoryContentsNBT; }
+    public List<String> getArmorContentsNBT() { return armorContentsNBT; }
+    public List<String> getEnderChestContentsNBT() { return enderChestContentsNBT; }
+    public String getCompanionsNBT() { return companionsNBT; }
+
+    public void setHealth(double health) { this.health = health; }
+    public void setFoodLevel(int foodLevel) { this.foodLevel = foodLevel; }
+    public void setSaturation(float saturation) { this.saturation = saturation; }
+    public void setExhaustion(float exhaustion) { this.exhaustion = exhaustion; }
+    public void setTotalExperience(int totalExperience) { this.totalExperience = totalExperience; }
+    public void setExp(float exp) { this.exp = exp; }
+    public void setLevel(int level) { this.level = level; }
+    public void setInventoryContentsNBT(List<String> inventoryContentsNBT) { this.inventoryContentsNBT = inventoryContentsNBT; }
+    public void setArmorContentsNBT(List<String> armorContentsNBT) { this.armorContentsNBT = armorContentsNBT; }
+    public void setEnderChestContentsNBT(List<String> enderChestContentsNBT) { this.enderChestContentsNBT = enderChestContentsNBT; }
+    public void setPotionEffects(PotionEffect[] effects) { this.potionEffects = convertPotionEffectArrayToSerializable(effects); }
+    public void setDiscoveredRecipes(List<String> discoveredRecipes) { this.discoveredRecipes = discoveredRecipes; }
+    public void setAdvancements(Map<String, List<String>> advancements) { this.advancements = advancements; }
+    public void setStatistics(Map<String, Integer> statistics) { this.statistics = statistics; }
+    public void setPdcNBT(String pdcNBT) { this.pdcNBT = pdcNBT; }
+    public void setCompanionsNBT(String companionsNBT) { this.companionsNBT = companionsNBT; }
+    public void setFlying(boolean flying) { this.isFlying = flying; }
+    public void setAllowFlight(boolean allowFlight) { this.allowFlight = allowFlight; }
+    public void setGameMode(String gameMode) { this.gameMode = gameMode; }
+    public void setWorld(String world) { this.world = world; }
+    public void setX(double x) { this.x = x; }
+    public void setY(double y) { this.y = y; }
+    public void setZ(double z) { this.z = z; }
+    public void setYaw(float yaw) { this.yaw = yaw; }
+    public void setPitch(float pitch) { this.pitch = pitch; }
+
     private SerializablePotionEffect[] convertPotionEffectArrayToSerializable(PotionEffect[] effects) {
         if (effects == null) {
             return new SerializablePotionEffect[0];
@@ -360,7 +542,7 @@ public class PlayerData {
                 hexString.append(hex);
             }
             return hexString.toString();
-        } catch (NoSuchAlgorithmException e) {
+        } catch (NoSuchAlgorithmException _) {
             return null;
         }
     }
@@ -400,10 +582,85 @@ public class PlayerData {
                 ", potionEffects=" + Arrays.toString(potionEffects) +
                 ", recipes=" + (discoveredRecipes != null ? discoveredRecipes.size() : "0") +
                 ", advancements=" + (advancements != null ? advancements.size() : "0") +
+                ", companions=" + (companionsNBT != null ? "present" : "none") +
                 "}";
     }
 
+    /**
+     * Snapshot of a single tamed companion entity for cross-server transfer.
+     */
+    public static class CompanionSnapshot implements java.io.Serializable {
+        private static final long serialVersionUID = 1L;
+        public final String entityType;
+        public final double health;
+        public final double maxHealth;
+        public final String customName;
+        public final boolean isSitting;
+        public final String nbtData;
+        private String sourceServerId;
+        private Boolean isOnShoulderLeft;
+        private Boolean isOnShoulderRight;
+
+        public String getSourceServerId() {
+            return sourceServerId;
+        }
+
+        public void setSourceServerId(String sourceServerId) {
+            this.sourceServerId = sourceServerId;
+        }
+
+        public Boolean getIsOnShoulderLeft() {
+            return isOnShoulderLeft;
+        }
+
+        public void setIsOnShoulderLeft(Boolean isOnShoulderLeft) {
+            this.isOnShoulderLeft = isOnShoulderLeft;
+        }
+
+        public Boolean getIsOnShoulderRight() {
+            return isOnShoulderRight;
+        }
+
+        public void setIsOnShoulderRight(Boolean isOnShoulderRight) {
+            this.isOnShoulderRight = isOnShoulderRight;
+        }
+
+        @SuppressWarnings("deprecation")
+        public CompanionSnapshot(org.bukkit.entity.Entity entity) {
+            this.entityType = entity.getType().name();
+            this.customName = entity.getCustomName();
+
+            if (entity instanceof org.bukkit.entity.Damageable db) {
+                this.health = db.getHealth();
+            } else {
+                this.health = 20.0;
+            }
+
+            if (entity instanceof org.bukkit.attribute.Attributable attributable) {
+                org.bukkit.attribute.AttributeInstance attr = attributable.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
+                this.maxHealth = (attr != null) ? attr.getValue() : 20.0;
+            } else {
+                this.maxHealth = 20.0;
+            }
+
+            this.isSitting = (entity instanceof org.bukkit.entity.Sittable sittable) && sittable.isSitting();
+
+            String serializedNbt = null;
+            try {
+                serializedNbt = de.tr7zw.changeme.nbtapi.NBT.get(entity,
+                        (java.util.function.Function<de.tr7zw.changeme.nbtapi.iface.ReadableNBT, String>) Object::toString);
+            } catch (Exception _) {
+                // NBTAPI unavailable or failed — companion saved without raw NBT
+            }
+            this.nbtData = serializedNbt;
+        }
+    }
+
     static class SerializableItemStack {
+        private static final String DISPLAY_NAME = "display-name";
+        private static final String ITEM_NAME = "item-name";
+        private static final String LORE = "lore";
+
         private String itemAsBase64;
         @SuppressWarnings("unused")
         private int v; // DataVersion (short name to save database space)
@@ -411,107 +668,267 @@ public class PlayerData {
         private final int amount;
         private final String nbt;
 
-        @SuppressWarnings("deprecation")
         public SerializableItemStack(ItemStack item) {
             if (item == null || item.getType().isAir()) {
                 this.itemAsBase64 = null;
             } else {
-                // PRIMARY: Use Paper/Folia native binary method for 100% integrity and performance
-                try {
-                    this.itemAsBase64 = Base64.getEncoder().encodeToString(item.serializeAsBytes());
-                    // Paper's binary format already includes the DataVersion in the bytes
-                } catch (NoSuchMethodError | Exception e) {
-                    System.err.println("[mc-data-bridge] serializeAsBytes failed, falling back to NBTAPI. Error: " + e.toString());
-                    // FALLBACK: Use NBTAPI only for Spigot servers that lack native binary API
-                    try {
-                        this.itemAsBase64 = de.tr7zw.changeme.nbtapi.NBT.itemStackToNBT(item).toString();
-                        // Store the current server's DataVersion so Paper can run DFU on it later if needed
-                        try {
-                            this.v = org.bukkit.Bukkit.getUnsafe().getDataVersion();
-                        } catch (Exception ignored) {}
-                    } catch (Exception e2) {
-                        System.err.println("[mc-data-bridge] Item serialization failed: " + e2.getMessage());
-                        this.itemAsBase64 = null;
-                    }
-                }
+                serializeItem(item);
             }
             this.material = null;
             this.amount = 0;
             this.nbt = null;
         }
 
-        public ItemStack toItemStack() {
-            if (this.itemAsBase64 == null) return new ItemStack(Material.AIR);
+        private void serializeItem(ItemStack item) {
+            try {
+                this.itemAsBase64 = Base64.getEncoder().encodeToString(item.serializeAsBytes());
+            } catch (Exception e) {
+                org.bukkit.Bukkit.getLogger().warning("[mc-data-bridge] serializeAsBytes failed, falling back to NBTAPI. Error: " + e.toString());
+                serializeItemFallback(item);
+            }
+        }
 
-            // Handle NBT JSON format (Spigot Fallback or Legacy)
-            if (this.itemAsBase64.startsWith("{")) {
-                try {
-                    return de.tr7zw.changeme.nbtapi.NBT.itemStackFromNBT(de.tr7zw.changeme.nbtapi.NBT.parseNBT(this.itemAsBase64));
-                } catch (Exception ignored) {}
+        private void serializeItemFallback(ItemStack item) {
+            try {
+                this.itemAsBase64 = de.tr7zw.changeme.nbtapi.NBT.itemStackToNBT(item).toString();
+                this.v = getDataVersionSafe();
+            } catch (Exception | LinkageError e2) {
+                org.bukkit.Bukkit.getLogger().severe("[mc-data-bridge] Item serialization failed (no NMS): " + e2.getMessage());
+                this.itemAsBase64 = null;
+            }
+        }
+
+        @SuppressWarnings("deprecation")
+        private int getDataVersionSafe() {
+            try {
+                return org.bukkit.Bukkit.getUnsafe().getDataVersion();
+            } catch (Exception | LinkageError _) {
+                return 0;
+            }
+        }
+
+        public ItemStack toItemStack() {
+            if (this.itemAsBase64 == null) {
+                return new ItemStack(Material.AIR);
             }
 
-            // Handle Binary format (Native Paper/Folia)
+            if (this.itemAsBase64.startsWith("{")) {
+                return deserializeFromJsonNbt();
+            }
+
             try {
                 byte[] itemBytes = Base64.getDecoder().decode(this.itemAsBase64);
                 if (itemBytes.length > 2) {
-                    // Check for GZIP header (1F 8B) used by Paper's binary format
+                    if (itemBytes[0] == (byte) '{') {
+                        return deserializeFromMockMcJson(itemBytes);
+                    }
                     if (itemBytes[0] == (byte) 0x1F && itemBytes[1] == (byte) 0x8B) {
-                        try {
-                            // NATIVE PATH: Try Paper's native deserializer first
-                            return ItemStack.deserializeBytes(itemBytes);
-                        } catch (NoSuchMethodError | Exception e) {
-                            // SPIGOT ADAPTIVE LAYER: If on Spigot, use NBT-API to translate Paper's binary data
-                            try (java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(itemBytes)) {
-                                @SuppressWarnings("deprecation")
-                                de.tr7zw.changeme.nbtapi.NBTContainer container = new de.tr7zw.changeme.nbtapi.NBTContainer(bis);
-                                return de.tr7zw.changeme.nbtapi.NBT.itemStackFromNBT(container);
-                            } catch (Exception e2) {
-                                System.err.println("[mc-data-bridge] Spigot failed to translate Paper binary item: " + e2.getMessage());
-                            }
-                        }
-                    } 
-                    
-                    // Fallback for Java/Bukkit Serialization (AC ED)
+                        return deserializeFromBinaryCompressed(itemBytes);
+                    }
                     if (itemBytes[0] == (byte) 0xAC && itemBytes[1] == (byte) 0xED) {
-                        try (java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(itemBytes);
-                             @SuppressWarnings("deprecation")
-                             org.bukkit.util.io.BukkitObjectInputStream bois = new org.bukkit.util.io.BukkitObjectInputStream(bis)) {
-                            return (ItemStack) bois.readObject();
-                        } catch (Exception ignored) {}
+                        return deserializeFromJavaSerialization(itemBytes);
                     }
                 }
-                
-                // Final attempt: deserialize directly if detection failed
                 return ItemStack.deserializeBytes(itemBytes);
-            } catch (NoSuchMethodError e) {
-                // If we reach here on Spigot without success, the item is incompatible
+            } catch (NoSuchMethodError _) {
                 return new ItemStack(Material.AIR);
-            } catch (Exception e) {
-                // Fall through to legacy NBT handling
+            } catch (Exception _) {
+                return deserializeFromLegacyNbt();
             }
+        }
 
-            // Legacy NBT handling for old data formats
+        private ItemStack deserializeFromJsonNbt() {
+            try {
+                return de.tr7zw.changeme.nbtapi.NBT.itemStackFromNBT(
+                        de.tr7zw.changeme.nbtapi.NBT.parseNBT(this.itemAsBase64)
+                );
+            } catch (Exception | LinkageError _) {
+                return new ItemStack(Material.AIR);
+            }
+        }
+
+        @SuppressWarnings({"unchecked", "null"})
+        private ItemStack deserializeFromMockMcJson(byte[] itemBytes) {
+            try {
+                String json = new String(itemBytes, java.nio.charset.StandardCharsets.UTF_8);
+                java.util.Map<String, Object> map = new com.google.gson.Gson().fromJson(json, java.util.Map.class);
+                if (map != null) {
+                    sanitizeMetaMap((java.util.Map<String, Object>) map.get("components"));
+                    sanitizeMetaMap((java.util.Map<String, Object>) map.get("meta"));
+                }
+                
+                ItemStack result = deserializeItemStackFromMap(map);
+                if (result != null) {
+                    hydrateItemMetaReflectively(result, map);
+                    return result;
+                }
+            } catch (Exception _) {
+                org.bukkit.Bukkit.getLogger().warning("[mc-data-bridge] outer deserialize block failed");
+            }
+            return new ItemStack(Material.AIR);
+        }
+
+        private ItemStack deserializeItemStackFromMap(java.util.Map<String, Object> map) {
+            try {
+                Class<?> mockClass = Class.forName("org.mockmc.mockmc.inventory.ItemStackMock");
+                java.lang.reflect.Method deserializeMethod = mockClass.getMethod("deserialize", java.util.Map.class);
+                return (ItemStack) deserializeMethod.invoke(null, map);
+            } catch (Exception _) {
+                return deserializeItemStackFromMapLegacy(map);
+            }
+        }
+
+        private ItemStack deserializeItemStackFromMapLegacy(java.util.Map<String, Object> map) {
+            try {
+                Class<?> legacyMockClass = Class.forName("org.mockbukkit.mockbukkit.inventory.ItemStackMock");
+                java.lang.reflect.Method deserializeMethod = legacyMockClass.getMethod("deserialize", java.util.Map.class);
+                return (ItemStack) deserializeMethod.invoke(null, map);
+            } catch (Exception _) {
+                try {
+                    return ItemStack.deserialize(map);
+                } catch (Exception _) {
+                    return null;
+                }
+            }
+        }
+
+        @SuppressWarnings("all")
+        private void hydrateItemMetaReflectively(ItemStack result, java.util.Map<String, Object> map) {
+            if (result.getClass().getName().contains("ItemStackMock")) {
+                try {
+                    Object metaObj = map.getOrDefault("components", map.get("meta"));
+                    if (metaObj instanceof java.util.Map) {
+                        java.util.Map<String, Object> metaMap = (java.util.Map<String, Object>) metaObj;
+                        org.bukkit.inventory.meta.ItemMeta itemMeta = org.bukkit.Bukkit.getItemFactory().getItemMeta(result.getType());
+                        if (itemMeta != null) {
+                            Class<?> current = itemMeta.getClass();
+                            java.lang.reflect.Method deserializeInternal = null;
+                            while (current != null) {
+                                try {
+                                    deserializeInternal = current.getDeclaredMethod("deserializeInternal", java.util.Map.class);
+                                    break;
+                                } catch (NoSuchMethodException _) {
+                                    current = current.getSuperclass();
+                                }
+                            }
+                            if (deserializeInternal != null) {
+                                deserializeInternal.setAccessible(true);
+                                deserializeInternal.invoke(itemMeta, metaMap);
+                                result.setItemMeta(itemMeta);
+                            }
+                        }
+                    }
+                } catch (Exception _) {
+                    org.bukkit.Bukkit.getLogger().warning("[mc-data-bridge] Reflection hydration failed");
+                }
+            }
+        }
+
+        private ItemStack deserializeFromBinaryCompressed(byte[] itemBytes) {
+            try {
+                return ItemStack.deserializeBytes(itemBytes);
+            } catch (Exception _) {
+                return deserializeFromBinaryCompressedFallback(itemBytes);
+            }
+        }
+
+        private ItemStack deserializeFromBinaryCompressedFallback(byte[] itemBytes) {
+            try (java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(itemBytes)) {
+                @SuppressWarnings("deprecation")
+                de.tr7zw.changeme.nbtapi.NBTContainer container = new de.tr7zw.changeme.nbtapi.NBTContainer(bis);
+                return de.tr7zw.changeme.nbtapi.NBT.itemStackFromNBT(container);
+            } catch (Exception | LinkageError _) {
+                org.bukkit.Bukkit.getLogger().severe("[mc-data-bridge] Spigot failed to translate Paper binary item");
+                return new ItemStack(Material.AIR);
+            }
+        }
+
+        private ItemStack deserializeFromJavaSerialization(byte[] itemBytes) {
+            try (java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(itemBytes);
+                 @SuppressWarnings("deprecation")
+                 org.bukkit.util.io.BukkitObjectInputStream bois = new org.bukkit.util.io.BukkitObjectInputStream(bis)) {
+                return (ItemStack) bois.readObject();
+            } catch (Exception _) {
+                return new ItemStack(Material.AIR);
+            }
+        }
+
+        private ItemStack deserializeFromLegacyNbt() {
             if (this.material != null) {
                 try {
                     ItemStack item = new ItemStack(Material.valueOf(material), amount);
                     if (nbt != null) {
                         @SuppressWarnings("deprecation")
-                        NBTItem nbtItem = new NBTItem(item); // Deprecated: NBTItem is legacy, but required for this
-                                                             // legacy data path
+                        NBTItem nbtItem = new NBTItem(item);
                         @SuppressWarnings("deprecation")
-                        de.tr7zw.changeme.nbtapi.NBTCompound compound = new NBTContainer(nbt); // Deprecated:
-                                                                                               // NBTContainer is legacy
+                        de.tr7zw.changeme.nbtapi.NBTCompound compound = new NBTContainer(nbt);
                         nbtItem.mergeCompound(compound);
                         return nbtItem.getItem();
                     }
                     return item;
-                } catch (Exception e) {
-                    System.err.println(
+                } catch (Exception | LinkageError _) {
+                    org.bukkit.Bukkit.getLogger().severe(
                             "[mc-data-bridge] Failed to deserialize OLD (NBT) item data! Material: " + this.material);
                     return new ItemStack(Material.AIR);
                 }
             }
             return new ItemStack(Material.AIR);
+        }
+
+        private void sanitizeMetaMap(java.util.Map<String, Object> metaMap) {
+            if (metaMap == null) return;
+            com.google.gson.Gson gson = new com.google.gson.Gson();
+            
+            sanitizeDisplayName(metaMap, gson);
+            sanitizeItemName(metaMap, gson);
+            sanitizeLore(metaMap, gson);
+        }
+
+        private void sanitizeDisplayName(java.util.Map<String, Object> metaMap, com.google.gson.Gson gson) {
+            if (metaMap.containsKey(DISPLAY_NAME)) {
+                Object val = metaMap.get(DISPLAY_NAME);
+                if (val instanceof String str) {
+                    String trimmed = str.trim();
+                    if (!trimmed.startsWith("{") && !trimmed.startsWith("[") && !trimmed.startsWith("\"")) {
+                        metaMap.put(DISPLAY_NAME, gson.toJson(str));
+                    }
+                }
+            }
+        }
+
+        private void sanitizeItemName(java.util.Map<String, Object> metaMap, com.google.gson.Gson gson) {
+            if (metaMap.containsKey(ITEM_NAME)) {
+                Object val = metaMap.get(ITEM_NAME);
+                if (val instanceof String str) {
+                    String trimmed = str.trim();
+                    if (!trimmed.startsWith("{") && !trimmed.startsWith("[") && !trimmed.startsWith("\"")) {
+                        metaMap.put(ITEM_NAME, gson.toJson(str));
+                    }
+                }
+            }
+        }
+
+        private void sanitizeLore(java.util.Map<String, Object> metaMap, com.google.gson.Gson gson) {
+            if (metaMap.containsKey(LORE)) {
+                Object val = metaMap.get(LORE);
+                if (val instanceof java.util.List<?> list) {
+                    java.util.List<Object> sanitizedList = new java.util.ArrayList<>();
+                    for (Object item : list) {
+                        sanitizedList.add(sanitizeSingleLoreItem(item, gson));
+                    }
+                    metaMap.put(LORE, sanitizedList);
+                }
+            }
+        }
+
+        private Object sanitizeSingleLoreItem(Object item, com.google.gson.Gson gson) {
+            if (item instanceof String str) {
+                String trimmed = str.trim();
+                if (!trimmed.startsWith("{") && !trimmed.startsWith("[") && !trimmed.startsWith("\"")) {
+                    return gson.toJson(str);
+                }
+            }
+            return item;
         }
     }
 

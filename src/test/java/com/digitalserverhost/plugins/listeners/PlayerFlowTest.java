@@ -1,10 +1,11 @@
 package com.digitalserverhost.plugins.listeners;
 
-import org.mockbukkit.mockbukkit.MockBukkit;
-import org.mockbukkit.mockbukkit.ServerMock;
-import org.mockbukkit.mockbukkit.entity.PlayerMock;
+import org.mockmc.mockmc.MockMC;
+import org.mockmc.mockmc.ServerMock;
+import org.mockmc.mockmc.entity.PlayerMock;
 import com.digitalserverhost.plugins.MCDataBridge;
 import com.digitalserverhost.plugins.managers.DatabaseManager;
+import com.digitalserverhost.plugins.utils.PlayerData;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -47,7 +48,7 @@ class PlayerFlowTest {
     @BeforeEach
     void setup() {
         MockitoAnnotations.openMocks(this);
-        server = MockBukkit.mock();
+        server = MockMC.mock();
 
         // Mock SchedulerUtils
         @SuppressWarnings("null")
@@ -99,7 +100,7 @@ class PlayerFlowTest {
         if (mockedSchedulerUtils != null) {
             mockedSchedulerUtils.close();
         }
-        MockBukkit.unmock();
+        MockMC.unmock();
     }
 
     @Test
@@ -182,7 +183,7 @@ class PlayerFlowTest {
 
         PlayerMock player = server.addPlayer();
 
-        when(mockDatabaseManager.saveAndReleaseLock(anyString(), anyString(), anyString(), eq(player.getUniqueId()), anyString(), any()))
+        when(mockDatabaseManager.saveAndReleaseLockComponents(eq(mockPlugin), any(PlayerData.class), anyString(), eq(player.getUniqueId()), anyString(), any()))
                 .thenReturn(true);
 
         PlayerQuitEvent event = new PlayerQuitEvent(player, net.kyori.adventure.text.Component.text("Quit"), org.bukkit.event.player.PlayerQuitEvent.QuitReason.DISCONNECTED);
@@ -190,7 +191,7 @@ class PlayerFlowTest {
         listener.onPlayerQuit(event);
 
         // Verify async save call with timeout
-        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(player.getUniqueId()),
+        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLockComponents(eq(mockPlugin), any(PlayerData.class), anyString(), eq(player.getUniqueId()),
                 anyString(), any());
     }
 
@@ -226,7 +227,7 @@ class PlayerFlowTest {
         listener.onPlayerQuit(quitEvent);
 
         // Wait for save to complete (async)
-        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(player.getUniqueId()),
+        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLockComponents(eq(mockPlugin), any(PlayerData.class), anyString(), eq(player.getUniqueId()),
                 anyString(), any());
 
         // 3. Advance time again -> Heartbeat should NOT run
@@ -258,7 +259,7 @@ class PlayerFlowTest {
         PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
 
         // Setup passing checks for save
-        lenient().when(mockDatabaseManager.saveAndReleaseLock(anyString(), anyString(), anyString(), any(UUID.class), anyString(), any()))
+        lenient().when(mockDatabaseManager.saveAndReleaseLockComponents(eq(mockPlugin), any(PlayerData.class), anyString(), any(UUID.class), anyString(), any()))
                 .thenReturn(true);
 
         PlayerMock player = server.addPlayer();
@@ -274,7 +275,7 @@ class PlayerFlowTest {
         // 1. Receive Message -> Triggers async save
         listener.onPluginMessageReceived("mc-data-bridge:main", player, message);
 
-        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(uuid), anyString(), any());
+        verify(mockDatabaseManager, timeout(2000)).saveAndReleaseLockComponents(eq(mockPlugin), any(PlayerData.class), anyString(), eq(uuid), anyString(), any());
 
         // Clear invocations to verify Quit behavior
         clearInvocations(mockDatabaseManager);
@@ -284,6 +285,6 @@ class PlayerFlowTest {
         listener.onPlayerQuit(quitEvent);
 
         // Verify save was NOT called again
-        verify(mockDatabaseManager, never()).saveAndReleaseLock(anyString(), anyString(), anyString(), eq(uuid), anyString(), any());
+        verify(mockDatabaseManager, never()).saveAndReleaseLockComponents(eq(mockPlugin), any(PlayerData.class), anyString(), eq(uuid), anyString(), any());
     }
 }

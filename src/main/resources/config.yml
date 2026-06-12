@@ -11,6 +11,12 @@ database:
   # If type is "sqlite", specify the filename here.
   sqlite-file: "player_data.db"
 
+  # Data serialization format: "json" or "binary"
+  # - json: Human-readable Base64-encoded NBT JSON (default, compatible with older versions)
+  # - binary: Compressed NBT byte array (native LONGBLOB/BLOB). Recommended for production
+  #           to reduce database size and serialization time.
+  serialization-format: "json"
+
   # Redundancy System (JSON Exports)
   # WARNING: This simply copies database contents to the local filesystem.
   # This is NOT a true backup if stored on the same machine/container.
@@ -105,6 +111,7 @@ sync-data:
   statistics: false
   pdc: false
   flight-gamemode: false
+  companions: false
 
 # Server/World Blacklist
 # Data synchronization will be disabled for players on these servers or in these worlds.
@@ -143,3 +150,28 @@ identity:
   # WARNING: If you change this later, existing identity hashes will be updated on next join,
   # but data integrity checks will fall back to legacy mode until the data is re-saved.
   seed: "change-me-to-a-long-random-string"
+
+# Companion / Pet Settings
+companions:
+  # The search radius (blocks) around the player to locate tamed pets/companions for transfer.
+  # Default: 32
+  scan-radius: 32
+  # Companion synchronization mode:
+  # - follow: Companions follow the player across different servers.
+  # - return: Companions stay on the server they were left on and reappear when the player returns.
+  # - untracked: Companions are not managed or synchronized by the plugin.
+  # Default: follow
+  mode: "follow"
+
+# Prometheus Metrics Exporter
+metrics:
+  # Enable or disable the Prometheus metrics exporter.
+  # If enabled, an embedded HTTP server will start at the specified port and path.
+  enabled: false
+  
+  # The port on which the metrics server will listen.
+  port: 8080
+  
+  # The HTTP endpoint path for scraping metrics.
+  path: "/metrics"
+
