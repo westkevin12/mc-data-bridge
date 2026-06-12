@@ -3,8 +3,6 @@ package com.digitalserverhost.plugins.listeners;
 import com.digitalserverhost.plugins.MCDataBridge;
 import com.digitalserverhost.plugins.managers.DatabaseManager;
 import com.digitalserverhost.plugins.utils.PlayerData;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +38,6 @@ class PlayerSyncTest {
     @Mock
     private org.bukkit.scheduler.BukkitScheduler mockScheduler;
 
-    private static final Gson GSON = new GsonBuilder().create();
 
     private org.mockito.MockedStatic<com.digitalserverhost.plugins.utils.SchedulerUtils> mockedSchedulerUtils;
 
@@ -117,21 +114,14 @@ class PlayerSyncTest {
         when(mockPlugin.isSyncEnabled("food-level")).thenReturn(true);
 
         PlayerData sourceData = new PlayerData(sourcePlayer, mockPlugin);
-        String json = GSON.toJson(sourceData);
+
 
         // 2. Setup Listener and DB Mocks
         PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
 
         UUID targetUuid = UUID.randomUUID();
-        when(mockDatabaseManager.getTableName()).thenReturn("`player_data`");
         when(mockDatabaseManager.acquireLock(eq(targetUuid), anyString())).thenReturn(true);
-        when(mockDatabaseManager.getConnection()).thenReturn(mockConnection);
-        when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
-        when(mockStatement.executeQuery()).thenReturn(mockResultSet);
-        when(mockResultSet.next()).thenReturn(true);
-        lenient().when(mockResultSet.getString("locking_server")).thenReturn("test-server");
-        lenient().when(mockResultSet.getString("data_checksum")).thenReturn(null);
-        when(mockResultSet.getBytes("data")).thenReturn(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        when(mockDatabaseManager.loadPlayerDataComponents(any(), eq(targetUuid), any())).thenReturn(sourceData);
 
         // 3. Run PreLogin (Loads data into cache)
         AsyncPlayerPreLoginEvent preLoginEvent = mock(AsyncPlayerPreLoginEvent.class);
@@ -189,7 +179,7 @@ class PlayerSyncTest {
         // Capture with enabled toggle
         when(mockPlugin.isSyncEnabled("food-level")).thenReturn(true);
         PlayerData sourceData = new PlayerData(sourcePlayer, mockPlugin);
-        String json = GSON.toJson(sourceData);
+
 
         // 2. Disable toggle for Application
         when(mockPlugin.isSyncEnabled("food-level")).thenReturn(false);
@@ -198,15 +188,8 @@ class PlayerSyncTest {
         PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
 
         UUID targetUuid = UUID.randomUUID();
-        when(mockDatabaseManager.getTableName()).thenReturn("`player_data`");
         when(mockDatabaseManager.acquireLock(eq(targetUuid), anyString())).thenReturn(true);
-        when(mockDatabaseManager.getConnection()).thenReturn(mockConnection);
-        when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
-        when(mockStatement.executeQuery()).thenReturn(mockResultSet);
-        when(mockResultSet.next()).thenReturn(true);
-        lenient().when(mockResultSet.getString("locking_server")).thenReturn("test-server");
-        lenient().when(mockResultSet.getString("data_checksum")).thenReturn(null);
-        when(mockResultSet.getBytes("data")).thenReturn(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        when(mockDatabaseManager.loadPlayerDataComponents(any(), eq(targetUuid), any())).thenReturn(sourceData);
 
         // 4. PreLogin
         AsyncPlayerPreLoginEvent preLoginEvent = mock(AsyncPlayerPreLoginEvent.class);
@@ -256,21 +239,14 @@ class PlayerSyncTest {
         when(sourcePlayer.getInventory()).thenReturn(mockInventory);
 
         PlayerData sourceData = new PlayerData(sourcePlayer, mockPlugin);
-        String json = GSON.toJson(sourceData);
+
 
         // 2. Setup Listener and DB
         PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
         UUID targetUuid = UUID.randomUUID();
 
-        when(mockDatabaseManager.getTableName()).thenReturn("`player_data`");
         when(mockDatabaseManager.acquireLock(eq(targetUuid), anyString())).thenReturn(true);
-        when(mockDatabaseManager.getConnection()).thenReturn(mockConnection);
-        when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
-        when(mockStatement.executeQuery()).thenReturn(mockResultSet);
-        when(mockResultSet.next()).thenReturn(true);
-        lenient().when(mockResultSet.getString("locking_server")).thenReturn("test-server");
-        lenient().when(mockResultSet.getString("data_checksum")).thenReturn(null);
-        when(mockResultSet.getBytes("data")).thenReturn(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        when(mockDatabaseManager.loadPlayerDataComponents(any(), eq(targetUuid), any())).thenReturn(sourceData);
 
         // PreLogin
         AsyncPlayerPreLoginEvent preLoginEvent = mock(AsyncPlayerPreLoginEvent.class);

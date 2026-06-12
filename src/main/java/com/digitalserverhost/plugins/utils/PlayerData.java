@@ -49,13 +49,18 @@ public class PlayerData {
     private boolean allowFlight;
     private String gameMode;
 
-    // Location Data (Logging/Admin Use Only - RESTORATION SUPPORTED)
     private String world;
     private double x;
     private double y;
     private double z;
     private float yaw;
     private float pitch;
+
+    // Companion / Pet sync (default disabled)
+    private String companionsNBT;
+
+
+    public PlayerData() {}
 
     /**
      * ★★★ NEW CONSTRUCTOR ★★★
@@ -99,6 +104,7 @@ public class PlayerData {
             snapshotPdc(player, plugin);
             snapshotLocation(player);
             snapshotFlightAndGamemode(player, plugin);
+            snapshotCompanions(player, plugin);
         }
     }
 
@@ -214,6 +220,28 @@ public class PlayerData {
             this.isFlying = player.isFlying();
             this.allowFlight = player.getAllowFlight();
             this.gameMode = player.getGameMode().name();
+        }
+    }
+
+    private void snapshotCompanions(Player player, MCDataBridge plugin) {
+        if (!plugin.isSyncEnabledNewFeature("companions")) return;
+        double radius = 32.0;
+        try {
+            org.bukkit.configuration.file.FileConfiguration cfg = plugin.getConfig();
+            if (cfg != null) radius = cfg.getDouble("companions.scan-radius", 32.0);
+        } catch (Exception _) { /* test environment — use default */ }
+        java.util.List<CompanionSnapshot> snapshots = new java.util.ArrayList<>();
+        for (org.bukkit.entity.Entity entity : player.getNearbyEntities(radius, radius, radius)) {
+            if (entity instanceof org.bukkit.entity.Tameable tame
+                    && tame.isTamed()
+                    && tame.getOwner() != null
+                    && tame.getOwner().getUniqueId().equals(player.getUniqueId())) {
+                snapshots.add(new CompanionSnapshot(entity));
+                entity.remove(); // despawn on source server to prevent duplication
+            }
+        }
+        if (!snapshots.isEmpty()) {
+            this.companionsNBT = new com.google.gson.Gson().toJson(snapshots);
         }
     }
 
@@ -361,6 +389,37 @@ public class PlayerData {
     public float getYaw() { return yaw; }
     public float getPitch() { return pitch; }
 
+    public List<String> getInventoryContentsNBT() { return inventoryContentsNBT; }
+    public List<String> getArmorContentsNBT() { return armorContentsNBT; }
+    public List<String> getEnderChestContentsNBT() { return enderChestContentsNBT; }
+    public String getCompanionsNBT() { return companionsNBT; }
+
+    public void setHealth(double health) { this.health = health; }
+    public void setFoodLevel(int foodLevel) { this.foodLevel = foodLevel; }
+    public void setSaturation(float saturation) { this.saturation = saturation; }
+    public void setExhaustion(float exhaustion) { this.exhaustion = exhaustion; }
+    public void setTotalExperience(int totalExperience) { this.totalExperience = totalExperience; }
+    public void setExp(float exp) { this.exp = exp; }
+    public void setLevel(int level) { this.level = level; }
+    public void setInventoryContentsNBT(List<String> inventoryContentsNBT) { this.inventoryContentsNBT = inventoryContentsNBT; }
+    public void setArmorContentsNBT(List<String> armorContentsNBT) { this.armorContentsNBT = armorContentsNBT; }
+    public void setEnderChestContentsNBT(List<String> enderChestContentsNBT) { this.enderChestContentsNBT = enderChestContentsNBT; }
+    public void setPotionEffects(PotionEffect[] effects) { this.potionEffects = convertPotionEffectArrayToSerializable(effects); }
+    public void setDiscoveredRecipes(List<String> discoveredRecipes) { this.discoveredRecipes = discoveredRecipes; }
+    public void setAdvancements(Map<String, List<String>> advancements) { this.advancements = advancements; }
+    public void setStatistics(Map<String, Integer> statistics) { this.statistics = statistics; }
+    public void setPdcNBT(String pdcNBT) { this.pdcNBT = pdcNBT; }
+    public void setCompanionsNBT(String companionsNBT) { this.companionsNBT = companionsNBT; }
+    public void setFlying(boolean flying) { this.isFlying = flying; }
+    public void setAllowFlight(boolean allowFlight) { this.allowFlight = allowFlight; }
+    public void setGameMode(String gameMode) { this.gameMode = gameMode; }
+    public void setWorld(String world) { this.world = world; }
+    public void setX(double x) { this.x = x; }
+    public void setY(double y) { this.y = y; }
+    public void setZ(double z) { this.z = z; }
+    public void setYaw(float yaw) { this.yaw = yaw; }
+    public void setPitch(float pitch) { this.pitch = pitch; }
+
     private SerializablePotionEffect[] convertPotionEffectArrayToSerializable(PotionEffect[] effects) {
         if (effects == null) {
             return new SerializablePotionEffect[0];
@@ -442,7 +501,51 @@ public class PlayerData {
                 ", potionEffects=" + Arrays.toString(potionEffects) +
                 ", recipes=" + (discoveredRecipes != null ? discoveredRecipes.size() : "0") +
                 ", advancements=" + (advancements != null ? advancements.size() : "0") +
+                ", companions=" + (companionsNBT != null ? "present" : "none") +
                 "}";
+    }
+
+    /**
+     * Snapshot of a single tamed companion entity for cross-server transfer.
+     */
+    public static class CompanionSnapshot implements java.io.Serializable {
+        private static final long serialVersionUID = 1L;
+        public final String entityType;
+        public final double health;
+        public final double maxHealth;
+        public final String customName;
+        public final boolean isSitting;
+        public final String nbtData;
+
+        @SuppressWarnings("deprecation")
+        public CompanionSnapshot(org.bukkit.entity.Entity entity) {
+            this.entityType = entity.getType().name();
+            this.customName = entity.getCustomName();
+
+            if (entity instanceof org.bukkit.entity.Damageable db) {
+                this.health = db.getHealth();
+            } else {
+                this.health = 20.0;
+            }
+
+            if (entity instanceof org.bukkit.attribute.Attributable attributable) {
+                org.bukkit.attribute.AttributeInstance attr = attributable.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
+                this.maxHealth = (attr != null) ? attr.getValue() : 20.0;
+            } else {
+                this.maxHealth = 20.0;
+            }
+
+            this.isSitting = (entity instanceof org.bukkit.entity.Sittable sittable) && sittable.isSitting();
+
+            String serializedNbt = null;
+            try {
+                serializedNbt = de.tr7zw.changeme.nbtapi.NBT.get(entity,
+                        (java.util.function.Function<de.tr7zw.changeme.nbtapi.iface.ReadableNBT, String>) nbt -> nbt.toString());
+            } catch (Throwable _) {
+                // NBTAPI unavailable or failed — companion saved without raw NBT
+            }
+            this.nbtData = serializedNbt;
+        }
     }
 
     static class SerializableItemStack {

@@ -1,6 +1,9 @@
 package com.digitalserverhost.plugins.managers;
 
 import com.digitalserverhost.plugins.utils.HashUtils;
+import com.digitalserverhost.plugins.utils.PlayerData;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -9,6 +12,10 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
 
@@ -16,14 +23,33 @@ public class DatabaseManager {
 
     private static final Logger LOGGER = Logger.getLogger("mc-data-bridge");
     private static final String UPDATE_SQL_PREFIX = "UPDATE ";
+    private static final String INSERT_INTO_SQL = "INSERT INTO ";
+    private static final String WHERE_UUID_SQL = " WHERE uuid = ?";
+    private static final String COL_HEALTH = "health";
+    private static final String COL_ADVANCEMENTS = "advancements";
+    private static final Gson GSON = new GsonBuilder().create();
 
     private final HikariDataSource dataSource;
     private final long lockTimeout;
     private final String tableName;
     private final String currentTimeFunction;
 
+    private final String tablePrefix;
+    private final String inventoriesTable;
+    private final String statisticsTable;
+    private final String metadataTable;
+    private final String companionsTable;
+    private final String serializationFormat;
+
     public DatabaseManager(FileConfiguration config, String tableName) {
         this.tableName = "`" + tableName.replace("`", "") + "`"; // Escape table name
+        this.tablePrefix = config.getString("table-prefix", "");
+        this.inventoriesTable = "`" + this.tablePrefix + "databridge_inventories`";
+        this.statisticsTable = "`" + this.tablePrefix + "databridge_statistics`";
+        this.metadataTable = "`" + this.tablePrefix + "databridge_metadata`";
+        this.companionsTable = "`" + this.tablePrefix + "databridge_companions`";
+        this.serializationFormat = config.getString("database.serialization-format", "json").toLowerCase();
+
         HikariConfig hikariConfig = new HikariConfig();
 
         String type = config.getString("database.type", "mysql").toLowerCase();
@@ -81,6 +107,12 @@ public class DatabaseManager {
         this.tableName = "`" + tableName.replace("`", "") + "`";
         this.lockTimeout = lockTimeout;
         this.currentTimeFunction = "(UNIX_TIMESTAMP() * 1000)"; // Default for tests
+        this.tablePrefix = "";
+        this.inventoriesTable = "`databridge_inventories`";
+        this.statisticsTable = "`databridge_statistics`";
+        this.metadataTable = "`databridge_metadata`";
+        this.companionsTable = "`databridge_companions`";
+        this.serializationFormat = "json";
     }
 
     public int getActiveConnections() {
@@ -135,7 +167,7 @@ public class DatabaseManager {
             }
 
             try {
-                String insertSql = "INSERT INTO " + tableName
+                String insertSql = INSERT_INTO_SQL + tableName
                         + " (uuid, data, is_locked, locking_server, lock_timestamp) VALUES (?, NULL, 1, ?, " + currentTimeFunction + ")";
                 try (PreparedStatement insertStmt = connection.prepareStatement(insertSql)) {
                     insertStmt.setString(1, uuid.toString());
@@ -152,6 +184,22 @@ public class DatabaseManager {
                     return retryUpdateStmt.executeUpdate() > 0;
                 }
             }
+        }
+    }
+
+    public boolean saveAndReleaseLockComponents(com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, String name, UUID uuid, String serverId, String seed) throws SQLException {
+        savePlayerDataComponents(plugin, data, uuid);
+        
+        String sql = UPDATE_SQL_PREFIX + tableName
+                + " SET data = NULL, data_checksum = NULL, last_known_name = ?, identity_hash = ?, name_last_updated = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
+        try (Connection connection = getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, name);
+            statement.setString(2, HashUtils.generateIdentityHash(name, uuid, seed));
+            statement.setLong(3, System.currentTimeMillis());
+            statement.setString(4, uuid.toString());
+            statement.setString(5, serverId);
+            return statement.executeUpdate() > 0;
         }
     }
 
@@ -263,7 +311,7 @@ public class DatabaseManager {
     }
 
     public IdentityRecord getIdentityRecord(UUID uuid) {
-        String sql = "SELECT last_known_name, identity_hash, name_last_updated FROM " + tableName + " WHERE uuid = ?";
+        String sql = "SELECT last_known_name, identity_hash, name_last_updated FROM " + tableName + WHERE_UUID_SQL;
         try (Connection connection = getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, uuid.toString());
@@ -299,11 +347,485 @@ public class DatabaseManager {
     }
 
 
+    @SuppressWarnings("java:S1168") // null preserves SQL NULL semantics for BLOB columns
+    public byte[] serializeListToBlob(List<String> list) {
+        if (list == null) return null;
+        if ("binary".equals(serializationFormat)) {
+            return serializeListToBinary(list);
+        } else {
+            return serializeListToJson(list);
+        }
+    }
+
+    public List<String> deserializeListFromBlob(byte[] blob) {
+        if (blob == null) return new ArrayList<>();
+        if ("binary".equals(serializationFormat) || (blob.length > 2 && blob[0] != (byte) '[')) {
+            return deserializeListFromBinary(blob);
+        } else {
+            return deserializeListFromJson(blob);
+        }
+    }
+
+    private byte[] serializeListToBinary(List<String> list) {
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        try (java.io.DataOutputStream dos = new java.io.DataOutputStream(baos)) {
+            dos.writeInt(list.size());
+            for (String item : list) {
+                if (item == null || item.isEmpty()) {
+                    dos.writeInt(-1);
+                } else {
+                    byte[] bytes;
+                    if (item.startsWith("{")) {
+                        bytes = item.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    } else {
+                        bytes = decodeItemBytes(item);
+                    }
+                    dos.writeInt(bytes.length);
+                    dos.write(bytes);
+                }
+            }
+        } catch (java.io.IOException e) {
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed binary list serialization: {0}", e.getMessage());
+        }
+        return baos.toByteArray();
+    }
+
+    private List<String> deserializeListFromBinary(byte[] blob) {
+        List<String> list = new ArrayList<>();
+        java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(blob);
+        try (java.io.DataInputStream dis = new java.io.DataInputStream(bais)) {
+            int size = dis.readInt();
+            for (int i = 0; i < size; i++) {
+                int len = dis.readInt();
+                if (len == -1) {
+                    list.add(null);
+                } else {
+                    byte[] bytes = new byte[len];
+                    dis.readFully(bytes);
+                    if (bytes.length > 2 && bytes[0] == (byte) '{') {
+                        list.add(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+                    } else {
+                        list.add(Base64.getEncoder().encodeToString(bytes));
+                    }
+                }
+            }
+        } catch (java.io.IOException _) {
+            // Corrupt or empty stream
+        }
+        return list;
+    }
+
+    private byte[] serializeListToJson(List<String> list) {
+        String json = GSON.toJson(list);
+        return json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static byte[] decodeItemBytes(String item) {
+        try {
+            return Base64.getDecoder().decode(item);
+        } catch (IllegalArgumentException _) {
+            return item.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> deserializeListFromJson(byte[] blob) {
+        String json = new String(blob, java.nio.charset.StandardCharsets.UTF_8);
+        return GSON.fromJson(json, List.class);
+    }
+
+    public boolean savePlayerDataComponents(com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        try (Connection connection = getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                saveInventoryComponent(connection, plugin, data, uuid);
+                saveStatisticsComponent(connection, plugin, data, uuid);
+                saveMetadataComponent(connection, plugin, data, uuid);
+                saveCompanionComponent(connection, plugin, data, uuid);
+                connection.commit();
+                return true;
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    private void saveInventoryComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        byte[] dbInventory = null;
+        byte[] dbArmor = null;
+        byte[] dbEnderChest = null;
+
+        String sqlSelect = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + inventoriesTable + WHERE_UUID_SQL;
+        try (PreparedStatement selectStmt = connection.prepareStatement(sqlSelect)) {
+            selectStmt.setString(1, uuid.toString());
+            try (ResultSet rs = selectStmt.executeQuery()) {
+                if (rs.next()) {
+                    dbInventory = rs.getBytes("inventory_blob");
+                    dbArmor = rs.getBytes("armor_blob");
+                    dbEnderChest = rs.getBytes("ender_chest_blob");
+                }
+            }
+        }
+
+        byte[] targetInventory = plugin.isSyncEnabled("inventory") ? serializeListToBlob(data.getInventoryContentsNBT()) : dbInventory;
+        byte[] targetArmor = plugin.isSyncEnabled("armor") ? serializeListToBlob(data.getArmorContentsNBT()) : dbArmor;
+        byte[] targetEnderChest = plugin.isSyncEnabled("ender-chest") ? serializeListToBlob(data.getEnderChestContentsNBT()) : dbEnderChest;
+
+        String sqlUpdate = UPDATE_SQL_PREFIX + inventoriesTable + " SET inventory_blob = ?, armor_blob = ?, ender_chest_blob = ?" + WHERE_UUID_SQL;
+        try (PreparedStatement updateStmt = connection.prepareStatement(sqlUpdate)) {
+            updateStmt.setBytes(1, targetInventory);
+            updateStmt.setBytes(2, targetArmor);
+            updateStmt.setBytes(3, targetEnderChest);
+            updateStmt.setString(4, uuid.toString());
+            if (updateStmt.executeUpdate() == 0) {
+                String sqlInsert = INSERT_INTO_SQL + inventoriesTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?)";
+                try (PreparedStatement insertStmt = connection.prepareStatement(sqlInsert)) {
+                    insertStmt.setString(1, uuid.toString());
+                    insertStmt.setBytes(2, targetInventory);
+                    insertStmt.setBytes(3, targetArmor);
+                    insertStmt.setBytes(4, targetEnderChest);
+                    insertStmt.executeUpdate();
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings("null")
+    private void saveStatisticsComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        double dbHealth = 20.0;
+        int dbFoodLevel = 20;
+        int dbXpLevel = 0;
+        float dbXpExp = 0.0f;
+        int dbXpTotal = 0;
+        float dbSaturation = 5.0f;
+        float dbExhaustion = 0.0f;
+        String dbVanillaStatsJson = "{}";
+
+        String sqlSelect = "SELECT " + COL_HEALTH + ", food_level, xp_level, xp_exp, xp_total, saturation, exhaustion, vanilla_stats_json FROM " + statisticsTable + WHERE_UUID_SQL;
+        try (PreparedStatement selectStmt = connection.prepareStatement(sqlSelect)) {
+            selectStmt.setString(1, uuid.toString());
+            try (ResultSet rs = selectStmt.executeQuery()) {
+                if (rs.next()) {
+                    dbHealth = rs.getDouble(COL_HEALTH);
+                    dbFoodLevel = rs.getInt("food_level");
+                    dbXpLevel = rs.getInt("xp_level");
+                    dbXpExp = rs.getFloat("xp_exp");
+                    dbXpTotal = rs.getInt("xp_total");
+                    dbSaturation = rs.getFloat("saturation");
+                    dbExhaustion = rs.getFloat("exhaustion");
+                    dbVanillaStatsJson = rs.getString("vanilla_stats_json");
+                    if (dbVanillaStatsJson == null) dbVanillaStatsJson = "{}";
+                }
+            }
+        }
+
+        double targetHealth = plugin.isSyncEnabled(COL_HEALTH) ? data.getHealth() : dbHealth;
+        int targetFoodLevel = dbFoodLevel;
+        float targetSaturation = dbSaturation;
+        float targetExhaustion = dbExhaustion;
+        if (plugin.isSyncEnabled("food-level")) {
+            targetFoodLevel = data.getFoodLevel();
+            targetSaturation = data.getSaturation();
+            targetExhaustion = data.getExhaustion();
+        }
+        int targetXpLevel = dbXpLevel;
+        float targetXpExp = dbXpExp;
+        int targetXpTotal = dbXpTotal;
+        if (plugin.isSyncEnabled("experience")) {
+            targetXpLevel = data.getLevel();
+            targetXpExp = data.getExp();
+            targetXpTotal = data.getTotalExperience();
+        }
+
+        PlayerData jsonStatsData = GSON.fromJson(dbVanillaStatsJson, PlayerData.class);
+        if (plugin.isSyncEnabled("potion-effects")) jsonStatsData.setPotionEffects(data.getPotionEffects());
+        if (plugin.isSyncEnabled("flight-gamemode")) {
+            jsonStatsData.setFlying(data.isFlying());
+            jsonStatsData.setAllowFlight(data.isAllowFlight());
+            jsonStatsData.setGameMode(data.getGameMode());
+        }
+        if (plugin.isSyncEnabledNewFeature("location")) {
+            jsonStatsData.setWorld(data.getWorld());
+            jsonStatsData.setX(data.getX());
+            jsonStatsData.setY(data.getY());
+            jsonStatsData.setZ(data.getZ());
+            jsonStatsData.setYaw(data.getYaw());
+            jsonStatsData.setPitch(data.getPitch());
+        }
+        if (plugin.isSyncEnabledNewFeature("statistics")) jsonStatsData.setStatistics(data.getStatistics());
+        jsonStatsData.setDiscoveredRecipes(data.getDiscoveredRecipes());
+
+        String targetVanillaStatsJson = GSON.toJson(jsonStatsData);
+
+        String sqlUpdate = UPDATE_SQL_PREFIX + statisticsTable + " SET " + COL_HEALTH + " = ?, food_level = ?, xp_level = ?, xp_exp = ?, xp_total = ?, saturation = ?, exhaustion = ?, vanilla_stats_json = ?" + WHERE_UUID_SQL;
+        try (PreparedStatement updateStmt = connection.prepareStatement(sqlUpdate)) {
+            updateStmt.setDouble(1, targetHealth);
+            updateStmt.setInt(2, targetFoodLevel);
+            updateStmt.setInt(3, targetXpLevel);
+            updateStmt.setFloat(4, targetXpExp);
+            updateStmt.setInt(5, targetXpTotal);
+            updateStmt.setFloat(6, targetSaturation);
+            updateStmt.setFloat(7, targetExhaustion);
+            updateStmt.setString(8, targetVanillaStatsJson);
+            updateStmt.setString(9, uuid.toString());
+            if (updateStmt.executeUpdate() == 0) {
+                String sqlInsert = INSERT_INTO_SQL + statisticsTable + " (uuid, " + COL_HEALTH + ", food_level, xp_level, xp_exp, xp_total, saturation, exhaustion, vanilla_stats_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                try (PreparedStatement insertStmt = connection.prepareStatement(sqlInsert)) {
+                    insertStmt.setString(1, uuid.toString());
+                    insertStmt.setDouble(2, targetHealth);
+                    insertStmt.setInt(3, targetFoodLevel);
+                    insertStmt.setInt(4, targetXpLevel);
+                    insertStmt.setFloat(5, targetXpExp);
+                    insertStmt.setInt(6, targetXpTotal);
+                    insertStmt.setFloat(7, targetSaturation);
+                    insertStmt.setFloat(8, targetExhaustion);
+                    insertStmt.setString(9, targetVanillaStatsJson);
+                    insertStmt.executeUpdate();
+                }
+            }
+        }
+    }
+
+    private void saveMetadataComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        String dbPdc = null;
+        String dbAdvancements = null;
+
+        String sqlSelect = "SELECT pdc_data, " + COL_ADVANCEMENTS + " FROM " + metadataTable + WHERE_UUID_SQL;
+        try (PreparedStatement selectStmt = connection.prepareStatement(sqlSelect)) {
+            selectStmt.setString(1, uuid.toString());
+            try (ResultSet rs = selectStmt.executeQuery()) {
+                if (rs.next()) {
+                    dbPdc = rs.getString("pdc_data");
+                    dbAdvancements = rs.getString(COL_ADVANCEMENTS);
+                }
+            }
+        }
+
+        String targetPdc = plugin.isSyncEnabled("pdc") ? data.getPdcNBT() : dbPdc;
+        String targetAdvancements = plugin.isSyncEnabled(COL_ADVANCEMENTS) ? GSON.toJson(data.getAdvancements()) : dbAdvancements;
+
+        String sqlUpdate = UPDATE_SQL_PREFIX + metadataTable + " SET pdc_data = ?, " + COL_ADVANCEMENTS + " = ?" + WHERE_UUID_SQL;
+        try (PreparedStatement updateStmt = connection.prepareStatement(sqlUpdate)) {
+            updateStmt.setString(1, targetPdc);
+            updateStmt.setString(2, targetAdvancements);
+            updateStmt.setString(3, uuid.toString());
+            if (updateStmt.executeUpdate() == 0) {
+                String sqlInsert = INSERT_INTO_SQL + metadataTable + " (uuid, pdc_data, " + COL_ADVANCEMENTS + ") VALUES (?, ?, ?)";
+                try (PreparedStatement insertStmt = connection.prepareStatement(sqlInsert)) {
+                    insertStmt.setString(1, uuid.toString());
+                    insertStmt.setString(2, targetPdc);
+                    insertStmt.setString(3, targetAdvancements);
+                    insertStmt.executeUpdate();
+                }
+            }
+        }
+    }
+
+    private void saveCompanionComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        if (!plugin.isSyncEnabledNewFeature("companions")) return;
+        String dbCompanionsNbt = null;
+        String sqlSelect = "SELECT companions_nbt FROM " + companionsTable + WHERE_UUID_SQL;
+        try (PreparedStatement selectStmt = connection.prepareStatement(sqlSelect)) {
+            selectStmt.setString(1, uuid.toString());
+            try (ResultSet rs = selectStmt.executeQuery()) {
+                if (rs.next()) dbCompanionsNbt = rs.getString("companions_nbt");
+            }
+        }
+        String targetCompanionsNbt = (data.getCompanionsNBT() != null) ? data.getCompanionsNBT() : dbCompanionsNbt;
+        String sqlUpdate = UPDATE_SQL_PREFIX + companionsTable + " SET companions_nbt = ?" + WHERE_UUID_SQL;
+        try (PreparedStatement updateStmt = connection.prepareStatement(sqlUpdate)) {
+            updateStmt.setString(1, targetCompanionsNbt);
+            updateStmt.setString(2, uuid.toString());
+            if (updateStmt.executeUpdate() == 0) {
+                String sqlInsert = INSERT_INTO_SQL + companionsTable + " (uuid, companions_nbt) VALUES (?, ?)";
+                try (PreparedStatement insertStmt = connection.prepareStatement(sqlInsert)) {
+                    insertStmt.setString(1, uuid.toString());
+                    insertStmt.setString(2, targetCompanionsNbt);
+                    insertStmt.executeUpdate();
+                }
+            }
+        }
+    }
+
+    public PlayerData loadPlayerDataComponents(com.digitalserverhost.plugins.MCDataBridge plugin, UUID uuid) throws SQLException {
+        return loadPlayerDataComponents(plugin, uuid, null);
+    }
+
+    public PlayerData loadPlayerDataComponents(com.digitalserverhost.plugins.MCDataBridge plugin, UUID uuid, String name) throws SQLException {
+        // First check for legacy monolithic data in the main table
+        try (Connection connection = getConnection()) {
+            PlayerData legacy = loadLegacyData(connection, plugin, uuid, name);
+            if (legacy != null) return legacy;
+        }
+
+        // Component-based loading
+        PlayerData data = new PlayerData();
+        boolean loadedAny = false;
+
+        try (Connection connection = getConnection()) {
+            if (plugin.isSyncEnabled("inventory") || plugin.isSyncEnabled("armor") || plugin.isSyncEnabled("ender-chest")) {
+                loadedAny |= loadInventoryComponent(connection, data, uuid);
+            }
+            loadedAny |= loadStatisticsComponent(connection, data, uuid);
+            if (plugin.isSyncEnabled("pdc") || plugin.isSyncEnabled(COL_ADVANCEMENTS)) {
+                loadedAny |= loadMetadataComponent(connection, data, uuid);
+            }
+            if (plugin.isSyncEnabledNewFeature("companions")) {
+                loadedAny |= loadCompanionComponent(connection, data, uuid);
+            }
+        }
+
+        return loadedAny ? data : null;
+    }
+
+    @SuppressWarnings("null")
+    private PlayerData loadLegacyData(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, UUID uuid, String name) throws SQLException {
+        String sqlSelectLegacy = "SELECT data, data_checksum FROM " + tableName + WHERE_UUID_SQL;
+        try (PreparedStatement statement = connection.prepareStatement(sqlSelectLegacy)) {
+            statement.setString(1, uuid.toString());
+            try (ResultSet rs = statement.executeQuery()) {
+                if (!rs.next()) return null;
+                byte[] dataBytes = rs.getBytes("data");
+                if (dataBytes == null || dataBytes.length == 0) return null;
+                String json = new String(dataBytes, java.nio.charset.StandardCharsets.UTF_8);
+                if (json.trim().isEmpty() || "{}".equals(json)) return null;
+
+                String checksum = rs.getString("data_checksum");
+                String seed = plugin.getSecuritySeed();
+                if (plugin.getConfig().getBoolean("security.verify-data-integrity", true)
+                        && checksum != null
+                        && !PlayerData.verifyChecksum(json, checksum, seed)
+                        && !PlayerData.verifyChecksum(json, checksum, null)) {
+                    LOGGER.log(java.util.logging.Level.SEVERE, "CRITICAL: Legacy checksum mismatch for {0}!", uuid);
+                    return null;
+                }
+                if (checksum != null
+                        && !PlayerData.verifyChecksum(json, checksum, seed)
+                        && PlayerData.verifyChecksum(json, checksum, null)
+                        && name != null) {
+                    plugin.getLogger().log(java.util.logging.Level.INFO, "Migrating data for {0} to salted checksum format", name);
+                }
+
+                PlayerData data = GSON.fromJson(json, PlayerData.class);
+                if (data != null) {
+                    // Save to component tables and null out legacy column
+                    savePlayerDataComponents(plugin, data, uuid);
+                    String sqlClearLegacy = UPDATE_SQL_PREFIX + tableName + " SET data = NULL" + WHERE_UUID_SQL;
+                    try (PreparedStatement clearStmt = connection.prepareStatement(sqlClearLegacy)) {
+                        clearStmt.setString(1, uuid.toString());
+                        clearStmt.executeUpdate();
+                    }
+                }
+                return data;
+            }
+        }
+    }
+
+    private boolean loadInventoryComponent(Connection connection, PlayerData data, UUID uuid) throws SQLException {
+        String sqlInv = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + inventoriesTable + WHERE_UUID_SQL;
+        try (PreparedStatement stmt = connection.prepareStatement(sqlInv)) {
+            stmt.setString(1, uuid.toString());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) return false;
+                byte[] invBlob = rs.getBytes("inventory_blob");
+                byte[] armorBlob = rs.getBytes("armor_blob");
+                byte[] ecBlob = rs.getBytes("ender_chest_blob");
+                if (invBlob != null) data.setInventoryContentsNBT(deserializeListFromBlob(invBlob));
+                if (armorBlob != null) data.setArmorContentsNBT(deserializeListFromBlob(armorBlob));
+                if (ecBlob != null) data.setEnderChestContentsNBT(deserializeListFromBlob(ecBlob));
+                return true;
+            }
+        }
+    }
+
+    private boolean loadStatisticsComponent(Connection connection, PlayerData data, UUID uuid) throws SQLException {
+        String sqlStats = "SELECT " + COL_HEALTH + ", food_level, xp_level, xp_exp, xp_total, saturation, exhaustion, vanilla_stats_json FROM " + statisticsTable + WHERE_UUID_SQL;
+        try (PreparedStatement stmt = connection.prepareStatement(sqlStats)) {
+            stmt.setString(1, uuid.toString());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) return false;
+                data.setHealth(rs.getDouble(COL_HEALTH));
+                data.setFoodLevel(rs.getInt("food_level"));
+                data.setLevel(rs.getInt("xp_level"));
+                data.setExp(rs.getFloat("xp_exp"));
+                data.setTotalExperience(rs.getInt("xp_total"));
+                data.setSaturation(rs.getFloat("saturation"));
+                data.setExhaustion(rs.getFloat("exhaustion"));
+                String json = rs.getString("vanilla_stats_json");
+                if (json != null && !json.isEmpty() && !"{}".equals(json)) {
+                    applyVanillaStats(data, GSON.fromJson(json, PlayerData.class));
+                }
+                return true;
+            }
+        }
+    }
+
+    private static void applyVanillaStats(PlayerData data, PlayerData temp) {
+        if (temp == null) return;
+        if (temp.getPotionEffects() != null) data.setPotionEffects(temp.getPotionEffects());
+        if (temp.getDiscoveredRecipes() != null) data.setDiscoveredRecipes(temp.getDiscoveredRecipes());
+        if (temp.getGameMode() != null) data.setGameMode(temp.getGameMode());
+        data.setFlying(temp.isFlying());
+        data.setAllowFlight(temp.isAllowFlight());
+        if (temp.getWorld() != null) {
+            data.setWorld(temp.getWorld());
+            data.setX(temp.getX());
+            data.setY(temp.getY());
+            data.setZ(temp.getZ());
+            data.setYaw(temp.getYaw());
+            data.setPitch(temp.getPitch());
+        }
+        if (temp.getStatistics() != null) data.setStatistics(temp.getStatistics());
+    }
+
+    @SuppressWarnings({"unchecked", "null"})
+    private boolean loadMetadataComponent(Connection connection, PlayerData data, UUID uuid) throws SQLException {
+        String sqlMeta = "SELECT pdc_data, " + COL_ADVANCEMENTS + " FROM " + metadataTable + WHERE_UUID_SQL;
+        try (PreparedStatement stmt = connection.prepareStatement(sqlMeta)) {
+            stmt.setString(1, uuid.toString());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) return false;
+                String pdc = rs.getString("pdc_data");
+                String advancementsStr = rs.getString(COL_ADVANCEMENTS);
+                if (pdc != null) data.setPdcNBT(pdc);
+                if (advancementsStr != null) {
+                    Map<String, List<String>> advMap = GSON.fromJson(advancementsStr, Map.class);
+                    data.setAdvancements(advMap);
+                }
+                return true;
+            }
+        }
+    }
+
+    private boolean loadCompanionComponent(Connection connection, PlayerData data, UUID uuid) throws SQLException {
+        String sqlComp = "SELECT companions_nbt FROM " + companionsTable + WHERE_UUID_SQL;
+        try (PreparedStatement stmt = connection.prepareStatement(sqlComp)) {
+            stmt.setString(1, uuid.toString());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) return false;
+                String companionsNbt = rs.getString("companions_nbt");
+                if (companionsNbt != null) {
+                    data.setCompanionsNBT(companionsNbt);
+                    // Clear after load so companions are only reconstructed once on join
+                    String sqlClear = UPDATE_SQL_PREFIX + companionsTable + " SET companions_nbt = NULL" + WHERE_UUID_SQL;
+                    try (PreparedStatement clearStmt = connection.prepareStatement(sqlClear)) {
+                        clearStmt.setString(1, uuid.toString());
+                        clearStmt.executeUpdate();
+                    }
+                }
+                return companionsNbt != null;
+            }
+        }
+    }
+
     public boolean migrateData(UUID oldUuid, UUID newUuid) throws SQLException {
         if (oldUuid == null || newUuid == null) return false;
         
         // 1. Check if newUuid already has data (don't overwrite)
-        String checkSql = "SELECT uuid FROM " + tableName + " WHERE uuid = ?";
+        String checkSql = "SELECT uuid FROM " + tableName + WHERE_UUID_SQL;
         try (Connection connection = getConnection();
                 PreparedStatement checkStmt = connection.prepareStatement(checkSql)) {
             checkStmt.setString(1, newUuid.toString());

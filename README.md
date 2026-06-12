@@ -41,7 +41,9 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
   - **Player Statistics** (Vanilla stats)
   - **Persistent Data Container (PDC)** (Custom metadata from other plugins)
   - **Flight & GameMode** status
+  - **Companions & Pets** (Tamed wolves, cats, parrots, etc., with NBT properties and sitting status)
 - **Resilient Connection Pooling:** Uses HikariCP with optimized settings to ensure that the database connection is resilient to network issues and database restarts.
+- **Prometheus Metrics Exporter:** Built-in lightweight HTTP server exposing live synchronization performance metrics (sync latency, cache metrics, HikariCP pool status) for Grafana dashboards.
 - **Granular Sync Control**: Enable or disable synchronization for any specific data type via `config.yml`.
 - **Server/World Blacklist**: Prevent synchronization on specific servers or worlds.
 - **Configurable Table Names**: Set a custom prefix for database tables to avoid conflicts.
@@ -235,6 +237,11 @@ sync-data:
   statistics: true
   pdc: true
   flight-gamemode: true
+  companions: false
+
+# Companion/pet sync settings. Requires sync-data.companions: true.
+companions:
+  scan-radius: 32
 
 # Security Settings
 security:
@@ -260,6 +267,12 @@ identity:
   # auto-migrate data once the player successfully logs in via AuthMe.
   # This supports AuthMe's native TOTP/2FA as well.
   auto-migrate-authme: false
+
+# Prometheus Metrics Settings
+metrics:
+  enabled: false
+  port: 8080
+  path: "/metrics"
 
 # Blacklist servers/worlds from syncing
 sync-blacklist:

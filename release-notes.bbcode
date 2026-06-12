@@ -1,21 +1,40 @@
-[SIZE=6][B]MC Data Bridge - Release Notes (v2.1.5)[/B][/SIZE]
+[SIZE=6][B]MC Data Bridge - Release Notes (v2.1.6)[/B][/SIZE]
 
 [SIZE=5][B]Overview[/B][/SIZE]
-[SIZE=4]Version 2.1.5 is a stability patch focused on maintaining compatibility with the bleeding-edge Paper 26.1 API (Minecraft 1.21.4+). This release addresses a specific serialization issue with modern Adventure text objects and optimizes the plugin's internal dependency structure.[/SIZE]
+[SIZE=4]Version 2.1.6 is a comprehensive feature and security update that introduces multi-server [B]Companion & Pet Synchronization[/B], completes database schema normalization, adds compressed binary NBT serialization, embeds a [B]Prometheus Metrics Exporter[/B], and hardens overall network security with strict seed verification.[/SIZE]
 
-[SIZE=5][B]Changes & Fixes[/B][/SIZE]
+[CENTER]----------------------------------------------------------------[/CENTER]
 
-[SIZE=5][B]🧩 Adventure Text Serialization Patch[/B][/SIZE]
+[SIZE=5][B]Key Features & Improvements[/B][/SIZE]
+
+[SIZE=4][B]🐾 Companion & Pet Synchronization[/B][/SIZE]
 [LIST]
-[*]Resolved a [B]NoClassDefFoundError[/B] and serialization failure affecting niche Adventure text components, specifically those used in modern [B]Player Head[/B] metadata.
-[*]Aligned internal dependencies with [B]Adventure v4.26.1[/B] to support the latest Minecraft 1.21.4 features.
+[*][B]Tamed Pet Persistence:[/B] Synchronizes tamed wolves, cats, parrots, and other pets across server switches.
+[*][B]State Preservation:[/B] Restores ownership, custom names, health/max health, and sitting status accurately.
+[*][B]NBT-Level Preservation:[/B] Utilizes NBTAPI metadata merging to preserve custom pet attributes, items, and collars.
+[*][B]Duplication Prevention:[/B] Despawns source entities synchronously upon snapshot generation to prevent duplication exploits.
 [/LIST]
 
-[SIZE=5][B]🚀 Modern API & Build Stability[/B][/SIZE]
+[SIZE=4][B]🗄️ Relational Component Schema Normalization[/B][/SIZE]
 [LIST]
-[*][B]Paper 26.1 Support:[/B] Officially verified compatibility with the latest Paper alpha builds.
-[*][B]Dependency Optimization:[/B] Transitioned Adventure libraries to [I]provided[/I] scope, maintaining a lightweight JAR (~3.0M) while ensuring native performance on Paper/Velocity.
-[*][B]Clean Source Tree:[/B] Eliminated all experimental stubs and replaced them with correct, version-aligned dependencies.
+[*][B]Companions Component Table:[/B] Introduced the [I]databridge_companions[/I] table for row-level normalized storage.
+[*][B]Optimized SQL Transactions:[/B] Avoids write-amplification by target-updating specific components (inventories, statistics, metadata, companions) independently.
+[/LIST]
+
+[SIZE=4][B]⚡ Binary NBT Serialization Option[/B][/SIZE]
+[LIST]
+[*][B]Compressed NBT Storage:[/B] Adds support for native binary compression ([I]serialization-format: binary[/I]) to dramatically reduce database footprint, storage I/O, and CPU serialization overhead.
+[/LIST]
+
+[SIZE=4][B]🛡️ Production Security Hardening[/B][/SIZE]
+[LIST]
+[*][B]Fails-Strict Safe Mode:[/B] Prevents startup if the default cryptographic seed is detected and no secure seed is configured, mitigating identity hijacking risks.
+[*][B]DDL Column Whitelists:[/B] Enforces SQL parameter and column sanitation to secure automated schema migration queries.
+[/LIST]
+
+[SIZE=4][B]📊 Embedded Prometheus Metrics Exporter[/B][/SIZE]
+[LIST]
+[*][B]Live Server Metrics:[/B] Provides an optional HTTP [I]/metrics[/I] scrape endpoint for Grafana/Prometheus tracking, exposing cache efficiency, database connection pool statistics, active transaction counts, and synchronization latencies.
 [/LIST]
 
 [CENTER]----------------------------------------------------------------[/CENTER]

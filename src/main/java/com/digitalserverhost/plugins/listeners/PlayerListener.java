@@ -3,7 +3,6 @@ package com.digitalserverhost.plugins.listeners;
 import com.digitalserverhost.plugins.MCDataBridge;
 import com.digitalserverhost.plugins.managers.DatabaseManager;
 import com.digitalserverhost.plugins.utils.PlayerData;
-import com.google.gson.Gson;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -35,7 +34,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
     private final DatabaseManager databaseManager;
     private final MCDataBridge plugin;
-    private final Gson gson;
     private final Map<UUID, PlayerData> loadingCache = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> savingPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> switchingPlayers = new ConcurrentHashMap<>();
@@ -43,7 +41,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
     public PlayerListener(DatabaseManager databaseManager, MCDataBridge plugin) {
         this.databaseManager = databaseManager;
         this.plugin = plugin;
-        this.gson = MCDataBridge.getGson();
     }
 
     @Override
@@ -320,10 +317,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
         com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
             try {
-                String json = gson.toJson(finalData);
                 String seed = plugin.getSecuritySeed();
-                String checksum = PlayerData.calculateChecksum(json, seed);
-                boolean success = databaseManager.saveAndReleaseLock(json, checksum, name, uuid, serverId, seed);
+                boolean success = databaseManager.saveAndReleaseLockComponents(plugin, finalData, name, uuid, serverId, seed);
 
                 if (success) {
                     if (plugin.isDebugMode()) {
@@ -350,10 +345,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
         try {
             PlayerData finalData = new PlayerData(player, plugin);
-            String json = gson.toJson(finalData);
             String seed = plugin.getSecuritySeed();
-            String checksum = PlayerData.calculateChecksum(json, seed);
-            databaseManager.saveAndReleaseLock(json, checksum, name, uuid, serverId, seed);
+            databaseManager.saveAndReleaseLockComponents(plugin, finalData, name, uuid, serverId, seed);
             if (plugin.isDebugMode()) {
                 plugin.getLogger().log(Level.INFO, "Synchronously saved data for {0}.", name);
             }
@@ -394,6 +387,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 applyPersistentData(player, data);
                 applyFlightAndGameMode(player, data);
                 applyLocation(player, data);
+                applyCompanions(player, data);
  
                 plugin.getLogger().log(Level.INFO, "Successfully applied data to player {0}", player.getName());
             } catch (Exception e) {
@@ -551,59 +545,74 @@ public class PlayerListener implements Listener, PluginMessageListener {
         }
     }
 
+    @SuppressWarnings("deprecation")
+    private void applyCompanions(Player player, PlayerData data) {
+        if (!plugin.isSyncEnabledNewFeature("companions")) return;
+        String companionsNbt = data.getCompanionsNBT();
+        if (companionsNbt == null || companionsNbt.isEmpty()) return;
+
+        PlayerData.CompanionSnapshot[] snapshots;
+        try {
+            snapshots = new com.google.gson.Gson().fromJson(companionsNbt, PlayerData.CompanionSnapshot[].class);
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to parse companions NBT for {0}: {1}",
+                    new Object[]{player.getName(), e.getMessage()});
+            return;
+        }
+        if (snapshots == null || snapshots.length == 0) return;
+
+        com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
+            if (!player.isOnline()) return;
+            for (PlayerData.CompanionSnapshot snap : snapshots) {
+                try {
+                    org.bukkit.entity.EntityType entityType =
+                            org.bukkit.entity.EntityType.valueOf(snap.entityType);
+                    player.getWorld().spawn(
+                            player.getLocation(),
+                            entityType.getEntityClass(),
+                            org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.CUSTOM,
+                            entity -> {
+                                if (entity != null) {
+                                    // Inject NBT before entity enters world tick
+                                    if (snap.nbtData != null && !snap.nbtData.isEmpty()) {
+                                        try {
+                                            de.tr7zw.changeme.nbtapi.NBT.modify(entity, (java.util.function.Consumer<de.tr7zw.changeme.nbtapi.iface.ReadWriteNBT>) nbt ->
+                                                    nbt.mergeCompound(
+                                                            de.tr7zw.changeme.nbtapi.NBT.parseNBT(snap.nbtData)));
+                                        } catch (Exception ignored) { /* NBT injection failed — spawn bare entity */ }
+                                    }
+                                    // Re-bind ownership
+                                    if (entity instanceof org.bukkit.entity.Tameable tame) {
+                                        tame.setTamed(true);
+                                        tame.setOwner(player);
+                                    }
+                                    if (entity instanceof org.bukkit.entity.Sittable sittable) {
+                                        sittable.setSitting(snap.isSitting);
+                                    }
+                                    if (snap.customName != null) {
+                                        entity.setCustomName(snap.customName);
+                                        entity.setCustomNameVisible(true);
+                                    }
+                                }
+                            });
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.WARNING, "[mc-data-bridge] Failed to reconstruct companion {0}: {1}",
+                            new Object[]{snap.entityType, e.getMessage()});
+                }
+            }
+        });
+    }
+
     public PlayerData loadPlayerData(UUID uuid) {
         return loadPlayerData(uuid, null);
     }
  
     public PlayerData loadPlayerData(UUID uuid, String name) {
-        try (Connection connection = databaseManager.getConnection()) {
-            String query = "SELECT data, data_checksum FROM " + databaseManager.getTableName() + " WHERE uuid = ?";
-            try (PreparedStatement statement = connection.prepareStatement(query)) {
-                statement.setString(1, uuid.toString());
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    if (resultSet.next()) {
-                        return processPlayerDataResultSet(resultSet, uuid, name);
-                    }
-                }
-            }
+        try {
+            return databaseManager.loadPlayerDataComponents(plugin, uuid, name);
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "Failed to load player data for {0}: {1}", new Object[]{uuid, e.getMessage()});
         }
         return null;
-    }
-
-    private PlayerData processPlayerDataResultSet(ResultSet resultSet, UUID uuid, String name) throws SQLException {
-        byte[] dataBytes = resultSet.getBytes("data");
-        String json = (dataBytes != null) ? new String(dataBytes, java.nio.charset.StandardCharsets.UTF_8) : null;
-
-        if (json != null && !json.trim().isEmpty() && !"{}".equals(json)) {
-            if (shouldVerifyIntegrity() && !verifyAndMigrateChecksum(json, resultSet.getString("data_checksum"), uuid, name)) {
-                return null;
-            }
-            return gson.fromJson(json, PlayerData.class);
-        }
-        return null;
-    }
-
-    private boolean shouldVerifyIntegrity() {
-        return plugin.getConfig().getBoolean("security.verify-data-integrity", true);
-    }
-
-    private boolean verifyAndMigrateChecksum(String json, String checksum, UUID uuid, String name) {
-        if (checksum == null) return true;
-        
-        String seed = plugin.getSecuritySeed();
-        if (!PlayerData.verifyChecksum(json, checksum, seed)) {
-            // Legacy Fallback
-            if (!PlayerData.verifyChecksum(json, checksum, null)) {
-                MetricsManager.getInstance().incrementSyncFailures();
-                plugin.getLogger().log(Level.SEVERE, "CRITICAL: Data integrity violation for {0}! Checksum mismatch.", uuid);
-                return false;
-            }
-            if (name != null) {
-                plugin.getLogger().log(Level.INFO, "Migrating data for {0} to salted checksum format", name);
-            }
-        }
-        return true;
     }
 }
