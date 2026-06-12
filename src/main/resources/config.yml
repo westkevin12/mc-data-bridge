@@ -156,6 +156,12 @@ companions:
   # The search radius (blocks) around the player to locate tamed pets/companions for transfer.
   # Default: 32
   scan-radius: 32
+  # Companion synchronization mode:
+  # - follow: Companions follow the player across different servers.
+  # - return: Companions stay on the server they were left on and reappear when the player returns.
+  # - untracked: Companions are not managed or synchronized by the plugin.
+  # Default: follow
+  mode: "follow"
 
 # Prometheus Metrics Exporter
 metrics:

@@ -474,7 +474,10 @@ public class MCDataBridge extends JavaPlugin {
             updated = true;
         }
         if (!fileConfig.contains("companions.scan-radius")) {
-            appends.append("\n# Companion/pet sync settings. Requires sync-data.companions: true.\ncompanions:\n  scan-radius: 32\n");
+            appends.append("\n# Companion/pet sync settings. Requires sync-data.companions: true.\ncompanions:\n  scan-radius: 32\n  mode: \"follow\"\n");
+            updated = true;
+        } else if (!fileConfig.contains("companions.mode")) {
+            appends.append("\ncompanions:\n  mode: \"follow\"\n");
             updated = true;
         }
         return updated;

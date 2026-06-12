@@ -21,6 +21,8 @@ import java.security.NoSuchAlgorithmException;
 
 public class PlayerData {
 
+    private static final String MODE_RETURN = "return";
+
     public static class ItemDeserializationException extends RuntimeException {
         public ItemDeserializationException(String message, Throwable cause) {
             super(message, cause);
@@ -225,22 +227,78 @@ public class PlayerData {
 
     private void snapshotCompanions(Player player, MCDataBridge plugin) {
         if (!plugin.isSyncEnabledNewFeature("companions")) return;
+        String mode = "follow";
+        try {
+            mode = plugin.getConfig().getString("companions.mode", "follow").toLowerCase();
+        } catch (Exception _) { /* default to follow if config is missing */ }
+        if (mode.equals("untracked") || mode.equals("off")) return;
+
         double radius = 32.0;
         try {
             radius = plugin.getConfig().getDouble("companions.scan-radius", 32.0);
         } catch (Exception _) { /* test environment — use default */ }
         java.util.List<CompanionSnapshot> snapshots = new java.util.ArrayList<>();
+        
+        snapshotNearbyEntities(player, mode, radius, snapshots, plugin);
+        snapshotShoulderLeft(player, mode, snapshots, plugin);
+        snapshotShoulderRight(player, mode, snapshots, plugin);
+
+        if (!snapshots.isEmpty()) {
+            this.companionsNBT = new com.google.gson.Gson().toJson(snapshots);
+        }
+    }
+
+    private void snapshotNearbyEntities(Player player, String mode, double radius, java.util.List<CompanionSnapshot> snapshots, MCDataBridge plugin) {
         for (org.bukkit.entity.Entity entity : player.getNearbyEntities(radius, radius, radius)) {
             if (entity instanceof org.bukkit.entity.Tameable tame
                     && tame.isTamed()
                     && tame.getOwner() != null
                     && tame.getOwner().getUniqueId().equals(player.getUniqueId())) {
-                snapshots.add(new CompanionSnapshot(entity));
+                CompanionSnapshot snap = new CompanionSnapshot(entity);
+                if (mode.equals(MODE_RETURN)) {
+                    snap.setSourceServerId(plugin.getServerId());
+                }
+                snapshots.add(snap);
                 entity.remove(); // despawn on source server to prevent duplication
             }
         }
-        if (!snapshots.isEmpty()) {
-            this.companionsNBT = new com.google.gson.Gson().toJson(snapshots);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void snapshotShoulderLeft(Player player, String mode, java.util.List<CompanionSnapshot> snapshots, MCDataBridge plugin) {
+        try {
+            org.bukkit.entity.Entity leftShoulder = player.getShoulderEntityLeft();
+            if (leftShoulder != null) {
+                CompanionSnapshot snap = new CompanionSnapshot(leftShoulder);
+                snap.setIsOnShoulderLeft(true);
+                if (mode.equals(MODE_RETURN)) {
+                    snap.setSourceServerId(plugin.getServerId());
+                }
+                snapshots.add(snap);
+                player.setShoulderEntityLeft(null);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "Failed to snapshot left shoulder entity for {0}: {1}",
+                    new Object[]{player.getName(), e.getMessage()});
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void snapshotShoulderRight(Player player, String mode, java.util.List<CompanionSnapshot> snapshots, MCDataBridge plugin) {
+        try {
+            org.bukkit.entity.Entity rightShoulder = player.getShoulderEntityRight();
+            if (rightShoulder != null) {
+                CompanionSnapshot snap = new CompanionSnapshot(rightShoulder);
+                snap.setIsOnShoulderRight(true);
+                if (mode.equals(MODE_RETURN)) {
+                    snap.setSourceServerId(plugin.getServerId());
+                }
+                snapshots.add(snap);
+                player.setShoulderEntityRight(null);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "Failed to snapshot right shoulder entity for {0}: {1}",
+                    new Object[]{player.getName(), e.getMessage()});
         }
     }
 
@@ -515,6 +573,33 @@ public class PlayerData {
         public final String customName;
         public final boolean isSitting;
         public final String nbtData;
+        private String sourceServerId;
+        private Boolean isOnShoulderLeft;
+        private Boolean isOnShoulderRight;
+
+        public String getSourceServerId() {
+            return sourceServerId;
+        }
+
+        public void setSourceServerId(String sourceServerId) {
+            this.sourceServerId = sourceServerId;
+        }
+
+        public Boolean getIsOnShoulderLeft() {
+            return isOnShoulderLeft;
+        }
+
+        public void setIsOnShoulderLeft(Boolean isOnShoulderLeft) {
+            this.isOnShoulderLeft = isOnShoulderLeft;
+        }
+
+        public Boolean getIsOnShoulderRight() {
+            return isOnShoulderRight;
+        }
+
+        public void setIsOnShoulderRight(Boolean isOnShoulderRight) {
+            this.isOnShoulderRight = isOnShoulderRight;
+        }
 
         @SuppressWarnings("deprecation")
         public CompanionSnapshot(org.bukkit.entity.Entity entity) {

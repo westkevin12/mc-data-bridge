@@ -146,6 +146,8 @@ class SchemaNormalizationTest {
 
         lenient().when(mockPlugin.isSyncEnabledNewFeature(anyString())).thenReturn(false);
         lenient().when(mockPlugin.isSyncEnabledNewFeature("companions")).thenReturn(true);
+        lenient().when(mockPlugin.getConfig()).thenReturn(mockConfig);
+        lenient().when(mockConfig.getString("companions.mode", "follow")).thenReturn("follow");
 
         // For save: SELECT companions_nbt FROM databridge_companions WHERE uuid = ?
         PreparedStatement mockSelectStmt = mock(PreparedStatement.class);

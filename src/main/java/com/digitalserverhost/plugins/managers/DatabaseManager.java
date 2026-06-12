@@ -2,6 +2,7 @@ package com.digitalserverhost.plugins.managers;
 
 import com.digitalserverhost.plugins.utils.HashUtils;
 import com.digitalserverhost.plugins.utils.PlayerData;
+import com.digitalserverhost.plugins.utils.PlayerData.CompanionSnapshot;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.zaxxer.hikari.HikariConfig;
@@ -27,6 +28,8 @@ public class DatabaseManager {
     private static final String WHERE_UUID_SQL = " WHERE uuid = ?";
     private static final String COL_HEALTH = "health";
     private static final String COL_ADVANCEMENTS = "advancements";
+    private static final String MODE_FOLLOW = "follow";
+    private static final String MODE_RETURN = "return";
     private static final Gson GSON = new GsonBuilder().create();
 
     private final HikariDataSource dataSource;
@@ -626,6 +629,12 @@ public class DatabaseManager {
 
     private void saveCompanionComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
         if (!plugin.isSyncEnabledNewFeature("companions")) return;
+        String mode = MODE_FOLLOW;
+        try {
+            mode = plugin.getConfig().getString("companions.mode", MODE_FOLLOW).toLowerCase();
+        } catch (Exception _) { /* default to follow if config is missing */ }
+        if (mode.equals("untracked") || mode.equals("off")) return;
+
         String dbCompanionsNbt = null;
         String sqlSelect = "SELECT companions_nbt FROM " + companionsTable + WHERE_UUID_SQL;
         try (PreparedStatement selectStmt = connection.prepareStatement(sqlSelect)) {
@@ -634,7 +643,9 @@ public class DatabaseManager {
                 if (rs.next()) dbCompanionsNbt = rs.getString("companions_nbt");
             }
         }
-        String targetCompanionsNbt = (data.getCompanionsNBT() != null) ? data.getCompanionsNBT() : dbCompanionsNbt;
+
+        String targetCompanionsNbt = mergeCompanionsNbt(data.getCompanionsNBT(), dbCompanionsNbt);
+
         String sqlUpdate = UPDATE_SQL_PREFIX + companionsTable + " SET companions_nbt = ?" + WHERE_UUID_SQL;
         try (PreparedStatement updateStmt = connection.prepareStatement(sqlUpdate)) {
             updateStmt.setString(1, targetCompanionsNbt);
@@ -647,6 +658,33 @@ public class DatabaseManager {
                     insertStmt.executeUpdate();
                 }
             }
+        }
+    }
+
+    private String mergeCompanionsNbt(String localCompanionsNbt, String dbCompanionsNbt) {
+        if (localCompanionsNbt == null) {
+            return dbCompanionsNbt;
+        }
+        if (dbCompanionsNbt == null || dbCompanionsNbt.isEmpty()) {
+            return localCompanionsNbt;
+        }
+        try {
+            CompanionSnapshot[] newSnaps = GSON.fromJson(localCompanionsNbt, CompanionSnapshot[].class);
+            CompanionSnapshot[] oldSnaps = GSON.fromJson(dbCompanionsNbt, CompanionSnapshot[].class);
+            List<CompanionSnapshot> merged = new ArrayList<>();
+            if (oldSnaps != null) {
+                for (CompanionSnapshot snap : oldSnaps) {
+                    if (snap != null) merged.add(snap);
+                }
+            }
+            if (newSnaps != null) {
+                for (CompanionSnapshot snap : newSnaps) {
+                    if (snap != null) merged.add(snap);
+                }
+            }
+            return GSON.toJson(merged);
+        } catch (Exception _) {
+            return localCompanionsNbt;
         }
     }
 
@@ -674,7 +712,7 @@ public class DatabaseManager {
                 loadedAny |= loadMetadataComponent(connection, data, uuid);
             }
             if (plugin.isSyncEnabledNewFeature("companions")) {
-                loadedAny |= loadCompanionComponent(connection, data, uuid);
+                loadedAny |= loadCompanionComponent(connection, plugin, data, uuid);
             }
         }
 
@@ -800,23 +838,82 @@ public class DatabaseManager {
         }
     }
 
-    private boolean loadCompanionComponent(Connection connection, PlayerData data, UUID uuid) throws SQLException {
+    private boolean loadCompanionComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        String mode = MODE_FOLLOW;
+        try {
+            mode = plugin.getConfig().getString("companions.mode", MODE_FOLLOW).toLowerCase();
+        } catch (Exception _) { /* default to follow if config is missing */ }
+        if (mode.equals("untracked") || mode.equals("off")) return false;
+
         String sqlComp = "SELECT companions_nbt FROM " + companionsTable + WHERE_UUID_SQL;
         try (PreparedStatement stmt = connection.prepareStatement(sqlComp)) {
             stmt.setString(1, uuid.toString());
             try (ResultSet rs = stmt.executeQuery()) {
                 if (!rs.next()) return false;
                 String companionsNbt = rs.getString("companions_nbt");
-                if (companionsNbt != null) {
-                    data.setCompanionsNBT(companionsNbt);
-                    // Clear after load so companions are only reconstructed once on join
-                    String sqlClear = UPDATE_SQL_PREFIX + companionsTable + " SET companions_nbt = NULL" + WHERE_UUID_SQL;
-                    try (PreparedStatement clearStmt = connection.prepareStatement(sqlClear)) {
-                        clearStmt.setString(1, uuid.toString());
-                        clearStmt.executeUpdate();
+                if (companionsNbt != null && !companionsNbt.isEmpty()) {
+                    List<CompanionSnapshot> toSpawn = new ArrayList<>();
+                    List<CompanionSnapshot> toKeep = new ArrayList<>();
+                    
+                    parseAndFilterCompanions(companionsNbt, mode, plugin.getServerId(), toSpawn, toKeep);
+
+                    if (!toSpawn.isEmpty()) {
+                        data.setCompanionsNBT(GSON.toJson(toSpawn));
+                        updateDatabaseCompanions(connection, uuid, toKeep);
+                        return true;
                     }
                 }
-                return companionsNbt != null;
+                return false;
+            }
+        }
+    }
+
+    private void parseAndFilterCompanions(String companionsNbt, String mode, String currentServer, List<CompanionSnapshot> toSpawn, List<CompanionSnapshot> toKeep) {
+        try {
+            CompanionSnapshot[] snapshots = GSON.fromJson(companionsNbt, CompanionSnapshot[].class);
+            if (snapshots != null) {
+                for (CompanionSnapshot snap : snapshots) {
+                    if (snap != null) {
+                        boolean shouldSpawn = false;
+                        if (mode.equals(MODE_FOLLOW)) {
+                            shouldSpawn = true;
+                        } else if (mode.equals(MODE_RETURN)) {
+                            shouldSpawn = snap.getSourceServerId() == null || snap.getSourceServerId().equalsIgnoreCase(currentServer);
+                        }
+
+                        if (shouldSpawn) {
+                            toSpawn.add(snap);
+                        } else {
+                            toKeep.add(snap);
+                        }
+                    }
+                }
+            }
+        } catch (Exception _) {
+            toSpawn.clear();
+            toKeep.clear();
+            CompanionSnapshot[] fallback = GSON.fromJson(companionsNbt, CompanionSnapshot[].class);
+            if (fallback != null) {
+                for (CompanionSnapshot snap : fallback) {
+                    if (snap != null) toSpawn.add(snap);
+                }
+            }
+        }
+    }
+
+    private void updateDatabaseCompanions(Connection connection, UUID uuid, List<CompanionSnapshot> toKeep) throws SQLException {
+        if (toKeep.isEmpty()) {
+            String sqlClear = UPDATE_SQL_PREFIX + companionsTable + " SET companions_nbt = NULL" + WHERE_UUID_SQL;
+            try (PreparedStatement clearStmt = connection.prepareStatement(sqlClear)) {
+                clearStmt.setString(1, uuid.toString());
+                clearStmt.executeUpdate();
+            }
+        } else {
+            String sqlUpdate = UPDATE_SQL_PREFIX + companionsTable + " SET companions_nbt = ?" + WHERE_UUID_SQL;
+            try (PreparedStatement updateStmt = connection.prepareStatement(sqlUpdate)) {
+                updateStmt.setString(1, GSON.toJson(toKeep));
+                updateStmt.setString(2, uuid.toString());
+                updateStmt.executeUpdate();
             }
         }
     }

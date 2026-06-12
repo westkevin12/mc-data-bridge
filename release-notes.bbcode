@@ -9,9 +9,12 @@
 
 [SIZE=4][B]🐾 Companion & Pet Synchronization[/B][/SIZE]
 [LIST]
+[*][B]Multi-Mode Synchronization:[/B] Added [I]companions.mode[/I] ([I]follow[/I], [I]return[/I], [I]untracked[/I]) to manage how pets are synced across the network.
 [*][B]Tamed Pet Persistence:[/B] Synchronizes tamed wolves, cats, parrots, and other pets across server switches.
+[*][B]Shoulder-Perched Entity Serialization:[/B] Saves and restores parrot shoulder-riding states.
 [*][B]State Preservation:[/B] Restores ownership, custom names, health/max health, and sitting status accurately.
 [*][B]NBT-Level Preservation:[/B] Utilizes NBTAPI metadata merging to preserve custom pet attributes, items, and collars.
+[*][B]Merge-on-Save Pattern:[/B] Adopts a robust relational state merging strategy to prevent NBT overrides and companion data loss across servers (critical for [I]return[/I] mode).
 [*][B]Duplication Prevention:[/B] Despawns source entities synchronously upon snapshot generation to prevent duplication exploits.
 [/LIST]
 

@@ -93,6 +93,7 @@ class ConfigMigrationTest {
         assertEquals("PREMIUM", updatedConfig.getString("identity.mode"));
         assertFalse(updatedConfig.getBoolean("identity.auto-migrate-fastlogin"));
         assertEquals(32, updatedConfig.getInt("companions.scan-radius"));
+        assertEquals("follow", updatedConfig.getString("companions.mode"));
 
         // Verify sync-data features are appended
         assertFalse(updatedConfig.getBoolean("sync-data.statistics"));

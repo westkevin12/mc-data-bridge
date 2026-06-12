@@ -242,6 +242,8 @@ sync-data:
 # Companion/pet sync settings. Requires sync-data.companions: true.
 companions:
   scan-radius: 32
+  # Synchronization mode: follow, return, untracked
+  mode: "follow"
 
 # Security Settings
 security:
