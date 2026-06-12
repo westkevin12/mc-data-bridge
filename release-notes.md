@@ -2,11 +2,19 @@
 
 ## Overview
 
-Version 2.1.6 is a comprehensive feature and security update that introduces multi-server **Companion & Pet Synchronization**, completes database schema normalization, adds compressed binary NBT serialization, embeds a **Prometheus Metrics Exporter**, and hardens overall network security with strict seed verification.
+Version 2.1.6 is a comprehensive feature and security update that introduces multi-server **Companion & Pet Synchronization**, implements dynamic **Full Vanilla Player Statistics Synchronization**, completes database schema normalization, adds compressed binary NBT serialization, embeds a **Prometheus Metrics Exporter**, and hardens overall network security with strict seed verification.
 
 ---
 
 ## Key Features & Improvements
+
+### 📊 Full Vanilla Player Statistics Synchronization
+
+- **Dynamic Statistics Sync:** Replaced the legacy hardcoded list of 16 statistics with a dynamic, version-independent synchronization loop that covers all vanilla player statistics.
+- **Qualified/Typed Statistics Support:** Fully syncs all typed statistics requiring qualifiers—including blocks mined, items crafted/used/broken/picked up/dropped, and entities killed or killed by (e.g., `MINE_BLOCK:STONE`, `KILL_ENTITY:ZOMBIE`, `USE_ITEM:IRON_PICKAXE`).
+- **Intelligent State Application:** Minimizes database updates and server overhead by only applying statistic changes when values differ from the server's current values.
+- **State Cleanup & Resets:** Restores synchronization parity by resetting any non-zero stats on the destination server that are not present in the player's database snapshot (setting them back to zero).
+- **Graceful Version Resilience:** Silently handles version-specific or custom blocks, items, and entity types, maintaining perfect compatibility across heterogeneous multi-server environments.
 
 ### 🐾 Companion & Pet Synchronization
 

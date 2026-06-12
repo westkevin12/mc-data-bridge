@@ -4,6 +4,7 @@ import com.digitalserverhost.plugins.MCDataBridge;
 import com.digitalserverhost.plugins.managers.DatabaseManager;
 import com.digitalserverhost.plugins.utils.PlayerData;
 import org.bukkit.Bukkit;
+import org.jetbrains.annotations.NotNull;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -490,13 +491,55 @@ public class PlayerListener implements Listener, PluginMessageListener {
  
     private void applyStatistics(Player player, PlayerData data) {
         if (plugin.isSyncEnabledNewFeature("statistics") && data.getStatistics() != null) {
-            for (Map.Entry<String, Integer> entry : data.getStatistics().entrySet()) {
+            Map<String, Integer> dbStats = data.getStatistics();
+            for (org.bukkit.Statistic stat : org.bukkit.Statistic.values()) {
                 try {
-                    org.bukkit.Statistic stat = org.bukkit.Statistic.valueOf(entry.getKey());
-                    player.setStatistic(stat, entry.getValue());
+                    applySingleStatistic(player, stat, dbStats);
                 } catch (Exception _) {
-                    // Skip invalid statistics
+                    // Ignore unsupported statistics on this server version
                 }
+            }
+        }
+    }
+
+    private void applySingleStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat, @NotNull Map<String, Integer> dbStats) {
+        if (stat.getType() == org.bukkit.Statistic.Type.UNTYPED) {
+            String key = stat.name();
+            int dbVal = dbStats.getOrDefault(key, 0);
+            if (player.getStatistic(stat) != dbVal) {
+                player.setStatistic(stat, dbVal);
+            }
+        } else if (stat.getType() == org.bukkit.Statistic.Type.BLOCK || stat.getType() == org.bukkit.Statistic.Type.ITEM) {
+            applyMaterialStatistic(player, stat, dbStats);
+        } else if (stat.getType() == org.bukkit.Statistic.Type.ENTITY) {
+            applyEntityStatistic(player, stat, dbStats);
+        }
+    }
+
+    private void applyMaterialStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat, @NotNull Map<String, Integer> dbStats) {
+        for (org.bukkit.Material mat : org.bukkit.Material.values()) {
+            try {
+                String key = stat.name() + ":" + mat.name();
+                int dbVal = dbStats.getOrDefault(key, 0);
+                if (player.getStatistic(stat, mat) != dbVal) {
+                    player.setStatistic(stat, mat, dbVal);
+                }
+            } catch (IllegalArgumentException _) {
+                // Material not valid for this statistic
+            }
+        }
+    }
+
+    private void applyEntityStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat, @NotNull Map<String, Integer> dbStats) {
+        for (org.bukkit.entity.EntityType entityType : org.bukkit.entity.EntityType.values()) {
+            try {
+                String key = stat.name() + ":" + entityType.name();
+                int dbVal = dbStats.getOrDefault(key, 0);
+                if (player.getStatistic(stat, entityType) != dbVal) {
+                    player.setStatistic(stat, entityType, dbVal);
+                }
+            } catch (IllegalArgumentException _) {
+                // EntityType not valid for this statistic
             }
         }
     }

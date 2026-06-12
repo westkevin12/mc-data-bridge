@@ -1,11 +1,20 @@
 [SIZE=6][B]MC Data Bridge - Release Notes (v2.1.6)[/B][/SIZE]
 
 [SIZE=5][B]Overview[/B][/SIZE]
-[SIZE=4]Version 2.1.6 is a comprehensive feature and security update that introduces multi-server [B]Companion & Pet Synchronization[/B], completes database schema normalization, adds compressed binary NBT serialization, embeds a [B]Prometheus Metrics Exporter[/B], and hardens overall network security with strict seed verification.[/SIZE]
+[SIZE=4]Version 2.1.6 is a comprehensive feature and security update that introduces multi-server [B]Companion & Pet Synchronization[/B], implements dynamic [B]Full Vanilla Player Statistics Synchronization[/B], completes database schema normalization, adds compressed binary NBT serialization, embeds a [B]Prometheus Metrics Exporter[/B], and hardens overall network security with strict seed verification.[/SIZE]
 
 [CENTER]----------------------------------------------------------------[/CENTER]
 
 [SIZE=5][B]Key Features & Improvements[/B][/SIZE]
+
+[SIZE=4][B]📊 Full Vanilla Player Statistics Synchronization[/B][/SIZE]
+[LIST]
+[*][B]Dynamic Statistics Sync:[/B] Replaced the legacy hardcoded list of 16 statistics with a dynamic, version-independent synchronization loop that covers all vanilla player statistics.
+[*][B]Qualified/Typed Statistics Support:[/B] Fully syncs all typed statistics requiring qualifiers—including blocks mined, items crafted/used/broken/picked up/dropped, and entities killed or killed by (e.g., [I]MINE_BLOCK:STONE[/I], [I]KILL_ENTITY:ZOMBIE[/I], [I]USE_ITEM:IRON_PICKAXE[/I]).
+[*][B]Intelligent State Application:[/B] Minimizes database updates and server overhead by only applying statistic changes when values differ from the server's current values.
+[*][B]State Cleanup & Resets:[/B] Restores synchronization parity by resetting any non-zero stats on the destination server that are not present in the player's database snapshot (setting them back to zero).
+[*][B]Graceful Version Resilience:[/B] Silently handles version-specific or custom blocks, items, and entity types, maintaining perfect compatibility across heterogeneous multi-server environments.
+[/LIST]
 
 [SIZE=4][B]🐾 Companion & Pet Synchronization[/B][/SIZE]
 [LIST]

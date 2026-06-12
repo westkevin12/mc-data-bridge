@@ -13,6 +13,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.Serializable;
 import java.util.*;
@@ -71,25 +72,6 @@ public class PlayerData {
     public PlayerData(Player player) {
         this(player, JavaPlugin.getPlugin(MCDataBridge.class));
     }
-
-    private static final org.bukkit.Statistic[] ESSENTIAL_STATS = {
-        org.bukkit.Statistic.DEATHS,
-        org.bukkit.Statistic.PLAYER_KILLS,
-        org.bukkit.Statistic.MOB_KILLS,
-        org.bukkit.Statistic.PLAY_ONE_MINUTE,
-        org.bukkit.Statistic.WALK_ONE_CM,
-        org.bukkit.Statistic.SPRINT_ONE_CM,
-        org.bukkit.Statistic.FLY_ONE_CM,
-        org.bukkit.Statistic.JUMP,
-        org.bukkit.Statistic.DAMAGE_DEALT,
-        org.bukkit.Statistic.DAMAGE_TAKEN,
-        org.bukkit.Statistic.LEAVE_GAME,
-        org.bukkit.Statistic.TIME_SINCE_DEATH,
-        org.bukkit.Statistic.SNEAK_TIME,
-        org.bukkit.Statistic.TALKED_TO_VILLAGER,
-        org.bukkit.Statistic.TRADED_WITH_VILLAGER,
-        org.bukkit.Statistic.FISH_CAUGHT
-    };
 
     /**
      * Primary constructor used by listeners to create a snapshot.
@@ -171,14 +153,56 @@ public class PlayerData {
     }
 
     private void snapshotStatistics(Player player, MCDataBridge plugin) {
-        if (plugin.isSyncEnabledNewFeature("statistics")) {
-            this.statistics = new HashMap<>();
-            for (org.bukkit.Statistic stat : ESSENTIAL_STATS) {
-                try {
-                    this.statistics.put(stat.name(), player.getStatistic(stat));
-                } catch (Exception _) {
-                    // Ignore unsupported statistics
+        if (!plugin.isSyncEnabledNewFeature("statistics")) {
+            return;
+        }
+        this.statistics = new HashMap<>();
+        for (org.bukkit.Statistic stat : org.bukkit.Statistic.values()) {
+            try {
+                snapshotSingleStatistic(player, stat);
+            } catch (Exception _) {
+                // Ignore unsupported statistics on this server version
+            }
+        }
+    }
+
+    private void snapshotSingleStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat) {
+        if (stat.getType() == org.bukkit.Statistic.Type.UNTYPED) {
+            int val = player.getStatistic(stat);
+            if (val > 0) {
+                this.statistics.put(stat.name(), val);
+            }
+        } else if (stat.getType() == org.bukkit.Statistic.Type.BLOCK || stat.getType() == org.bukkit.Statistic.Type.ITEM) {
+            snapshotMaterialStatistic(player, stat);
+        } else if (stat.getType() == org.bukkit.Statistic.Type.ENTITY) {
+            snapshotEntityStatistic(player, stat);
+        }
+    }
+
+    @SuppressWarnings("null")
+    private void snapshotMaterialStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat) {
+        for (Material mat : Material.values()) {
+            try {
+                int val = player.getStatistic(stat, mat);
+                if (val > 0) {
+                    this.statistics.put(stat.name() + ":" + mat.name(), val);
                 }
+            } catch (Exception _) {
+                // Ignore invalid/unsupported combinations
+            }
+        }
+    }
+
+    @SuppressWarnings("null")
+    private void snapshotEntityStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat) {
+        for (org.bukkit.entity.EntityType entityType : org.bukkit.entity.EntityType.values()) {
+            try {
+                int val = player.getStatistic(stat, entityType);
+                if (val > 0) {
+                    this.statistics.put(stat.name() + ":" + entityType.name(), val);
+                }
+            } catch (Exception _) {
+                // Ignore invalid/unsupported combinations
             }
         }
     }

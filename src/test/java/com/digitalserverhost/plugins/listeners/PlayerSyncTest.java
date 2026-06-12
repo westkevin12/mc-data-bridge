@@ -38,7 +38,6 @@ class PlayerSyncTest {
     @Mock
     private org.bukkit.scheduler.BukkitScheduler mockScheduler;
 
-
     private org.mockito.MockedStatic<com.digitalserverhost.plugins.utils.SchedulerUtils> mockedSchedulerUtils;
 
     @BeforeEach
@@ -50,29 +49,38 @@ class PlayerSyncTest {
 
         // Mock SchedulerUtils to return BukkitScheduler and NOT Folia
         @SuppressWarnings("null")
-        org.mockito.MockedStatic<com.digitalserverhost.plugins.utils.SchedulerUtils> staticMock = mockStatic(com.digitalserverhost.plugins.utils.SchedulerUtils.class);
+        org.mockito.MockedStatic<com.digitalserverhost.plugins.utils.SchedulerUtils> staticMock = mockStatic(
+                com.digitalserverhost.plugins.utils.SchedulerUtils.class);
         mockedSchedulerUtils = staticMock;
         mockedSchedulerUtils.when(com.digitalserverhost.plugins.utils.SchedulerUtils::isFolia).thenReturn(false);
-        mockedSchedulerUtils.when(com.digitalserverhost.plugins.utils.SchedulerUtils::getScheduler).thenReturn(new com.digitalserverhost.plugins.utils.BukkitScheduler());
-        mockedSchedulerUtils.when(com.digitalserverhost.plugins.utils.SchedulerUtils::getBridge).thenReturn(new com.digitalserverhost.plugins.utils.BukkitBridge());
-        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(any(), any(), any())).thenAnswer(invocation -> {
-            Runnable runnable = invocation.getArgument(2);
-            runnable.run();
-            return null;
-        });
-        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(any(), any())).thenAnswer(invocation -> {
-            Runnable runnable = invocation.getArgument(1);
-            runnable.run();
-            return null;
-        });
-        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runLater(any(), any(), anyLong())).thenAnswer(invocation -> {
-            Runnable runnable = invocation.getArgument(1);
-            runnable.run();
-            return null;
-        });
+        mockedSchedulerUtils.when(com.digitalserverhost.plugins.utils.SchedulerUtils::getScheduler)
+                .thenReturn(new com.digitalserverhost.plugins.utils.BukkitScheduler());
+        mockedSchedulerUtils.when(com.digitalserverhost.plugins.utils.SchedulerUtils::getBridge)
+                .thenReturn(new com.digitalserverhost.plugins.utils.BukkitBridge());
+        mockedSchedulerUtils
+                .when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    Runnable runnable = invocation.getArgument(2);
+                    runnable.run();
+                    return null;
+                });
+        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(any(), any()))
+                .thenAnswer(invocation -> {
+                    Runnable runnable = invocation.getArgument(1);
+                    runnable.run();
+                    return null;
+                });
+        mockedSchedulerUtils
+                .when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runLater(any(), any(), anyLong()))
+                .thenAnswer(invocation -> {
+                    Runnable runnable = invocation.getArgument(1);
+                    runnable.run();
+                    return null;
+                });
 
         // Setup Plugin Mocks
-        org.bukkit.configuration.file.FileConfiguration mockConfig = mock(org.bukkit.configuration.file.FileConfiguration.class);
+        org.bukkit.configuration.file.FileConfiguration mockConfig = mock(
+                org.bukkit.configuration.file.FileConfiguration.class);
         lenient().when(mockPlugin.getConfig()).thenReturn(mockConfig);
         lenient().when(mockConfig.getBoolean(anyString(), anyBoolean())).thenReturn(true);
         lenient().when(mockConfig.getBoolean(anyString())).thenReturn(true);
@@ -115,7 +123,6 @@ class PlayerSyncTest {
 
         PlayerData sourceData = new PlayerData(sourcePlayer, mockPlugin);
 
-
         // 2. Setup Listener and DB Mocks
         PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
 
@@ -151,8 +158,9 @@ class PlayerSyncTest {
         when(maxHealthAttr.getValue()).thenReturn(20.0);
 
         // Setup scheduler runTaskTimerAsynchronously
-        lenient().when(mockScheduler.runTaskTimerAsynchronously(any(org.bukkit.plugin.Plugin.class), any(Runnable.class),
-                anyLong(), anyLong()))
+        lenient()
+                .when(mockScheduler.runTaskTimerAsynchronously(any(org.bukkit.plugin.Plugin.class), any(Runnable.class),
+                        anyLong(), anyLong()))
                 .thenReturn(mock(org.bukkit.scheduler.BukkitTask.class));
 
         PlayerJoinEvent joinEvent = mock(PlayerJoinEvent.class);
@@ -180,7 +188,6 @@ class PlayerSyncTest {
         when(mockPlugin.isSyncEnabled("food-level")).thenReturn(true);
         PlayerData sourceData = new PlayerData(sourcePlayer, mockPlugin);
 
-
         // 2. Disable toggle for Application
         when(mockPlugin.isSyncEnabled("food-level")).thenReturn(false);
 
@@ -207,8 +214,9 @@ class PlayerSyncTest {
         when(mockWorld.getName()).thenReturn("world");
         when(targetPlayer.getInventory()).thenReturn(mockInventory);
 
-        lenient().when(mockScheduler.runTaskTimerAsynchronously(any(org.bukkit.plugin.Plugin.class), any(Runnable.class),
-                anyLong(), anyLong()))
+        lenient()
+                .when(mockScheduler.runTaskTimerAsynchronously(any(org.bukkit.plugin.Plugin.class), any(Runnable.class),
+                        anyLong(), anyLong()))
                 .thenReturn(mock(org.bukkit.scheduler.BukkitTask.class));
 
         PlayerJoinEvent joinEvent = mock(PlayerJoinEvent.class);
@@ -239,7 +247,6 @@ class PlayerSyncTest {
         when(sourcePlayer.getInventory()).thenReturn(mockInventory);
 
         PlayerData sourceData = new PlayerData(sourcePlayer, mockPlugin);
-
 
         // 2. Setup Listener and DB
         PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
@@ -306,5 +313,106 @@ class PlayerSyncTest {
 
         // Verify NO kick happened
         verify(targetPlayer, never()).kick(any(net.kyori.adventure.text.Component.class));
+    }
+
+    @Test
+    void testAllStatisticsSync() throws Exception {
+        // 1. Prepare Source Player Stats
+        org.bukkit.entity.Player sourcePlayer = mock(org.bukkit.entity.Player.class);
+
+        // Stub source stats (only these three are non-zero)
+        lenient().when(sourcePlayer.getStatistic(org.bukkit.Statistic.DEATHS)).thenReturn(5);
+        lenient().when(sourcePlayer.getStatistic(org.bukkit.Statistic.MINE_BLOCK, org.bukkit.Material.STONE))
+                .thenReturn(100);
+        lenient().when(sourcePlayer.getStatistic(org.bukkit.Statistic.KILL_ENTITY, org.bukkit.entity.EntityType.ZOMBIE))
+                .thenReturn(15);
+
+        // Mock inventory behavior for PlayerData constructor
+        org.bukkit.inventory.PlayerInventory mockInventory = mock(org.bukkit.inventory.PlayerInventory.class);
+        when(sourcePlayer.getInventory()).thenReturn(mockInventory);
+
+        // Capture
+        lenient().when(mockPlugin.isSyncEnabledNewFeature(anyString())).thenReturn(false);
+        lenient().when(mockPlugin.isSyncEnabledNewFeature("statistics")).thenReturn(true);
+        PlayerData sourceData = new PlayerData(sourcePlayer, mockPlugin);
+
+        // Verify captured map
+        java.util.Map<String, Integer> capturedStats = sourceData.getStatistics();
+        org.junit.jupiter.api.Assertions.assertEquals(3, capturedStats.size());
+        org.junit.jupiter.api.Assertions.assertEquals(5, capturedStats.get("DEATHS"));
+        org.junit.jupiter.api.Assertions.assertEquals(100, capturedStats.get("MINE_BLOCK:STONE"));
+        org.junit.jupiter.api.Assertions.assertEquals(15, capturedStats.get("KILL_ENTITY:ZOMBIE"));
+
+        // 2. Setup Target Player Stats
+        org.bukkit.entity.Player targetPlayer = mock(org.bukkit.entity.Player.class);
+        when(targetPlayer.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(targetPlayer.getName()).thenReturn("TargetPlayer");
+        when(targetPlayer.isOnline()).thenReturn(true);
+        org.bukkit.World mockWorld = mock(org.bukkit.World.class);
+        when(targetPlayer.getWorld()).thenReturn(mockWorld);
+        when(mockWorld.getName()).thenReturn("world");
+        when(targetPlayer.getInventory()).thenReturn(mockInventory);
+
+        // Mock Attributes
+        org.bukkit.attribute.AttributeInstance maxHealthAttr = mock(org.bukkit.attribute.AttributeInstance.class);
+        when(targetPlayer.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH)).thenReturn(maxHealthAttr);
+        when(maxHealthAttr.getValue()).thenReturn(20.0);
+
+        // Stub target player stats (representing some matches, some overrides, some
+        // resets)
+        // Stale values:
+        lenient().when(targetPlayer.getStatistic(org.bukkit.Statistic.DEATHS)).thenReturn(5); // identical to DB
+        lenient().when(targetPlayer.getStatistic(org.bukkit.Statistic.MINE_BLOCK, org.bukkit.Material.STONE))
+                .thenReturn(50); // needs update to 100
+        lenient().when(targetPlayer.getStatistic(org.bukkit.Statistic.KILL_ENTITY, org.bukkit.entity.EntityType.ZOMBIE))
+                .thenReturn(15); // identical to DB
+        lenient().when(targetPlayer.getStatistic(org.bukkit.Statistic.JUMP)).thenReturn(10); // needs reset to 0
+        lenient().when(targetPlayer.getStatistic(org.bukkit.Statistic.MINE_BLOCK, org.bukkit.Material.DIAMOND_ORE))
+                .thenReturn(3); // needs reset to 0
+        lenient().when(
+                targetPlayer.getStatistic(org.bukkit.Statistic.KILL_ENTITY, org.bukkit.entity.EntityType.SKELETON))
+                .thenReturn(2); // needs reset to 0
+
+        // 3. Run PreLogin and Join
+        PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
+        UUID targetUuid = targetPlayer.getUniqueId();
+        when(mockDatabaseManager.acquireLock(eq(targetUuid), anyString())).thenReturn(true);
+        when(mockDatabaseManager.loadPlayerDataComponents(any(), eq(targetUuid), any())).thenReturn(sourceData);
+
+        AsyncPlayerPreLoginEvent preLoginEvent = mock(AsyncPlayerPreLoginEvent.class);
+        when(preLoginEvent.getUniqueId()).thenReturn(targetUuid);
+        when(preLoginEvent.getName()).thenReturn("TargetPlayer");
+        listener.onAsyncPlayerPreLogin(preLoginEvent);
+
+        lenient().when(mockScheduler.runTaskTimerAsynchronously(any(), any(Runnable.class), anyLong(), anyLong()))
+                .thenReturn(mock(org.bukkit.scheduler.BukkitTask.class));
+
+        PlayerJoinEvent joinEvent = mock(PlayerJoinEvent.class);
+        when(joinEvent.getPlayer()).thenReturn(targetPlayer);
+
+        listener.onPlayerJoin(joinEvent);
+
+        // 4. Assertions / Verifications
+        // Verify updates applied:
+        verify(targetPlayer).setStatistic(org.bukkit.Statistic.MINE_BLOCK, org.bukkit.Material.STONE, 100);
+
+        // Verify resets applied:
+        verify(targetPlayer).setStatistic(org.bukkit.Statistic.JUMP, 0);
+        verify(targetPlayer).setStatistic(org.bukkit.Statistic.MINE_BLOCK, org.bukkit.Material.DIAMOND_ORE, 0);
+        verify(targetPlayer).setStatistic(org.bukkit.Statistic.KILL_ENTITY, org.bukkit.entity.EntityType.SKELETON, 0);
+
+        // Verify identical values were NOT set (no redundant calls)
+        verify(targetPlayer, never()).setStatistic(org.bukkit.Statistic.DEATHS, 5);
+        verify(targetPlayer, never()).setStatistic(org.bukkit.Statistic.KILL_ENTITY,
+                org.bukkit.entity.EntityType.ZOMBIE, 15);
+
+        // Verify other statistics were NOT changed (since their db value was 0 and
+        // target player had 0)
+        verify(targetPlayer, never()).setStatistic(eqStat(org.bukkit.Statistic.DAMAGE_DEALT), anyInt());
+    }
+
+    @SuppressWarnings("null")
+    private static @org.jetbrains.annotations.NotNull org.bukkit.Statistic eqStat(org.bukkit.Statistic stat) {
+        return eq(stat);
     }
 }
