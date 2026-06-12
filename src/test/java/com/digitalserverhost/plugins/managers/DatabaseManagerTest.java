@@ -152,6 +152,13 @@ class DatabaseManagerTest {
         assertTrue(result);
         verify(migrateStmt).setString(1, newUuid.toString());
         verify(migrateStmt).setString(2, oldUuid.toString());
+        
+        // Verify all components were migrated
+        verify(mockConnection).prepareStatement(contains("UPDATE `databridge_inventories` SET uuid = ? WHERE uuid = ?"));
+        verify(mockConnection).prepareStatement(contains("UPDATE `databridge_statistics` SET uuid = ? WHERE uuid = ?"));
+        verify(mockConnection).prepareStatement(contains("UPDATE `databridge_metadata` SET uuid = ? WHERE uuid = ?"));
+        verify(mockConnection).prepareStatement(contains("UPDATE `databridge_companions` SET uuid = ? WHERE uuid = ?"));
+        verify(mockConnection).commit();
     }
 
     @Test

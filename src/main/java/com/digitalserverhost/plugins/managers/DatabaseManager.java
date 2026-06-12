@@ -26,6 +26,7 @@ public class DatabaseManager {
     private static final String UPDATE_SQL_PREFIX = "UPDATE ";
     private static final String INSERT_INTO_SQL = "INSERT INTO ";
     private static final String WHERE_UUID_SQL = " WHERE uuid = ?";
+    private static final String MIGRATE_UUID_SQL = " SET uuid = ? WHERE uuid = ?";
     private static final String COL_HEALTH = "health";
     private static final String COL_ADVANCEMENTS = "advancements";
     private static final String MODE_FOLLOW = "follow";
@@ -43,6 +44,7 @@ public class DatabaseManager {
     private final String metadataTable;
     private final String companionsTable;
     private final String serializationFormat;
+    private final boolean isSQLite;
 
     public DatabaseManager(FileConfiguration config, String tableName) {
         this.tableName = "`" + tableName.replace("`", "") + "`"; // Escape table name
@@ -92,9 +94,10 @@ public class DatabaseManager {
             }
         }
 
+        this.isSQLite = type.equals("sqlite");
         this.dataSource = new HikariDataSource(hikariConfig);
         this.lockTimeout = config.getLong("lock-timeout", 60000); // 60 seconds default
-        if (type.equals("sqlite")) {
+        if (this.isSQLite) {
             this.currentTimeFunction = "(strftime('%s','now') * 1000)";
         } else {
             this.currentTimeFunction = "(UNIX_TIMESTAMP() * 1000)";
@@ -116,6 +119,7 @@ public class DatabaseManager {
         this.metadataTable = "`databridge_metadata`";
         this.companionsTable = "`databridge_companions`";
         this.serializationFormat = "json";
+        this.isSQLite = false;
     }
 
     public int getActiveConnections() {
@@ -398,24 +402,46 @@ public class DatabaseManager {
         java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(blob);
         try (java.io.DataInputStream dis = new java.io.DataInputStream(bais)) {
             int size = dis.readInt();
-            for (int i = 0; i < size; i++) {
-                int len = dis.readInt();
-                if (len == -1) {
-                    list.add(null);
-                } else {
-                    byte[] bytes = new byte[len];
-                    dis.readFully(bytes);
-                    if (bytes.length > 2 && bytes[0] == (byte) '{') {
-                        list.add(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
-                    } else {
-                        list.add(Base64.getEncoder().encodeToString(bytes));
-                    }
-                }
+            if (size < 0 || size > 1000) {
+                LOGGER.log(java.util.logging.Level.WARNING, "Binary deserialization aborted: invalid list size {0}", size);
+                return list;
+            }
+            boolean success = true;
+            for (int i = 0; i < size && success; i++) {
+                success = readAndAddBinaryItem(dis, list, i);
             }
         } catch (java.io.IOException _) {
             // Corrupt or empty stream
         }
         return list;
+    }
+
+    private boolean readAndAddBinaryItem(java.io.DataInputStream dis, List<String> list, int index) throws java.io.IOException {
+        if (dis.available() < 4) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Binary deserialization aborted: unexpected end of stream at index {0}", index);
+            return false;
+        }
+        int len = dis.readInt();
+        if (len == -1) {
+            list.add(null);
+            return true;
+        }
+        if (len < 0 || len > 1024 * 1024) { // 1 MB limit
+            LOGGER.log(java.util.logging.Level.WARNING, "Binary deserialization aborted: invalid item length {0} at index {1}", new Object[]{len, index});
+            return false;
+        }
+        if (dis.available() < len) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Binary deserialization aborted: not enough bytes available for item of length {0} at index {1}", new Object[]{len, index});
+            return false;
+        }
+        byte[] bytes = new byte[len];
+        dis.readFully(bytes);
+        if (bytes.length > 2 && bytes[0] == (byte) '{') {
+            list.add(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+        } else {
+            list.add(Base64.getEncoder().encodeToString(bytes));
+        }
+        return true;
     }
 
     private byte[] serializeListToJson(List<String> list) {
@@ -477,22 +503,20 @@ public class DatabaseManager {
         byte[] targetArmor = plugin.isSyncEnabled("armor") ? serializeListToBlob(data.getArmorContentsNBT()) : dbArmor;
         byte[] targetEnderChest = plugin.isSyncEnabled("ender-chest") ? serializeListToBlob(data.getEnderChestContentsNBT()) : dbEnderChest;
 
-        String sqlUpdate = UPDATE_SQL_PREFIX + inventoriesTable + " SET inventory_blob = ?, armor_blob = ?, ender_chest_blob = ?" + WHERE_UUID_SQL;
-        try (PreparedStatement updateStmt = connection.prepareStatement(sqlUpdate)) {
-            updateStmt.setBytes(1, targetInventory);
-            updateStmt.setBytes(2, targetArmor);
-            updateStmt.setBytes(3, targetEnderChest);
-            updateStmt.setString(4, uuid.toString());
-            if (updateStmt.executeUpdate() == 0) {
-                String sqlInsert = INSERT_INTO_SQL + inventoriesTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?)";
-                try (PreparedStatement insertStmt = connection.prepareStatement(sqlInsert)) {
-                    insertStmt.setString(1, uuid.toString());
-                    insertStmt.setBytes(2, targetInventory);
-                    insertStmt.setBytes(3, targetArmor);
-                    insertStmt.setBytes(4, targetEnderChest);
-                    insertStmt.executeUpdate();
-                }
-            }
+        String sqlUpsert;
+        if (isSQLite) {
+            sqlUpsert = INSERT_INTO_SQL + inventoriesTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?) " +
+                        "ON CONFLICT(uuid) DO UPDATE SET inventory_blob = excluded.inventory_blob, armor_blob = excluded.armor_blob, ender_chest_blob = excluded.ender_chest_blob";
+        } else {
+            sqlUpsert = INSERT_INTO_SQL + inventoriesTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?) " +
+                        "ON DUPLICATE KEY UPDATE inventory_blob = VALUES(inventory_blob), armor_blob = VALUES(armor_blob), ender_chest_blob = VALUES(ender_chest_blob)";
+        }
+        try (PreparedStatement stmt = connection.prepareStatement(sqlUpsert)) {
+            stmt.setString(1, uuid.toString());
+            stmt.setBytes(2, targetInventory);
+            stmt.setBytes(3, targetArmor);
+            stmt.setBytes(4, targetEnderChest);
+            stmt.executeUpdate();
         }
     }
 
@@ -543,7 +567,15 @@ public class DatabaseManager {
             targetXpTotal = data.getTotalExperience();
         }
 
-        PlayerData jsonStatsData = GSON.fromJson(dbVanillaStatsJson, PlayerData.class);
+        PlayerData jsonStatsData = null;
+        try {
+            jsonStatsData = GSON.fromJson(dbVanillaStatsJson, PlayerData.class);
+        } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Failed to parse vanilla statistics JSON, resetting to defaults: {0}", e.getMessage());
+        }
+        if (jsonStatsData == null) {
+            jsonStatsData = new PlayerData();
+        }
         if (plugin.isSyncEnabled("potion-effects")) jsonStatsData.setPotionEffects(data.getPotionEffects());
         if (plugin.isSyncEnabled("flight-gamemode")) {
             jsonStatsData.setFlying(data.isFlying());
@@ -563,32 +595,27 @@ public class DatabaseManager {
 
         String targetVanillaStatsJson = GSON.toJson(jsonStatsData);
 
-        String sqlUpdate = UPDATE_SQL_PREFIX + statisticsTable + " SET " + COL_HEALTH + " = ?, food_level = ?, xp_level = ?, xp_exp = ?, xp_total = ?, saturation = ?, exhaustion = ?, vanilla_stats_json = ?" + WHERE_UUID_SQL;
-        try (PreparedStatement updateStmt = connection.prepareStatement(sqlUpdate)) {
-            updateStmt.setDouble(1, targetHealth);
-            updateStmt.setInt(2, targetFoodLevel);
-            updateStmt.setInt(3, targetXpLevel);
-            updateStmt.setFloat(4, targetXpExp);
-            updateStmt.setInt(5, targetXpTotal);
-            updateStmt.setFloat(6, targetSaturation);
-            updateStmt.setFloat(7, targetExhaustion);
-            updateStmt.setString(8, targetVanillaStatsJson);
-            updateStmt.setString(9, uuid.toString());
-            if (updateStmt.executeUpdate() == 0) {
-                String sqlInsert = INSERT_INTO_SQL + statisticsTable + " (uuid, " + COL_HEALTH + ", food_level, xp_level, xp_exp, xp_total, saturation, exhaustion, vanilla_stats_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                try (PreparedStatement insertStmt = connection.prepareStatement(sqlInsert)) {
-                    insertStmt.setString(1, uuid.toString());
-                    insertStmt.setDouble(2, targetHealth);
-                    insertStmt.setInt(3, targetFoodLevel);
-                    insertStmt.setInt(4, targetXpLevel);
-                    insertStmt.setFloat(5, targetXpExp);
-                    insertStmt.setInt(6, targetXpTotal);
-                    insertStmt.setFloat(7, targetSaturation);
-                    insertStmt.setFloat(8, targetExhaustion);
-                    insertStmt.setString(9, targetVanillaStatsJson);
-                    insertStmt.executeUpdate();
-                }
-            }
+        String sqlUpsert;
+        if (isSQLite) {
+            sqlUpsert = INSERT_INTO_SQL + statisticsTable + " (uuid, " + COL_HEALTH + ", food_level, xp_level, xp_exp, xp_total, saturation, exhaustion, vanilla_stats_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                        "ON CONFLICT(uuid) DO UPDATE SET " + COL_HEALTH + " = excluded." + COL_HEALTH + ", food_level = excluded.food_level, xp_level = excluded.xp_level, xp_exp = excluded.xp_exp, " +
+                        "xp_total = excluded.xp_total, saturation = excluded.saturation, exhaustion = excluded.exhaustion, vanilla_stats_json = excluded.vanilla_stats_json";
+        } else {
+            sqlUpsert = INSERT_INTO_SQL + statisticsTable + " (uuid, " + COL_HEALTH + ", food_level, xp_level, xp_exp, xp_total, saturation, exhaustion, vanilla_stats_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                        "ON DUPLICATE KEY UPDATE " + COL_HEALTH + " = VALUES(" + COL_HEALTH + "), food_level = VALUES(food_level), xp_level = VALUES(xp_level), xp_exp = VALUES(xp_exp), " +
+                        "xp_total = VALUES(xp_total), saturation = VALUES(saturation), exhaustion = VALUES(exhaustion), vanilla_stats_json = VALUES(vanilla_stats_json)";
+        }
+        try (PreparedStatement stmt = connection.prepareStatement(sqlUpsert)) {
+            stmt.setString(1, uuid.toString());
+            stmt.setDouble(2, targetHealth);
+            stmt.setInt(3, targetFoodLevel);
+            stmt.setInt(4, targetXpLevel);
+            stmt.setFloat(5, targetXpExp);
+            stmt.setInt(6, targetXpTotal);
+            stmt.setFloat(7, targetSaturation);
+            stmt.setFloat(8, targetExhaustion);
+            stmt.setString(9, targetVanillaStatsJson);
+            stmt.executeUpdate();
         }
     }
 
@@ -610,20 +637,19 @@ public class DatabaseManager {
         String targetPdc = plugin.isSyncEnabled("pdc") ? data.getPdcNBT() : dbPdc;
         String targetAdvancements = plugin.isSyncEnabled(COL_ADVANCEMENTS) ? GSON.toJson(data.getAdvancements()) : dbAdvancements;
 
-        String sqlUpdate = UPDATE_SQL_PREFIX + metadataTable + " SET pdc_data = ?, " + COL_ADVANCEMENTS + " = ?" + WHERE_UUID_SQL;
-        try (PreparedStatement updateStmt = connection.prepareStatement(sqlUpdate)) {
-            updateStmt.setString(1, targetPdc);
-            updateStmt.setString(2, targetAdvancements);
-            updateStmt.setString(3, uuid.toString());
-            if (updateStmt.executeUpdate() == 0) {
-                String sqlInsert = INSERT_INTO_SQL + metadataTable + " (uuid, pdc_data, " + COL_ADVANCEMENTS + ") VALUES (?, ?, ?)";
-                try (PreparedStatement insertStmt = connection.prepareStatement(sqlInsert)) {
-                    insertStmt.setString(1, uuid.toString());
-                    insertStmt.setString(2, targetPdc);
-                    insertStmt.setString(3, targetAdvancements);
-                    insertStmt.executeUpdate();
-                }
-            }
+        String sqlUpsert;
+        if (isSQLite) {
+            sqlUpsert = INSERT_INTO_SQL + metadataTable + " (uuid, pdc_data, " + COL_ADVANCEMENTS + ") VALUES (?, ?, ?) " +
+                        "ON CONFLICT(uuid) DO UPDATE SET pdc_data = excluded.pdc_data, " + COL_ADVANCEMENTS + " = excluded." + COL_ADVANCEMENTS;
+        } else {
+            sqlUpsert = INSERT_INTO_SQL + metadataTable + " (uuid, pdc_data, " + COL_ADVANCEMENTS + ") VALUES (?, ?, ?) " +
+                        "ON DUPLICATE KEY UPDATE pdc_data = VALUES(pdc_data), " + COL_ADVANCEMENTS + " = VALUES(" + COL_ADVANCEMENTS + ")";
+        }
+        try (PreparedStatement stmt = connection.prepareStatement(sqlUpsert)) {
+            stmt.setString(1, uuid.toString());
+            stmt.setString(2, targetPdc);
+            stmt.setString(3, targetAdvancements);
+            stmt.executeUpdate();
         }
     }
 
@@ -644,47 +670,80 @@ public class DatabaseManager {
             }
         }
 
-        String targetCompanionsNbt = mergeCompanionsNbt(data.getCompanionsNBT(), dbCompanionsNbt);
+        String targetCompanionsNbt = mergeCompanionsNbt(data.getCompanionsNBT(), dbCompanionsNbt, mode, plugin.getServerId());
 
-        String sqlUpdate = UPDATE_SQL_PREFIX + companionsTable + " SET companions_nbt = ?" + WHERE_UUID_SQL;
-        try (PreparedStatement updateStmt = connection.prepareStatement(sqlUpdate)) {
-            updateStmt.setString(1, targetCompanionsNbt);
-            updateStmt.setString(2, uuid.toString());
-            if (updateStmt.executeUpdate() == 0) {
-                String sqlInsert = INSERT_INTO_SQL + companionsTable + " (uuid, companions_nbt) VALUES (?, ?)";
-                try (PreparedStatement insertStmt = connection.prepareStatement(sqlInsert)) {
-                    insertStmt.setString(1, uuid.toString());
-                    insertStmt.setString(2, targetCompanionsNbt);
-                    insertStmt.executeUpdate();
-                }
+        String sqlUpsert;
+        if (isSQLite) {
+            sqlUpsert = INSERT_INTO_SQL + companionsTable + " (uuid, companions_nbt) VALUES (?, ?) " +
+                        "ON CONFLICT(uuid) DO UPDATE SET companions_nbt = excluded.companions_nbt";
+        } else {
+            sqlUpsert = INSERT_INTO_SQL + companionsTable + " (uuid, companions_nbt) VALUES (?, ?) " +
+                        "ON DUPLICATE KEY UPDATE companions_nbt = VALUES(companions_nbt)";
+        }
+        try (PreparedStatement stmt = connection.prepareStatement(sqlUpsert)) {
+            stmt.setString(1, uuid.toString());
+            stmt.setString(2, targetCompanionsNbt);
+            stmt.executeUpdate();
+        }
+    }
+
+    private String mergeCompanionsNbt(String localCompanionsNbt, String dbCompanionsNbt, String mode, String currentServer) {
+        if (localCompanionsNbt == null) {
+            if (!mode.equals(MODE_RETURN)) {
+                return null;
+            }
+            List<CompanionSnapshot> toKeep = new ArrayList<>();
+            CompanionSnapshot[] dbSnaps = parseCompanionSnapshots(dbCompanionsNbt);
+            addOtherServerCompanions(dbSnaps, toKeep, currentServer);
+            return toKeep.isEmpty() ? null : GSON.toJson(toKeep);
+        }
+
+        if (dbCompanionsNbt == null || dbCompanionsNbt.isEmpty()) {
+            return localCompanionsNbt;
+        }
+
+        try {
+            CompanionSnapshot[] localSnaps = parseCompanionSnapshots(localCompanionsNbt);
+            CompanionSnapshot[] dbSnaps = parseCompanionSnapshots(dbCompanionsNbt);
+            List<CompanionSnapshot> merged = new ArrayList<>();
+
+            if (mode.equals(MODE_RETURN)) {
+                addOtherServerCompanions(dbSnaps, merged, currentServer);
+            }
+
+            addAllNonNullSnapshots(localSnaps, merged);
+            return merged.isEmpty() ? null : GSON.toJson(merged);
+        } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Error merging companions: {0}", e.getMessage());
+            return localCompanionsNbt;
+        }
+    }
+
+    private CompanionSnapshot[] parseCompanionSnapshots(String json) {
+        if (json == null || json.isEmpty()) return null;
+        try {
+            return GSON.fromJson(json, CompanionSnapshot[].class);
+        } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Failed to parse companion snapshots: {0}", e.getMessage());
+            return null;
+        }
+    }
+
+    private void addOtherServerCompanions(CompanionSnapshot[] snaps, List<CompanionSnapshot> list, String currentServer) {
+        if (snaps == null) return;
+        for (CompanionSnapshot snap : snaps) {
+            if (snap != null && snap.getSourceServerId() != null && !snap.getSourceServerId().equalsIgnoreCase(currentServer)) {
+                list.add(snap);
             }
         }
     }
 
-    private String mergeCompanionsNbt(String localCompanionsNbt, String dbCompanionsNbt) {
-        if (localCompanionsNbt == null) {
-            return dbCompanionsNbt;
-        }
-        if (dbCompanionsNbt == null || dbCompanionsNbt.isEmpty()) {
-            return localCompanionsNbt;
-        }
-        try {
-            CompanionSnapshot[] newSnaps = GSON.fromJson(localCompanionsNbt, CompanionSnapshot[].class);
-            CompanionSnapshot[] oldSnaps = GSON.fromJson(dbCompanionsNbt, CompanionSnapshot[].class);
-            List<CompanionSnapshot> merged = new ArrayList<>();
-            if (oldSnaps != null) {
-                for (CompanionSnapshot snap : oldSnaps) {
-                    if (snap != null) merged.add(snap);
-                }
+    private void addAllNonNullSnapshots(CompanionSnapshot[] snaps, List<CompanionSnapshot> list) {
+        if (snaps == null) return;
+        for (CompanionSnapshot snap : snaps) {
+            if (snap != null) {
+                list.add(snap);
             }
-            if (newSnaps != null) {
-                for (CompanionSnapshot snap : newSnaps) {
-                    if (snap != null) merged.add(snap);
-                }
-            }
-            return GSON.toJson(merged);
-        } catch (Exception _) {
-            return localCompanionsNbt;
         }
     }
 
@@ -794,7 +853,11 @@ public class DatabaseManager {
                 data.setExhaustion(rs.getFloat("exhaustion"));
                 String json = rs.getString("vanilla_stats_json");
                 if (json != null && !json.isEmpty() && !"{}".equals(json)) {
-                    applyVanillaStats(data, GSON.fromJson(json, PlayerData.class));
+                    try {
+                        applyVanillaStats(data, GSON.fromJson(json, PlayerData.class));
+                    } catch (Exception e) {
+                        LOGGER.log(java.util.logging.Level.WARNING, "Failed to parse vanilla stats JSON for {0}: {1}", new Object[]{uuid, e.getMessage()});
+                    }
                 }
                 return true;
             }
@@ -830,8 +893,12 @@ public class DatabaseManager {
                 String advancementsStr = rs.getString(COL_ADVANCEMENTS);
                 if (pdc != null) data.setPdcNBT(pdc);
                 if (advancementsStr != null) {
-                    Map<String, List<String>> advMap = GSON.fromJson(advancementsStr, Map.class);
-                    data.setAdvancements(advMap);
+                    try {
+                        Map<String, List<String>> advMap = GSON.fromJson(advancementsStr, Map.class);
+                        data.setAdvancements(advMap);
+                    } catch (Exception e) {
+                        LOGGER.log(java.util.logging.Level.WARNING, "Failed to parse advancements JSON for {0}: {1}", new Object[]{uuid, e.getMessage()});
+                    }
                 }
                 return true;
             }
@@ -859,7 +926,7 @@ public class DatabaseManager {
 
                     if (!toSpawn.isEmpty()) {
                         data.setCompanionsNBT(GSON.toJson(toSpawn));
-                        updateDatabaseCompanions(connection, uuid, toKeep);
+                        // Do NOT update database companions on load to prevent sync-erase race conditions!
                         return true;
                     }
                 }
@@ -872,74 +939,86 @@ public class DatabaseManager {
         try {
             CompanionSnapshot[] snapshots = GSON.fromJson(companionsNbt, CompanionSnapshot[].class);
             if (snapshots != null) {
-                for (CompanionSnapshot snap : snapshots) {
-                    if (snap != null) {
-                        boolean shouldSpawn = false;
-                        if (mode.equals(MODE_FOLLOW)) {
-                            shouldSpawn = true;
-                        } else if (mode.equals(MODE_RETURN)) {
-                            shouldSpawn = snap.getSourceServerId() == null || snap.getSourceServerId().equalsIgnoreCase(currentServer);
-                        }
-
-                        if (shouldSpawn) {
-                            toSpawn.add(snap);
-                        } else {
-                            toKeep.add(snap);
-                        }
-                    }
-                }
+                filterCompanionSnapshots(snapshots, mode, currentServer, toSpawn, toKeep);
             }
-        } catch (Exception _) {
+        } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Failed to parse companion snapshots during spawn check: {0}", e.getMessage());
             toSpawn.clear();
             toKeep.clear();
             CompanionSnapshot[] fallback = GSON.fromJson(companionsNbt, CompanionSnapshot[].class);
             if (fallback != null) {
                 for (CompanionSnapshot snap : fallback) {
-                    if (snap != null) toSpawn.add(snap);
+                    if (snap != null) {
+                        toSpawn.add(snap);
+                    }
                 }
             }
         }
     }
 
-    private void updateDatabaseCompanions(Connection connection, UUID uuid, List<CompanionSnapshot> toKeep) throws SQLException {
-        if (toKeep.isEmpty()) {
-            String sqlClear = UPDATE_SQL_PREFIX + companionsTable + " SET companions_nbt = NULL" + WHERE_UUID_SQL;
-            try (PreparedStatement clearStmt = connection.prepareStatement(sqlClear)) {
-                clearStmt.setString(1, uuid.toString());
-                clearStmt.executeUpdate();
+    private void filterCompanionSnapshots(CompanionSnapshot[] snapshots, String mode, String currentServer, List<CompanionSnapshot> toSpawn, List<CompanionSnapshot> toKeep) {
+        for (CompanionSnapshot snap : snapshots) {
+            if (snap != null) {
+                boolean shouldSpawn = shouldSpawnCompanion(snap, mode, currentServer);
+                if (shouldSpawn) {
+                    toSpawn.add(snap);
+                } else {
+                    toKeep.add(snap);
+                }
             }
-        } else {
-            String sqlUpdate = UPDATE_SQL_PREFIX + companionsTable + " SET companions_nbt = ?" + WHERE_UUID_SQL;
-            try (PreparedStatement updateStmt = connection.prepareStatement(sqlUpdate)) {
-                updateStmt.setString(1, GSON.toJson(toKeep));
-                updateStmt.setString(2, uuid.toString());
-                updateStmt.executeUpdate();
-            }
+        }
+    }
+
+    private boolean shouldSpawnCompanion(CompanionSnapshot snap, String mode, String currentServer) {
+        if (mode.equals(MODE_FOLLOW)) {
+            return true;
+        }
+        if (mode.equals(MODE_RETURN)) {
+            return snap.getSourceServerId() == null || snap.getSourceServerId().equalsIgnoreCase(currentServer);
+        }
+        return false;
+    }
+
+    private int executeMigrateQuery(Connection connection, String table, UUID oldUuid, UUID newUuid) throws SQLException {
+        String sql = UPDATE_SQL_PREFIX + table + MIGRATE_UUID_SQL;
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, newUuid.toString());
+            stmt.setString(2, oldUuid.toString());
+            return stmt.executeUpdate();
         }
     }
 
     public boolean migrateData(UUID oldUuid, UUID newUuid) throws SQLException {
         if (oldUuid == null || newUuid == null) return false;
         
-        // 1. Check if newUuid already has data (don't overwrite)
-        String checkSql = "SELECT uuid FROM " + tableName + WHERE_UUID_SQL;
-        try (Connection connection = getConnection();
-                PreparedStatement checkStmt = connection.prepareStatement(checkSql)) {
-            checkStmt.setString(1, newUuid.toString());
-            try (ResultSet rs = checkStmt.executeQuery()) {
-                if (rs.next()) {
-                    return false; // Target UUID already has data
+        try (Connection connection = getConnection()) {
+            // 1. Check if newUuid already has data in the main table (don't overwrite)
+            String checkSql = "SELECT uuid FROM " + tableName + WHERE_UUID_SQL;
+            try (PreparedStatement checkStmt = connection.prepareStatement(checkSql)) {
+                checkStmt.setString(1, newUuid.toString());
+                try (ResultSet rs = checkStmt.executeQuery()) {
+                    if (rs.next()) {
+                        return false; // Target UUID already has data
+                    }
                 }
             }
-        }
 
-        // 2. Perform migration
-        String migrateSql = UPDATE_SQL_PREFIX + tableName + " SET uuid = ? WHERE uuid = ?";
-        try (Connection connection = getConnection();
-                PreparedStatement migrateStmt = connection.prepareStatement(migrateSql)) {
-            migrateStmt.setString(1, newUuid.toString());
-            migrateStmt.setString(2, oldUuid.toString());
-            return migrateStmt.executeUpdate() > 0;
+            connection.setAutoCommit(false);
+            try {
+                boolean migrated = executeMigrateQuery(connection, tableName, oldUuid, newUuid) > 0;
+                executeMigrateQuery(connection, inventoriesTable, oldUuid, newUuid);
+                executeMigrateQuery(connection, statisticsTable, oldUuid, newUuid);
+                executeMigrateQuery(connection, metadataTable, oldUuid, newUuid);
+                executeMigrateQuery(connection, companionsTable, oldUuid, newUuid);
+
+                connection.commit();
+                return migrated;
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
         }
     }
 

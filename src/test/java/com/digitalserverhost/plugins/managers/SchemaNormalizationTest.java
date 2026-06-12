@@ -109,8 +109,8 @@ class SchemaNormalizationTest {
 
         verify(mockConnection, atLeastOnce()).prepareStatement(contains("SELECT inventory_blob"));
         verify(mockConnection, atLeastOnce()).prepareStatement(contains("SELECT health"));
-        verify(mockConnection, atLeastOnce()).prepareStatement(contains("UPDATE `databridge_inventories`"));
-        verify(mockConnection, atLeastOnce()).prepareStatement(contains("UPDATE `databridge_statistics`"));
+        verify(mockConnection, atLeastOnce()).prepareStatement(contains("INSERT INTO `databridge_inventories`"));
+        verify(mockConnection, atLeastOnce()).prepareStatement(contains("INSERT INTO `databridge_statistics`"));
     }
 
     @Test
@@ -169,7 +169,7 @@ class SchemaNormalizationTest {
         boolean saveResult = dbManager.savePlayerDataComponents(mockPlugin, data, uuid);
         assertTrue(saveResult);
 
-        verify(mockConnection, atLeastOnce()).prepareStatement(contains("UPDATE `databridge_companions` SET companions_nbt = ?"));
+        verify(mockConnection, atLeastOnce()).prepareStatement(contains("INSERT INTO `databridge_companions`"));
 
         // For load: SELECT companions_nbt FROM databridge_companions WHERE uuid = ?
         when(mockConnection.prepareStatement(contains("SELECT companions_nbt FROM `databridge_companions` WHERE uuid = ?"))).thenReturn(mockSelectStmt);
@@ -192,8 +192,5 @@ class SchemaNormalizationTest {
         PlayerData loaded = dbManager.loadPlayerDataComponents(mockPlugin, uuid);
         assertNotNull(loaded);
         assertEquals("[{\"entityType\":\"CAT\",\"health\":10.0,\"maxHealth\":10.0,\"isSitting\":true}]", loaded.getCompanionsNBT());
-
-        // Verify clear happens: UPDATE databridge_companions SET companions_nbt = NULL
-        verify(mockConnection, atLeastOnce()).prepareStatement(contains("UPDATE `databridge_companions` SET companions_nbt = NULL"));
     }
 }
