@@ -9,6 +9,7 @@ Below is a detailed explanation of the [I]config.yml[/I] settings. This file is 
 [*][B]database.type:[/B] Use [CODE]mysql[/CODE] for external databases (MariaDB/MySQL) or [CODE]sqlite[/CODE] for local file-based storage.
 [*][B]database.host/port/database:[/B] Standard credentials for your MySQL server.
 [*][B]database.sqlite-file:[/B] The filename used if the type is set to [I]sqlite[/I].
+[*][B]database.serialization-format:[/B] Use [CODE]json[/CODE] for backward-compatible Base64 JSON format, or [CODE]binary[/CODE] to store compressed NBT byte arrays, saving database storage and connection bandwidth.
 [*][B]database.pool-settings:[/B] Advanced HikariCP settings. Defaults are highly optimized for resilience against network jitter.
 [*][B]database.optimizations:[/B] Fine-tuned JDBC driver settings to ensure non-blocking performance.
 [/LIST]
@@ -16,7 +17,7 @@ Below is a detailed explanation of the [I]config.yml[/I] settings. This file is 
 [SIZE=4][B]2. Core Identity & Security[/B][/SIZE]
 [LIST]
 [*][B]server-id:[/B] [B]CRITICAL.[/B] Every server connected to the same database must have a unique identifier (e.g., "survival-1", "creative").
-[*][B]security.seed:[/B] A secret string used to salt all SHA-256 hashes. Changing this invalidates existing integrity checks until the data is re-saved.
+[*][B]security.seed:[/B] A secret string used to salt all SHA-256 hashes and identity checks. [B]If this is left as the default "change-me-to-a-long-random-string", the plugin will fail to start to prevent unauthorized network access.[/B]
 [*][B]security.verify-data-integrity:[/B] When enabled, the plugin will reject data loads if the SHA-256 checksum does not match, protecting against database tampering.
 [*][B]identity.mode:[/B]
 [LIST]
@@ -24,6 +25,7 @@ Below is a detailed explanation of the [I]config.yml[/I] settings. This file is 
 [*][B]HYBRID:[/B] Allows for identity shifts (Name -> UUID), ideal for networks migrating from cracked to premium. [B]Note: HYBRID mode is required for auto-migration features (FastLogin/AuthMe).[/B]
 [/LIST]
 [*][B]identity.auto-migrate-fastlogin:[/B] If true, automatically transfers data to a player's premium account once FastLogin verifies their session.
+[*][B]identity.auto-migrate-authme:[/B] If true, automatically transfers data to a player's premium account once they authenticate via AuthMe.
 [/LIST]
 
 [SIZE=4][B]3. Synchronization Control[/B][/SIZE]
@@ -31,6 +33,24 @@ Below is a detailed explanation of the [I]config.yml[/I] settings. This file is 
 [*][B]sync-data:*:[/B] Individual toggles for every data type. You can sync just inventories but keep health local to each server, or vice versa.
 [*][B]sync-blacklist.servers:[/B] List of [I]server-id[/I]s where data should never be loaded or saved.
 [*][B]sync-blacklist.worlds:[/B] List of world names where synchronization is temporarily suspended for the player.
+[/LIST]
+
+[SIZE=4][B]4. Companions / Pets[/B][/SIZE]
+[LIST]
+[*][B]companions.scan-radius:[/B] The maximum distance (in blocks) around a switching player to scan for owned tamed entities to synchronize.
+[*][B]companions.mode:[/B]
+[LIST]
+[*][B]follow:[/B] Companions follow the player across servers.
+[*][B]return:[/B] Companions stay on the server they were left on, reappearing when the player logs back into that specific server.
+[*][B]untracked:[/B] Pets are not synchronized or tracked by the plugin.
+[/LIST]
+[/LIST]
+
+[SIZE=4][B]5. Prometheus Metrics[/B][/SIZE]
+[LIST]
+[*][B]metrics.enabled:[/B] If true, starts an embedded HTTP server to expose plugin and pool metrics.
+[*][B]metrics.port:[/B] Port for Prometheus scraping (default: 8080).
+[*][B]metrics.path:[/B] Path for metrics endpoint (default: /metrics).
 [/LIST]
 
 [SIZE=5]► Commands & Permissions[/SIZE]
@@ -68,17 +88,58 @@ Below is a detailed explanation of the [I]config.yml[/I] settings. This file is 
 
 [SIZE=5]► Database Schema Information[/SIZE]
 
-For administrators managing the database directly, the plugin maintains the [I]player_data[/I] table:
+For administrators managing the database directly, the plugin maintains the following tables (table prefixes applied if configured):
 
+[SIZE=4][B]1. Lock & Identity Registry Table: [I]player_data[/I][/B][/SIZE]
 [LIST]
 [*][B]uuid[/B] (VARCHAR(36), PK): The unique ID of the player.
-[*][B]data[/B] (LONGBLOB): The serialized binary data snapshot.
+[*][B]data[/B] (LONGBLOB): The serialized binary data snapshot (legacy backup).
 [*][B]data_checksum[/B] (VARCHAR(64)): SHA-256 integrity hash of the data packet.
 [*][B]is_locked[/B] (BOOLEAN): Prevents concurrent writes from multiple servers.
 [*][B]locking_server[/B] (VARCHAR(255)): The ID of the server currently holding the lock.
 [*][B]lock_timestamp[/B] (BIGINT): Heartbeat timestamp to detect orphaned locks.
 [*][B]last_known_name[/B] (VARCHAR(16)): Used for identity tracking and /migrate.
 [*][B]identity_hash[/B] (VARCHAR(64)): Salted hash of the Name+UUID+Seed combination for secure identity verification.
+[*][B]name_last_updated[/B] (BIGINT): Timestamp of when the player's name was last updated.
+[*][B]last_updated[/B] (TIMESTAMP/DATETIME): Auto-updated timestamp of the last lock state change.
+[/LIST]
+
+[SIZE=4][B]2. Inventories Table: [I]databridge_inventories[/I][/B][/SIZE]
+[LIST]
+[*][B]uuid[/B] (VARCHAR(36), PK): The player's unique ID.
+[*][B]inventory_blob[/B] (LONGBLOB/TEXT): Serialized player inventory items.
+[*][B]armor_blob[/B] (LONGBLOB/TEXT): Serialized armor items.
+[*][B]ender_chest_blob[/B] (LONGBLOB/TEXT): Serialized ender chest items.
+[*][B]last_updated[/B] (TIMESTAMP/DATETIME): Auto-updated timestamp.
+[/LIST]
+
+[SIZE=4][B]3. Statistics Table: [I]databridge_statistics[/I][/B][/SIZE]
+[LIST]
+[*][B]uuid[/B] (VARCHAR(36), PK): The player's unique ID.
+[*][B]health[/B] (DOUBLE/REAL): Current health value.
+[*][B]food_level[/B] (INT/INTEGER): Current food level.
+[*][B]xp_level[/B] (INT/INTEGER): Current experience level.
+[*][B]xp_exp[/B] (FLOAT/REAL): Current progress to next level.
+[*][B]xp_total[/B] (INT/INTEGER): Total experience points.
+[*][B]saturation[/B] (FLOAT/REAL): Food saturation level.
+[*][B]exhaustion[/B] (FLOAT/REAL): Food exhaustion level.
+[*][B]vanilla_stats_json[/B] (TEXT): JSON containing all synchronized vanilla statistics, location, and recipe states.
+[*][B]last_updated[/B] (TIMESTAMP/DATETIME): Auto-updated timestamp.
+[/LIST]
+
+[SIZE=4][B]4. Metadata Table: [I]databridge_metadata[/I][/B][/SIZE]
+[LIST]
+[*][B]uuid[/B] (VARCHAR(36), PK): The player's unique ID.
+[*][B]pdc_data[/B] (LONGTEXT/TEXT): Serialized persistent data container (custom NBT tags).
+[*][B]advancements[/B] (LONGTEXT/TEXT): Serialized advancements and recipes.
+[*][B]last_updated[/B] (TIMESTAMP/DATETIME): Auto-updated timestamp.
+[/LIST]
+
+[SIZE=4][B]5. Companions Table: [I]databridge_companions[/I][/B][/SIZE]
+[LIST]
+[*][B]uuid[/B] (VARCHAR(36), PK): The player's unique ID.
+[*][B]companions_nbt[/B] (LONGTEXT/TEXT): Serialized entity metadata and attributes for player's tamed pets.
+[*][B]last_updated[/B] (TIMESTAMP/DATETIME): Auto-updated timestamp.
 [/LIST]
 
 [CENTER]----------------------------------------------------------------[/CENTER]

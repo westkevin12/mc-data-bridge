@@ -7,14 +7,18 @@ MC Data Bridge is a robust, high-performance hybrid synchronization suite for [B
 
 [LIST]
 [*][B]Universal Hybrid Plugin:[/B] A single JAR file detects its environment and activates correct logic for Spigot, Paper, Folia, BungeeCord, or Velocity.
-[*][B]SHA-256 Data Integrity:[/B] Every data packet is verified with a SHA-256 checksum and a server-side salt, preventing manual database tampering or corruption from affecting your players.
+[*][B]Full Vanilla Player Statistics Sync:[/B] A dynamic, version-independent sync loop that replicates all vanilla stats (e.g., mined blocks, crafted items, entity kills) across servers, with automatic state cleanup and version resilience.
+[*][B]Companion & Pet Synchronization:[/B] Synchronizes wolves, cats, parrots, and other pets. Saves shoulder-perched states, custom names, ownership, health, and NBT metadata. Offers three modes: `follow`, `return`, and `untracked`.
+[*][B]Relational Schema Normalization:[/B] Introduces component tables (`databridge_inventories`, `databridge_statistics`, `databridge_metadata`, `databridge_companions`) to eliminate write-amplification and database locks.
+[*][B]Binary NBT Serialization:[/B] Adds a compressed binary serialization format (`serialization-format: binary`) to minimize database footprint, I/O bandwidth, and CPU overhead.
+[*][B]Production Security Hardening:[/B] Fails-strict validation prevents startup if the default cryptographic seed is detected, guarding against unauthorized joins. Sanitized whitelisting secures all database DDL commands.
+[*][B]Embedded Prometheus Exporter:[/B] Provides an HTTP `/metrics` endpoint to monitor HikariCP connection pools, transaction latencies, active queries, and cache efficiency.
+[*][B]SHA-256 Data Integrity:[/B] Every data packet is verified with a SHA-256 checksum and a server-side salt, preventing manual database tampering or corruption.
 [*][B]Industrial Identity Protection:[/B] Secure tracking of [I]last_known_name[/I] and identity hashes allows for reliable UUID change detection and prevention of identity hijacking in hybrid environments.
 [*][B]Zero-Tick Identity Verification:[/B] Database locks and identity checks are performed during the [I]AsyncPlayerPreLoginEvent[/I], ensuring that player state is verified and ready before they even reach the server's "Join" state.
 [*][B]Regionalized Folia Support:[/B] Fully compatible with Folia's regionalized threading, ensuring safe data handling on modern multi-threaded server clusters.
-[*][B]Administrative Inspector GUI (NEW):[/B] Visual tools for administrators to inspect player data (inventory, stats, PDC) directly from the database without the player needing to be online.
+[*][B]Administrative Inspector GUI:[/B] Visual tools for administrators to inspect player data (inventory, stats, PDC) directly from the database without the player needing to be online.
 [*][B]Proxy-Orchestrated Saves:[/B] The proxy (Bungee/Velocity) ensures data is flushed and verified before a player connects to the destination server, eliminating race conditions.
-[*][B]Native Binary Serialization:[/B] Uses Paper/Folia native binary methods for 100% item integrity and performance, with a robust NBT-API fallback for Spigot legacy support.
-[*][B]Seamless Migration Suite:[/B] Built-in integrations for [B]FastLogin[/B] and [B]AuthMe[/B] to handle Cracked -> Premium account transitions automatically.
 [*][B]Granular Sync Control:[/B] Per-component toggles in the config:
 [LIST]
 [*]Health (Attribute-aware)
@@ -24,11 +28,13 @@ MC Data Bridge is a robust, high-performance hybrid synchronization suite for [B
 [*]Active Potion Effects
 [*]Ender Chests
 [*]Advancements & Recipes
-[*]Statistics (Custom Stats)
+[*]Statistics (Dynamic Vanilla Statistics)
 [*]Persistent Data Container (PDC)
 [*]Flight & Gamemode Status
+[*]Companions & Pets
 [/LIST]
 [*][B]Flexible Storage:[/B] Support for high-performance MySQL/MariaDB clusters or local SQLite databases.
+[*][B]Server/World Blacklist:[/B] Prevent synchronization on specific servers or worlds.
 [/LIST]
 
 [SIZE=5]► Installation[/SIZE]
@@ -36,9 +42,40 @@ MC Data Bridge is a robust, high-performance hybrid synchronization suite for [B
 [LIST=1]
 [*][B]Deploy the JAR:[/B] Place the same `mc-data-bridge-*.jar` file into the `plugins/` folder of all your Minecraft servers AND your BungeeCord/Velocity proxy.
 [*][B]Initial Setup:[/B] Start your servers to generate the default configuration.
-[*][B]Configure Database:[/B] Edit `plugins/mc-data-bridge/config.yml` on each server. Set your database credentials and ensure each server has a unique `server-id`.
-[*][B]Set Security Seed:[/B] Change the `security.seed` in your config to a long, random string. This is used for all cryptographic verifications.
+[*][B]Configure Database:[/B] Edit `plugins/mc-data-bridge/config.yml` on each server. Set your database credentials, choose your `serialization-format`, and ensure each server has a unique `server-id`.
+[*][B]Set Security Seed:[/B] Change the `security.seed` in your config to a long, random string. This is mandatory for the plugin to start.
 [*][B]Restart & Sync:[/B] Restart all components. Your data is now securely linked!
+[/LIST]
+
+[SIZE=5]► Commands & Permissions[/SIZE]
+
+[LIST]
+[*][B]/databridge inspect <player>[/B]
+[LIST]
+[*]Opens a GUI to view offline player data.
+[*]Permission: [I]databridge.admin.inspect[/I]
+[/LIST]
+[*][B]/databridge migrate <src> <dest>[/B]
+[LIST]
+[*]Securely move data between two identities.
+[*]Permission: [I]databridge.admin.migrate[/I]
+[/LIST]
+[*][B]/databridge unlock <player>[/B]
+[LIST]
+[*]Manually release a stuck data lock.
+[*]Permission: [I]databridge.admin.unlock[/I]
+[/LIST]
+[*][B]/databridge reload[/B]
+[LIST]
+[*]Reloads the configuration and DB pool.
+[*]Permission: [I]databridge.admin.reload[/I]
+[/LIST]
+[/LIST]
+
+[B]Proxy Commands:[/B]
+[LIST]
+[*][B]/databridge unlock <player>[/B] (Bungee/Velocity): Releases a lock across the network.
+[*][B]/databridge forceunlock <player>[/B] (Bungee/Velocity): Relays a signal to the backend server to drop the lock immediately.
 [/LIST]
 
 [SIZE=5]► Links & Support[/SIZE]
@@ -52,6 +89,6 @@ MC Data Bridge is a robust, high-performance hybrid synchronization suite for [B
 
 [LIST]
 [*][B]Java 25+ Required:[/B] This plugin is built for the future of Minecraft and requires modern Java environments.
-[*][B]Unique Server IDs:[/B] You **must** set a unique `server-id` for each server (e.g., "lobby-1", "survival").
-[*][B]Managed Database Best Practices:[/B] For production use, we recommend creating a dedicated database user with restricted permissions (SELECT, INSERT, UPDATE, CREATE, ALTER).
+[*][B]Unique Server IDs:[/B] You [B]must[/B] set a unique `server-id` for each server (e.g., "lobby-1", "survival").
+[*][B]Table Prefixing:[/B] Supports prefixing tables via `table-prefix: ""` for shared database environments.
 [/LIST]
