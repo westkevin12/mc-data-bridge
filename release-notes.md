@@ -1,48 +1,21 @@
-# MC Data Bridge - Release Notes (v2.1.6)
+# MC Data Bridge - Release Notes (v2.1.7)
 
 ## Overview
 
-Version 2.1.6 is a comprehensive feature and security update that introduces multi-server **Companion & Pet Synchronization**, implements dynamic **Full Vanilla Player Statistics Synchronization**, completes database schema normalization, adds compressed binary NBT serialization, embeds a **Prometheus Metrics Exporter**, and hardens overall network security with strict seed verification.
+Version 2.1.7 is a targeted bugfix release that upgrades the `vanilla_stats_json` column type in the statistics component table to `LONGTEXT` (for MySQL/MariaDB), preventing potential data truncation issues when synchronizing large volumes of vanilla player statistics. It also introduces automatic schema migration for existing databases.
 
 ---
 
-## Key Features & Improvements
+## Changes in v2.1.7
 
-### 📊 Full Vanilla Player Statistics Synchronization
+### 🗄️ Database Schema Upgrade & Migration
 
-- **Dynamic Statistics Sync:** Replaced the legacy hardcoded list of 16 statistics with a dynamic, version-independent synchronization loop that covers all vanilla player statistics.
-- **Qualified/Typed Statistics Support:** Fully syncs all typed statistics requiring qualifiers—including blocks mined, items crafted/used/broken/picked up/dropped, and entities killed or killed by (e.g., `MINE_BLOCK:STONE`, `KILL_ENTITY:ZOMBIE`, `USE_ITEM:IRON_PICKAXE`).
-- **Intelligent State Application:** Minimizes database updates and server overhead by only applying statistic changes when values differ from the server's current values.
-- **State Cleanup & Resets:** Restores synchronization parity by resetting any non-zero stats on the destination server that are not present in the player's database snapshot (setting them back to zero).
-- **Graceful Version Resilience:** Silently handles version-specific or custom blocks, items, and entity types, maintaining perfect compatibility across heterogeneous multi-server environments.
-
-### 🐾 Companion & Pet Synchronization
-
-- **Multi-Mode Synchronization:** Added `companions.mode` (`follow`, `return`, `untracked`) to manage how pets are synced across the network.
-- **Tamed Pet Persistence:** Synchronizes tamed wolves, cats, parrots, and other pets across server switches.
-- **Shoulder-Perched Entity Serialization:** Saves and restores parrot shoulder-riding states.
-- **State Preservation:** Restores ownership, custom names, health/max health, and sitting status accurately.
-- **NBT-Level Preservation:** Utilizes NBTAPI metadata merging to preserve custom pet attributes, items, and collars.
-- **Merge-on-Save Pattern:** Adopts a robust relational state merging strategy to prevent NBT overrides and companion data loss across servers (critical for `return` mode).
-- **Duplication Prevention:** Despawns source entities synchronously upon snapshot generation to prevent duplication exploits.
-
-### 🗄️ Relational Component Schema Normalization
-
-- **Companions Component Table:** Introduced the `databridge_companions` table for row-level normalized storage.
-- **Optimized SQL Transactions:** Avoids write-amplification by target-updating specific components (inventories, statistics, metadata, companions) independently.
-
-### ⚡ Binary NBT Serialization Option
-
-- **Compressed NBT Storage:** Adds support for native binary compression (`serialization-format: binary`) to dramatically reduce database footprint, storage I/O, and CPU serialization overhead.
-
-### 🛡️ Production Security Hardening
-
-- **Fails-Strict Safe Mode:** Prevents startup if the default cryptographic seed is detected and no secure seed is configured, mitigating identity hijacking risks.
-- **DDL Column Whitelists:** Enforces SQL parameter and column sanitation to secure automated schema migration queries.
-
-### 📊 Embedded Prometheus Metrics Exporter
-
-- **Live Server Metrics:** Provides an optional HTTP `/metrics` scrape endpoint for Grafana/Prometheus tracking, exposing cache efficiency, database connection pool statistics, active transaction counts, and synchronization latencies.
+- **Upgrade to LONGTEXT:** Upgraded the `vanilla_stats_json` column from `TEXT` to `LONGTEXT` in the `databridge_statistics` table to support larger JSON payloads without risk of truncation.
+- **Automated Migration:** Added support for automatically executing the `ALTER TABLE ... MODIFY COLUMN ...` statement when `auto-update-schema` is set to `true` in the configuration.
+- **Admin Warning Notice:** If `auto-update-schema` is disabled, the plugin will now log a prominent warning suggesting the manual execution of the schema migration command:
+  ```sql
+  ALTER TABLE `table_prefix_databridge_statistics` MODIFY COLUMN vanilla_stats_json LONGTEXT DEFAULT NULL;
+  ```
 
 ---
 
