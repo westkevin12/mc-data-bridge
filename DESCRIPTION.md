@@ -187,7 +187,7 @@ In addition to the primary tracking table (`player_data`), MC Data Bridge uses c
 ### Statistics Component: `databridge_statistics`
 
 - Holds basic stats (`health` DOUBLE/REAL, `food_level` INT/INTEGER, `xp_level` INT/INTEGER, `xp_exp` FLOAT/REAL, `xp_total` INT/INTEGER, `saturation` FLOAT/REAL, `exhaustion` FLOAT/REAL).
-- Holds `vanilla_stats_json` (TEXT) containing dynamic statistics, locations, and recipe states.
+- Holds `vanilla_stats_json` (LONGTEXT/TEXT) containing dynamic statistics, locations, and recipe states.
 - Includes a `last_updated` auto-timestamp.
 
 ### Metadata Component: `databridge_metadata`

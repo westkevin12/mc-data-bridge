@@ -1,52 +1,18 @@
-[SIZE=6][B]MC Data Bridge - Release Notes (v2.1.6)[/B][/SIZE]
+[SIZE=6][B]MC Data Bridge - Release Notes (v2.1.7)[/B][/SIZE]
 
 [SIZE=5][B]Overview[/B][/SIZE]
-[SIZE=4]Version 2.1.6 is a comprehensive feature and security update that introduces multi-server [B]Companion & Pet Synchronization[/B], implements dynamic [B]Full Vanilla Player Statistics Synchronization[/B], completes database schema normalization, adds compressed binary NBT serialization, embeds a [B]Prometheus Metrics Exporter[/B], and hardens overall network security with strict seed verification.[/SIZE]
+[SIZE=4]Version 2.1.7 is a targeted bugfix release that upgrades the [B]vanilla_stats_json[/B] column type in the statistics component table to [B]LONGTEXT[/B] (for MySQL/MariaDB), preventing potential data truncation issues when synchronizing large volumes of vanilla player statistics. It also introduces automatic schema migration for existing databases.[/SIZE]
 
 [CENTER]----------------------------------------------------------------[/CENTER]
 
-[SIZE=5][B]Key Features & Improvements[/B][/SIZE]
+[SIZE=5][B]Changes in v2.1.7[/B][/SIZE]
 
-[SIZE=4][B]📊 Full Vanilla Player Statistics Synchronization[/B][/SIZE]
+[SIZE=4][B]🗄️ Database Schema Upgrade & Migration[/B][/SIZE]
 [LIST]
-[*][B]Dynamic Statistics Sync:[/B] Replaced the legacy hardcoded list of 16 statistics with a dynamic, version-independent synchronization loop that covers all vanilla player statistics.
-[*][B]Qualified/Typed Statistics Support:[/B] Fully syncs all typed statistics requiring qualifiers—including blocks mined, items crafted/used/broken/picked up/dropped, and entities killed or killed by (e.g., [I]MINE_BLOCK:STONE[/I], [I]KILL_ENTITY:ZOMBIE[/I], [I]USE_ITEM:IRON_PICKAXE[/I]).
-[*][B]Intelligent State Application:[/B] Minimizes database updates and server overhead by only applying statistic changes when values differ from the server's current values.
-[*][B]State Cleanup & Resets:[/B] Restores synchronization parity by resetting any non-zero stats on the destination server that are not present in the player's database snapshot (setting them back to zero).
-[*][B]Graceful Version Resilience:[/B] Silently handles version-specific or custom blocks, items, and entity types, maintaining perfect compatibility across heterogeneous multi-server environments.
-[/LIST]
-
-[SIZE=4][B]🐾 Companion & Pet Synchronization[/B][/SIZE]
-[LIST]
-[*][B]Multi-Mode Synchronization:[/B] Added [I]companions.mode[/I] ([I]follow[/I], [I]return[/I], [I]untracked[/I]) to manage how pets are synced across the network.
-[*][B]Tamed Pet Persistence:[/B] Synchronizes tamed wolves, cats, parrots, and other pets across server switches.
-[*][B]Shoulder-Perched Entity Serialization:[/B] Saves and restores parrot shoulder-riding states.
-[*][B]State Preservation:[/B] Restores ownership, custom names, health/max health, and sitting status accurately.
-[*][B]NBT-Level Preservation:[/B] Utilizes NBTAPI metadata merging to preserve custom pet attributes, items, and collars.
-[*][B]Merge-on-Save Pattern:[/B] Adopts a robust relational state merging strategy to prevent NBT overrides and companion data loss across servers (critical for [I]return[/I] mode).
-[*][B]Duplication Prevention:[/B] Despawns source entities synchronously upon snapshot generation to prevent duplication exploits.
-[/LIST]
-
-[SIZE=4][B]🗄️ Relational Component Schema Normalization[/B][/SIZE]
-[LIST]
-[*][B]Companions Component Table:[/B] Introduced the [I]databridge_companions[/I] table for row-level normalized storage.
-[*][B]Optimized SQL Transactions:[/B] Avoids write-amplification by target-updating specific components (inventories, statistics, metadata, companions) independently.
-[/LIST]
-
-[SIZE=4][B]⚡ Binary NBT Serialization Option[/B][/SIZE]
-[LIST]
-[*][B]Compressed NBT Storage:[/B] Adds support for native binary compression ([I]serialization-format: binary[/I]) to dramatically reduce database footprint, storage I/O, and CPU serialization overhead.
-[/LIST]
-
-[SIZE=4][B]🛡️ Production Security Hardening[/B][/SIZE]
-[LIST]
-[*][B]Fails-Strict Safe Mode:[/B] Prevents startup if the default cryptographic seed is detected and no secure seed is configured, mitigating identity hijacking risks.
-[*][B]DDL Column Whitelists:[/B] Enforces SQL parameter and column sanitation to secure automated schema migration queries.
-[/LIST]
-
-[SIZE=4][B]📊 Embedded Prometheus Metrics Exporter[/B][/SIZE]
-[LIST]
-[*][B]Live Server Metrics:[/B] Provides an optional HTTP [I]/metrics[/I] scrape endpoint for Grafana/Prometheus tracking, exposing cache efficiency, database connection pool statistics, active transaction counts, and synchronization latencies.
+[*][B]Upgrade to LONGTEXT:[/B] Upgraded the [I]vanilla_stats_json[/I] column from [I]TEXT[/I] to [I]LONGTEXT[/I] in the [I]databridge_statistics[/I] table to support larger JSON payloads without risk of truncation.
+[*][B]Automated Migration:[/B] Added support for automatically executing the [CODE]ALTER TABLE ... MODIFY COLUMN ...[/CODE] statement when [CODE]auto-update-schema[/CODE] is set to [CODE]true[/CODE] in the configuration.
+[*][B]Admin Warning Notice:[/B] If [CODE]auto-update-schema[/CODE] is disabled, the plugin will now log a prominent warning suggesting the manual execution of the schema migration command:
+[CODE]ALTER TABLE `table_prefix_databridge_statistics` MODIFY COLUMN vanilla_stats_json LONGTEXT DEFAULT NULL;[/CODE]
 [/LIST]
 
 [CENTER]----------------------------------------------------------------[/CENTER]

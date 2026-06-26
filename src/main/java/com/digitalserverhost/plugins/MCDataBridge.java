@@ -37,6 +37,7 @@ public class MCDataBridge extends JavaPlugin {
     private static final String CONFIG_TABLE_PREFIX = "table-prefix";
     private static final String DEFAULT_SEED = "change-me-to-a-long-random-string";
     private static final String CREATE_TABLE_IF_NOT_EXISTS = "CREATE TABLE IF NOT EXISTS ";
+    private static final String AUTO_UPDATE_SCHEMA = "auto-update-schema";
 
     @Override
     public void onEnable() {
@@ -232,7 +233,7 @@ public class MCDataBridge extends JavaPlugin {
                         "xp_total INT DEFAULT 0, " +
                         "saturation FLOAT DEFAULT 5.0, " +
                         "exhaustion FLOAT DEFAULT 0.0, " +
-                        "vanilla_stats_json TEXT DEFAULT NULL, " +
+                        "vanilla_stats_json LONGTEXT DEFAULT NULL, " +
                         "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
                         "PRIMARY KEY (uuid)) ENGINE=InnoDB;");
                 statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedMetadata + " (" +
@@ -247,6 +248,8 @@ public class MCDataBridge extends JavaPlugin {
                         "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
                         "PRIMARY KEY (uuid)) ENGINE=InnoDB;");
             }
+            
+            migrateStatisticsColumn(connection, statement, dbType);
             
         } catch (Exception e) {
             getLogger().log(java.util.logging.Level.SEVERE, "CRITICAL: Error creating or updating player_data table: {0}", e.getMessage());
@@ -328,7 +331,7 @@ public class MCDataBridge extends JavaPlugin {
                 boolean needsMigration = "LONGTEXT".equalsIgnoreCase(typeName) || "TEXT".equalsIgnoreCase(typeName);
 
                 if (needsMigration) {
-                    if (getConfig().getBoolean("auto-update-schema", false)) {
+                    if (getConfig().getBoolean(AUTO_UPDATE_SCHEMA, false)) {
                         if (dbType.equals(SQLITE)) return;
                         getLogger().log(java.util.logging.Level.INFO, "Migrating 'data' column from {0} to LONGBLOB as requested...", typeName);
                         statement.executeUpdate(ALTER_TABLE_SQL + escapedTableName + " MODIFY COLUMN data LONGBLOB NULL");
@@ -343,6 +346,34 @@ public class MCDataBridge extends JavaPlugin {
 
                 if ("NO".equalsIgnoreCase(columns.getString("IS_NULLABLE"))) {
                     statement.executeUpdate(ALTER_TABLE_SQL + escapedTableName + " MODIFY COLUMN data LONGBLOB NULL");
+                }
+            }
+        }
+    }
+
+    private void migrateStatisticsColumn(Connection connection, Statement statement, String dbType) throws SQLException {
+        if (dbType.equals(SQLITE)) {
+            return;
+        }
+        String tablePrefix = getConfig().getString(CONFIG_TABLE_PREFIX, "");
+        String statisticsTable = tablePrefix + "databridge_statistics";
+        String escapedStatistics = "`" + statisticsTable + "`";
+
+        try (ResultSet columns = connection.getMetaData().getColumns(null, null, statisticsTable, "vanilla_stats_json")) {
+            if (columns.next()) {
+                String typeName = columns.getString("TYPE_NAME");
+                if ("TEXT".equalsIgnoreCase(typeName)) {
+                    if (getConfig().getBoolean(AUTO_UPDATE_SCHEMA, false)) {
+                        getLogger().log(java.util.logging.Level.INFO, "Migrating 'vanilla_stats_json' column in {0} from TEXT to LONGTEXT...", statisticsTable);
+                        statement.executeUpdate(ALTER_TABLE_SQL + escapedStatistics + " MODIFY COLUMN vanilla_stats_json LONGTEXT DEFAULT NULL");
+                    } else {
+                        getLogger().warning(BANNER);
+                        getLogger().log(java.util.logging.Level.WARNING, "!!! STATISTICS TABLE IS USING {0} FOR 'vanilla_stats_json' COLUMN. !!!", typeName);
+                        getLogger().warning("!!! IT IS HIGHLY RECOMMENDED TO SWITCH TO 'LONGTEXT' TO PREVENT DATA TRUNCATION ERRORS. !!!");
+                        getLogger().warning("!!! ENABLE 'auto-update-schema: true' IN CONFIG TO FIX AUTOMATICALLY, OR RUN: !!!");
+                        getLogger().log(java.util.logging.Level.WARNING, "!!! ALTER TABLE {0} MODIFY COLUMN vanilla_stats_json LONGTEXT DEFAULT NULL; !!!", escapedStatistics);
+                        getLogger().warning(BANNER);
+                    }
                 }
             }
         }
@@ -461,8 +492,8 @@ public class MCDataBridge extends JavaPlugin {
             appends.append("\n# Interval between lock updates.\nlock-heartbeat-seconds: 30\n");
             updated = true;
         }
-        if (!fileConfig.contains("auto-update-schema")) {
-            appends.append("\n# Automatically migrate database schema.\nauto-update-schema: true\n");
+        if (!fileConfig.contains(AUTO_UPDATE_SCHEMA)) {
+            appends.append("\n# Automatically migrate database schema.\n" + AUTO_UPDATE_SCHEMA + ": true\n");
             updated = true;
         }
         if (!fileConfig.contains("security.seed")) {
