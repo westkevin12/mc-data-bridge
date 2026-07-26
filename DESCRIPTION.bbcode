@@ -17,6 +17,8 @@ MC Data Bridge is a robust, high-performance hybrid synchronization suite for [B
 [*][B]Industrial Identity Protection:[/B] Secure tracking of [I]last_known_name[/I] and identity hashes allows for reliable UUID change detection and prevention of identity hijacking in hybrid environments.
 [*][B]Zero-Tick Identity Verification:[/B] Database locks and identity checks are performed during the [I]AsyncPlayerPreLoginEvent[/I], ensuring that player state is verified and ready before they even reach the server's "Join" state.
 [*][B]Regionalized Folia Support:[/B] Fully compatible with Folia's regionalized threading, ensuring safe data handling on modern multi-threaded server clusters.
+[*][B]Interactive Inventory & Ender Chest Inspector (`invsee` / `endersee`):[/B] Inspect offline or cross-server player inventories with default safe read-only viewing ([I]Left-Click[/I] / [I]databridge.inspect[/I]) and permission-gated interactive edit mode ([I]Right-Click[/I] or [I]--edit[/I] / [I]databridge.inspect.edit[/I]) with automatic database synchronization.
+[*][B]Full Command Tab Completion:[/B] Comprehensive auto-completion for subcommands, player names, view options, and flags.
 [*][B]Administrative Inspector GUI:[/B] Visual tools for administrators to inspect player data (inventory, stats, PDC) directly from the database without the player needing to be online.
 [*][B]Proxy-Orchestrated Saves:[/B] The proxy (Bungee/Velocity) ensures data is flushed and verified before a player connects to the destination server, eliminating race conditions.
 [*][B]Granular Sync Control:[/B] Per-component toggles in the config:
@@ -50,25 +52,35 @@ MC Data Bridge is a robust, high-performance hybrid synchronization suite for [B
 [SIZE=5]► Commands & Permissions[/SIZE]
 
 [LIST]
-[*][B]/databridge inspect <player>[/B]
+[*][B]/databridge inspect <player> [inventory|enderchest] [--edit][/B]
 [LIST]
-[*]Opens a GUI to view offline player data.
-[*]Permission: [I]databridge.admin.inspect[/I]
+[*]Opens GUI to view or edit saved player data/inventory.
+[*]Permission: [I]databridge.inspect[/I] / [I]databridge.inspect.edit[/I] (for [I]--edit[/I])
+[/LIST]
+[*][B]/databridge invsee <player> [--edit][/B]
+[LIST]
+[*]Opens saved player inventory view or edit GUI.
+[*]Permission: [I]databridge.inspect[/I] / [I]databridge.inspect.edit[/I] (for [I]--edit[/I])
+[/LIST]
+[*][B]/databridge endersee <player> [--edit][/B]
+[LIST]
+[*]Opens saved player ender chest view or edit GUI.
+[*]Permission: [I]databridge.inspect[/I] / [I]databridge.inspect.edit[/I] (for [I]--edit[/I])
 [/LIST]
 [*][B]/databridge migrate <src> <dest>[/B]
 [LIST]
 [*]Securely move data between two identities.
-[*]Permission: [I]databridge.admin.migrate[/I]
+[*]Permission: [I]databridge.admin[/I]
 [/LIST]
 [*][B]/databridge unlock <player>[/B]
 [LIST]
 [*]Manually release a stuck data lock.
-[*]Permission: [I]databridge.admin.unlock[/I]
+[*]Permission: [I]databridge.admin[/I]
 [/LIST]
 [*][B]/databridge reload[/B]
 [LIST]
 [*]Reloads the configuration and DB pool.
-[*]Permission: [I]databridge.admin.reload[/I]
+[*]Permission: [I]databridge.admin[/I]
 [/LIST]
 [/LIST]
 
@@ -76,6 +88,13 @@ MC Data Bridge is a robust, high-performance hybrid synchronization suite for [B
 [LIST]
 [*][B]/databridge unlock <player>[/B] (Bungee/Velocity): Releases a lock across the network.
 [*][B]/databridge forceunlock <player>[/B] (Bungee/Velocity): Relays a signal to the backend server to drop the lock immediately.
+[/LIST]
+
+[SIZE=4][B]Permission Nodes:[/B][/SIZE]
+[LIST]
+[*][B]databridge.inspect[/B]: Permission to view player data, inventories, and ender chests in safe read-only mode.
+[*][B]databridge.inspect.edit[/B]: Elevated permission required to interactively edit inventories and ender chests via [I]--edit[/I] or Right-Click.
+[*][B]databridge.admin[/B]: Master administrative access for all commands and functions.
 [/LIST]
 
 [SIZE=5]► Links & Support[/SIZE]

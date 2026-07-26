@@ -316,6 +316,7 @@ class PlayerSyncTest {
     }
 
     @Test
+    @SuppressWarnings("null")
     void testAllStatisticsSync() throws Exception {
         // 1. Prepare Source Player Stats
         org.bukkit.entity.Player sourcePlayer = mock(org.bukkit.entity.Player.class);

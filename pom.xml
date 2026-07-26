@@ -6,7 +6,7 @@
 
     <groupId>com.digitalserverhost.plugins</groupId>
     <artifactId>mc-data-bridge</artifactId>
-    <version>2.1.7-SNAPSHOT</version>
+    <version>2.1.8</version>
 
     <name>mc-data-bridge</name>
     <url>https://mc.digitalserverhost.com</url>
@@ -37,7 +37,7 @@
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>26.1.2.build.69-stable</version>
+            <version>26.2.build.25-alpha</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -56,24 +56,24 @@
         <dependency>
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
-            <version>7.0.2</version>
+            <version>7.1.0</version>
         </dependency>
         <dependency>
             <groupId>net.kyori</groupId>
             <artifactId>adventure-api</artifactId>
-            <version>4.26.1</version>
+            <version>5.1.1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>net.kyori</groupId>
             <artifactId>adventure-text-serializer-legacy</artifactId>
-            <version>4.26.1</version>
+            <version>5.1.1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>net.kyori</groupId>
             <artifactId>adventure-text-minimessage</artifactId>
-            <version>4.26.1</version>
+            <version>5.1.1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -118,6 +118,12 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>io.github.secondlifegaming</groupId>
+            <artifactId>mockmc-v26.2</artifactId>
+            <version>0.0.5</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>fr.xephi</groupId>
             <artifactId>authme</artifactId>
             <version>5.7.0</version>
@@ -125,40 +131,6 @@
         </dependency>
     </dependencies>
     
-    <profiles>
-        <profile>
-            <id>local-dev</id>
-            <activation>
-                <property>
-                    <name>!env.GITHUB_ACTIONS</name>
-                </property>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>io.github.secondlifegaming</groupId>
-                    <artifactId>mockmc-v26.1</artifactId>
-                    <version>dev-dee37368b</version>
-                    <scope>test</scope>
-                </dependency>
-            </dependencies>
-        </profile>
-        <profile>
-            <id>github-ci</id>
-            <activation>
-                <property>
-                    <name>env.GITHUB_ACTIONS</name>
-                </property>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>org.mockbukkit.mockbukkit</groupId>
-                    <artifactId>mockbukkit-v1.21</artifactId>
-                    <version>4.108.0</version>
-                    <scope>test</scope>
-                </dependency>
-            </dependencies>
-        </profile>
-    </profiles>
 
     <build>
         <plugins>

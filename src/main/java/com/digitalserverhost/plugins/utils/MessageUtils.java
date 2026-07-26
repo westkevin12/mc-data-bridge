@@ -5,6 +5,8 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.command.CommandSender;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Objects;
+
 /**
  * Utility for sending messages in a platform-agnostic way.
  */
@@ -19,7 +21,8 @@ public class MessageUtils {
         sender.sendMessage(message.replace("&", "§"));
     }
 
+    @SuppressWarnings("null")
     public static @NotNull String serialize(@NotNull Component component) {
-        return LegacyComponentSerializer.legacySection().serialize(component);
+        return Objects.requireNonNull(LegacyComponentSerializer.legacySection().serialize(Objects.requireNonNull(component)));
     }
 }

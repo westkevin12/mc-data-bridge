@@ -366,10 +366,10 @@ public class DatabaseManager {
 
     public List<String> deserializeListFromBlob(byte[] blob) {
         if (blob == null) return new ArrayList<>();
-        if ("binary".equals(serializationFormat) || (blob.length > 2 && blob[0] != (byte) '[')) {
-            return deserializeListFromBinary(blob);
-        } else {
+        if (blob.length > 0 && blob[0] == (byte) '[') {
             return deserializeListFromJson(blob);
+        } else {
+            return deserializeListFromBinary(blob);
         }
     }
 
@@ -479,6 +479,13 @@ public class DatabaseManager {
             } finally {
                 connection.setAutoCommit(true);
             }
+        }
+    }
+
+    public boolean saveInventoryComponent(com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        try (Connection connection = getConnection()) {
+            saveInventoryComponent(connection, plugin, data, uuid);
+            return true;
         }
     }
 

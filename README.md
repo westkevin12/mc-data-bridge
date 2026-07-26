@@ -19,6 +19,13 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 
 ## Features
 
+- **Item Duplication Exploit Protection:** Automatically closes open inventory views during server transfer and cancels container clicks, drags, item drops, pickups, and interactions while transfer locks are held.
+- **Interactive Inventory & Ender Chest Inspector (`invsee` / `endersee`):** Inspect offline or cross-server player inventories and ender chests.
+  - **Overview GUI Controls:** **Left-Click** inventory or ender chest icons to view in Safe Read-Only Mode; **Right-Click** icons to open in Interactive Edit Mode (gated by permission).
+  - **Safe View-Only Mode (Default):** Opens in read-only mode to prevent accidental item modifications.
+  - **Interactive Edit Mode (`--edit` flag or Right-Click):** Admins with `databridge.inspect.edit` permission can edit offline/cross-server player items directly in the GUI with automatic database persistence upon closing.
+- **Full Command Tab Completion:** Comprehensive auto-completion for subcommands, player names, view options, and flags.
+- **Auto-Schema Maintenance:** Toggle `auto-update-schema` (default `true`) for automated table maintenance and column upgrades (`LONGTEXT` support for large stats and metadata).
 - **Hybrid Plugin:** A single JAR file works on your PaperMC/Purpur/Spigot/Folia servers and your BungeeCord/Waterfall/Velocity proxy, automatically activating the correct functionality for each platform.
 - **Identity History Tracking:** Automatically tracks `last_known_name` and a secure `identity_hash` (SHA-256) to enable secure UUID change detection and prevent identity hijacking in hybrid (Cracked/Premium) environments.
 - **Identity Modes (PREMIUM/HYBRID):** Toggle between strict UUID enforcement for premium servers or flexible identity shifts for hybrid/cracked networks.
@@ -296,12 +303,22 @@ sync-blacklist:
 
 MC Data Bridge uses a consolidated command hub for all administrative tasks.
 
-- `/databridge unlock <player>` - Manually release a data lock. Works on Spigot, Folia, Bungee, and Velocity.
-- `/databridge inspect <player>` - Open a visual GUI to inspect a player's saved data (Paper/Spigot/Folia only).
+- `/databridge inspect <player> [inventory|enderchest] [--edit]` - Open a visual GUI to inspect or edit a player's saved data and inventory.
+- `/databridge invsee <player> [--edit]` - Directly open a player's saved inventory view or edit GUI.
+- `/databridge endersee <player> [--edit]` - Directly open a player's saved ender chest view or edit GUI.
+- `/databridge unlock <player>` - Manually release a stuck data lock. Works on Spigot, Folia, Bungee, and Velocity.
 - `/databridge migrate <source> <target>` - Securely migrate data from one player (UUID or Name) to another. Useful for account recoveries or identity changes.
+- `/databridge reload` - Reload plugin configuration and database connection pool.
 
-**Aliases:** `/db`
-**Permission:** `databridge.admin`
+**Proxy Commands:**
+- `/databridge unlock <player>` - Network-wide data lock release.
+- `/databridge forceunlock <player>` - Relays immediate lock drop signal to backend server.
+
+**Aliases:** `/db`  
+**Permissions:**
+- `databridge.inspect` - Permission to view player data, inventories, and ender chests in safe read-only mode.
+- `databridge.inspect.edit` - Elevated permission required to interactively edit inventories/ender chests via `--edit`.
+- `databridge.admin` - Full administrative access (includes unlock, migrate, reload, forceunlock, inspect, edit).
 
 ## Usage
 

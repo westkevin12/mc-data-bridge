@@ -57,33 +57,51 @@ Below is a detailed explanation of the [I]config.yml[/I] settings. This file is 
 
 [SIZE=4][B]Administrator Commands[/B][/SIZE]
 [LIST]
-[*][B]/databridge inspect <player>[/B]
+[*][B]/databridge inspect <player> [inventory|enderchest] [--edit][/B]
 [LIST]
-[*]Opens a GUI to view the saved stats and inventory of a player.
+[*]Opens GUI to view or edit saved player data, inventory, or ender chest.
+[*]Left-Click items to view in Safe Read-Only Mode; Right-Click items to open in Interactive Edit Mode.
 [*]Works even if the player is offline.
-[*]Permission: [I]databridge.admin.inspect[/I]
+[*]Permission: [I]databridge.inspect[/I] / [I]databridge.inspect.edit[/I] (for [I]--edit[/I] or Right-Click)
+[/LIST]
+[*][B]/databridge invsee <player> [--edit][/B]
+[LIST]
+[*]Directly opens saved player inventory view or edit GUI.
+[*]Permission: [I]databridge.inspect[/I] / [I]databridge.inspect.edit[/I] (for [I]--edit[/I])
+[/LIST]
+[*][B]/databridge endersee <player> [--edit][/B]
+[LIST]
+[*]Directly opens saved player ender chest view or edit GUI.
+[*]Permission: [I]databridge.inspect[/I] / [I]databridge.inspect.edit[/I] (for [I]--edit[/I])
 [/LIST]
 [*][B]/databridge migrate <source> <target>[/B]
 [LIST]
 [*]Manually move data between two identities (UUID or Name).
-[*]Permission: [I]databridge.admin.migrate[/I]
+[*]Permission: [I]databridge.admin[/I]
 [/LIST]
 [*][B]/databridge unlock <player>[/B]
 [LIST]
 [*]Releases a stuck data lock if a server crashed without releasing it.
-[*]Permission: [I]databridge.admin.unlock[/I]
+[*]Permission: [I]databridge.admin[/I]
 [/LIST]
 [*][B]/databridge reload[/B]
 [LIST]
-[*]Reloads the configuration and reconnects to the database.
-[*]Permission: [I]databridge.admin.reload[/I]
+[*]Reloads the configuration and reconnects to the database pool.
+[*]Permission: [I]databridge.admin[/I]
 [/LIST]
 [/LIST]
 
 [SIZE=4][B]Proxy Commands[/B][/SIZE]
 [LIST]
-[*][B]/databridge unlock <player>[/B] (Available on Bungee/Velocity)
-[*][B]/databridge forceunlock <player>[/B] (Relays a signal to the backend server to drop the lock immediately)
+[*][B]/databridge unlock <player>[/B] (Available on Bungee/Velocity): Releases a data lock across the network.
+[*][B]/databridge forceunlock <player>[/B] (Available on Bungee/Velocity): Relays a signal to the backend server to drop the lock immediately.
+[/LIST]
+
+[SIZE=4][B]Permission Nodes Breakdown[/B][/SIZE]
+[LIST]
+[*][B]databridge.inspect[/B]: Permission to view player data, inventories, and ender chests in safe read-only mode.
+[*][B]databridge.inspect.edit[/B]: Elevated permission required to interactively edit inventories and ender chests via [I]--edit[/I] or Right-Click.
+[*][B]databridge.admin[/B]: Full administrative access (includes unlock, migrate, reload, forceunlock, inspect, edit).
 [/LIST]
 
 [SIZE=5]► Database Schema Information[/SIZE]
