@@ -287,4 +287,35 @@ class PlayerFlowTest {
         // Verify save was NOT called again
         verify(mockDatabaseManager, never()).saveAndReleaseLockComponents(eq(mockPlugin), any(PlayerData.class), anyString(), eq(uuid), anyString(), any());
     }
+
+    @Test
+    void testItemDuplicationProtectionDuringSwitching() {
+        PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
+        PlayerMock player = server.addPlayer();
+        UUID uuid = player.getUniqueId();
+
+        // Initially not locked
+        org.junit.jupiter.api.Assertions.assertFalse(listener.isPlayerLocked(uuid));
+
+        // Trigger SaveAndRelease plugin message
+        @SuppressWarnings("UnstableApiUsage")
+        com.google.common.io.ByteArrayDataOutput out = com.google.common.io.ByteStreams.newDataOutput();
+        out.writeUTF("SaveAndRelease");
+        out.writeUTF(java.util.Objects.requireNonNull(uuid.toString()));
+        listener.onPluginMessageReceived("mc-data-bridge:main", player, out.toByteArray());
+
+        // Player should now be locked
+        org.junit.jupiter.api.Assertions.assertTrue(listener.isPlayerLocked(uuid));
+
+        // Simulate PlayerDropItemEvent
+        org.bukkit.entity.Item itemMock = mock(org.bukkit.entity.Item.class);
+        org.bukkit.event.player.PlayerDropItemEvent dropEvent = new org.bukkit.event.player.PlayerDropItemEvent(player, itemMock);
+        listener.onPlayerDropItem(dropEvent);
+        org.junit.jupiter.api.Assertions.assertTrue(dropEvent.isCancelled(), "PlayerDropItemEvent should be cancelled during server transfer");
+
+        // Simulate PlayerInteractEvent
+        org.bukkit.event.player.PlayerInteractEvent interactEvent = new org.bukkit.event.player.PlayerInteractEvent(player, org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK, null, null, org.bukkit.block.BlockFace.UP);
+        listener.onPlayerInteract(interactEvent);
+        org.junit.jupiter.api.Assertions.assertEquals(org.bukkit.event.Event.Result.DENY, interactEvent.useInteractedBlock(), "PlayerInteractEvent block result should be DENY during server transfer");
+    }
 }

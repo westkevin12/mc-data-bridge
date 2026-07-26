@@ -1,5 +1,5 @@
 main: com.digitalserverhost.plugins.MCDataBridge
-version: 2.1.7
+version: 2.1.8
 name: mc-data-bridge
 author: DigitalServerHost
 api-version: 1.21
@@ -8,6 +8,12 @@ softdepend: [FastLogin, AuthMe]
 permissions:
   databridge.admin:
     description: Allows use of admin commands for MC Data Bridge
+    default: op
+  databridge.inspect:
+    description: Allows view-only inspection of player data and inventories
+    default: op
+  databridge.inspect.edit:
+    description: Allows interactive editing of player data and inventories
     default: op
 commands:
   databridge:

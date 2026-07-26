@@ -625,7 +625,7 @@ public class PlayerData {
             this.isOnShoulderRight = isOnShoulderRight;
         }
 
-        @SuppressWarnings("deprecation")
+        @SuppressWarnings({"deprecation", "null"})
         public CompanionSnapshot(org.bukkit.entity.Entity entity) {
             this.entityType = entity.getType().name();
             this.customName = entity.getCustomName();
@@ -647,8 +647,7 @@ public class PlayerData {
 
             String serializedNbt = null;
             try {
-                serializedNbt = de.tr7zw.changeme.nbtapi.NBT.get(entity,
-                        (java.util.function.Function<de.tr7zw.changeme.nbtapi.iface.ReadableNBT, String>) Object::toString);
+                serializedNbt = de.tr7zw.changeme.nbtapi.NBT.get(entity, Object::toString);
             } catch (Exception _) {
                 // NBTAPI unavailable or failed — companion saved without raw NBT
             }

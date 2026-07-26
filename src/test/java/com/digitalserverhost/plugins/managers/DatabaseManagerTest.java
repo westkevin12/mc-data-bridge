@@ -175,4 +175,63 @@ class DatabaseManagerTest {
         assertFalse(result);
         verify(mockConnection, never()).prepareStatement(contains("UPDATE `player_data` SET uuid = ?"));
     }
+
+    @Test
+    void testBlobSerialization_JsonFormat() {
+        // serializationFormat is "json" by default in the test constructor
+        java.util.List<String> list = java.util.List.of("{\"item\":\"1\"}", "{\"item\":\"2\"}");
+        byte[] blob = databaseManager.serializeListToBlob(list);
+        
+        assertNotNull(blob);
+        String json = new String(blob, java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(json.startsWith("["));
+        
+        java.util.List<String> result = databaseManager.deserializeListFromBlob(blob);
+        assertEquals(list, result);
+    }
+
+    @Test
+    void testBlobSerialization_BinaryFormat() throws Exception {
+        // Set serializationFormat to "binary" via reflection
+        java.lang.reflect.Field field = DatabaseManager.class.getDeclaredField("serializationFormat");
+        field.setAccessible(true);
+        field.set(databaseManager, "binary");
+        
+        java.util.List<String> list = java.util.List.of("{\"item\":\"1\"}", "{\"item\":\"2\"}");
+        byte[] blob = databaseManager.serializeListToBlob(list);
+        
+        assertNotNull(blob);
+        // Binary format should not start with '['
+        assertTrue(blob.length > 0 && blob[0] != (byte) '[');
+        
+        java.util.List<String> result = databaseManager.deserializeListFromBlob(blob);
+        assertEquals(list, result);
+    }
+
+    @Test
+    void testBlobDeserialization_AutoDetect() throws Exception {
+        // Case 1: Database has binary data, but configured format is json
+        java.lang.reflect.Field field = DatabaseManager.class.getDeclaredField("serializationFormat");
+        field.setAccessible(true);
+        
+        // 1. Serialize in binary
+        field.set(databaseManager, "binary");
+        java.util.List<String> list = java.util.List.of("{\"item\":\"1\"}", "{\"item\":\"2\"}");
+        byte[] binaryBlob = databaseManager.serializeListToBlob(list);
+        
+        // 2. Configure to json, deserialize
+        field.set(databaseManager, "json");
+        java.util.List<String> result1 = databaseManager.deserializeListFromBlob(binaryBlob);
+        assertEquals(list, result1);
+
+        // Case 2: Database has json data, but configured format is binary
+        // 1. Serialize in json
+        field.set(databaseManager, "json");
+        byte[] jsonBlob = databaseManager.serializeListToBlob(list);
+        
+        // 2. Configure to binary, deserialize
+        field.set(databaseManager, "binary");
+        java.util.List<String> result2 = databaseManager.deserializeListFromBlob(jsonBlob);
+        assertEquals(list, result2);
+    }
 }

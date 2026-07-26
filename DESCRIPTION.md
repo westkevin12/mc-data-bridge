@@ -22,7 +22,12 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 - **Industrial Identity Protection:** Tracks `last_known_name` and secure identity hashes to prevent identity hijacking and manage UUID transitions in hybrid (Cracked/Premium) environments.
 - **Zero-Tick Identity Verification:** Database locks and identity checks are performed during the `AsyncPlayerPreLoginEvent`, ensuring that player state is verified and ready before they even reach the server's "Join" state.
 - **Regionalized Folia Support:** Built with `SchedulerUtils` to handle regionalized threading, ensuring safe execution on Folia's multi-threaded clusters.
-- **Administrative Inspector GUI:** A visual interface for administrators to inspect saved player data (inventories, stats, PDC) even when the player is offline.
+- **Interactive Inventory & Ender Chest Inspector (`invsee` / `endersee`):**
+  - **Overview GUI Controls:** **Left-Click** inventory or ender chest icons to view in Safe Read-Only Mode (`databridge.inspect`); **Right-Click** icons to open in Interactive Edit Mode (`databridge.inspect.edit`).
+  - **Safe View-Only Mode (Default):** View player inventory and ender chest snapshots in read-only mode (`databridge.inspect`).
+  - **Interactive Edit Mode (`--edit` flag or Right-Click):** Admins with elevated permissions (`databridge.inspect.edit`) can interactively modify offline or cross-server player inventories with automatic database synchronization on GUI close.
+- **Full Command Tab Completion:** Comprehensive auto-completion for subcommands, player names, view options, and flags.
+- **Administrative Inspector GUI:** Visual interface for administrators to inspect saved player data (inventories, stats, PDC) even when the player is offline.
 - **Proxy-Initiated Saves:** The proxy (BungeeCord/Velocity) orchestrates the data saving process, ensuring that a player's data is saved from their source server _before_ they connect to the destination server. This eliminates race conditions.
 - **Fully Asynchronous:** All database and serialization operations are performed on a separate thread, ensuring that your server's main thread is never blocked.
 - **Robust Locking Mechanism:** A database-level locking mechanism with an automatic timeout and heartbeats prevents data corruption.
@@ -56,17 +61,25 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 
 ## Commands & Permissions
 
-| Command                            | Description                                | Permission                 |
-| :--------------------------------- | :----------------------------------------- | :------------------------- |
-| `/databridge inspect <player>`     | Opens a GUI to view offline player data.   | `databridge.admin.inspect` |
-| `/databridge migrate <src> <dest>` | Securely move data between two identities. | `databridge.admin.migrate` |
-| `/databridge unlock <player>`      | Manually release a stuck data lock.        | `databridge.admin.unlock`  |
-| `/databridge reload`               | Reloads the configuration and DB pool.     | `databridge.admin.reload`  |
+| Command                                                         | Description                                               | Permission                                                       |
+| :-------------------------------------------------------------- | :-------------------------------------------------------- | :--------------------------------------------------------------- |
+| `/databridge inspect <player> [inventory\|enderchest] [--edit]` | Opens GUI to view or edit saved player data/inventory.    | `databridge.inspect`<br>`databridge.inspect.edit` (for `--edit`) |
+| `/databridge invsee <player> [--edit]`                          | Directly opens saved player inventory view or edit GUI.   | `databridge.inspect`<br>`databridge.inspect.edit` (for `--edit`) |
+| `/databridge endersee <player> [--edit]`                        | Directly opens saved player ender chest view or edit GUI. | `databridge.inspect`<br>`databridge.inspect.edit` (for `--edit`) |
+| `/databridge migrate <src> <dest>`                              | Securely move data between two identities.                | `databridge.admin`                                               |
+| `/databridge unlock <player>`                                   | Manually release a stuck data lock.                       | `databridge.admin`                                               |
+| `/databridge reload`                                            | Reloads configuration and reconnects to database pool.     | `databridge.admin`                                               |
 
 **Proxy Commands:**
 
-- `/databridge unlock <player>` (Bungee/Velocity): Releases a lock across the network.
-- `/databridge forceunlock <player>` (Bungee/Velocity): Relays a signal to the backend server to drop the lock immediately.
+- `/databridge unlock <player>` (Bungee/Velocity): Relays a signal to the backend Spigot server to release the lock across the network.
+- `/databridge forceunlock <player>` (Bungee/Velocity): Relays an immediate signal to the backend server to drop the lock.
+
+**Permission Nodes:**
+
+- `databridge.inspect` - Permission to view player data, inventories, and ender chests in safe read-only mode.
+- `databridge.inspect.edit` - Elevated permission required to interactively edit inventories and ender chests via `--edit` or Right-Click.
+- `databridge.admin` - Master administrative access (includes unlock, migrate, reload, forceunlock, inspect, edit).
 
 ## Configuration
 
@@ -187,7 +200,7 @@ In addition to the primary tracking table (`player_data`), MC Data Bridge uses c
 ### Statistics Component: `databridge_statistics`
 
 - Holds basic stats (`health` DOUBLE/REAL, `food_level` INT/INTEGER, `xp_level` INT/INTEGER, `xp_exp` FLOAT/REAL, `xp_total` INT/INTEGER, `saturation` FLOAT/REAL, `exhaustion` FLOAT/REAL).
-- Holds `vanilla_stats_json` (LONGTEXT/TEXT) containing dynamic statistics, locations, and recipe states.
+- Holds `vanilla_stats_json` (TEXT) containing dynamic statistics, locations, and recipe states.
 - Includes a `last_updated` auto-timestamp.
 
 ### Metadata Component: `databridge_metadata`

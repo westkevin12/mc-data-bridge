@@ -67,6 +67,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 }
 
                 switchingPlayers.put(uuid, true);
+                safelyCloseInventory(playerToSave);
                 savePlayerDataAndReleaseLock(playerToSave);
             }
         } else if (subchannel.equals("ForceUnlock")) {
@@ -304,6 +305,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
         final PlayerData finalData;
         try {
+            safelyCloseInventory(player);
             finalData = new PlayerData(player, plugin);
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "Failed to create final data snapshot for {0}. Data will not be saved. Error: {1}", new Object[]{name, e.getMessage()});
@@ -392,8 +394,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
  
                 plugin.getLogger().log(Level.INFO, "Successfully applied data to player {0}", player.getName());
             } catch (Exception e) {
-                plugin.getLogger().log(Level.SEVERE, "A critical error occurred while applying data to player {0}. {1}", new Object[]{player.getName(), e.getMessage()});
-                e.printStackTrace();
+                plugin.getLogger().log(Level.SEVERE, e, () -> "A critical error occurred while applying data to player " + player.getName());
             }
         });
     }
@@ -697,5 +698,64 @@ public class PlayerListener implements Listener, PluginMessageListener {
             plugin.getLogger().log(Level.SEVERE, "Failed to load player data for {0}: {1}", new Object[]{uuid, e.getMessage()});
         }
         return null;
+    }
+
+    public boolean isPlayerLocked(UUID uuid) {
+        return uuid != null && (switchingPlayers.containsKey(uuid) || savingPlayers.containsKey(uuid));
+    }
+
+    private void safelyCloseInventory(Player player) {
+        if (player == null) return;
+        try {
+            com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, player::closeInventory);
+        } catch (Exception e) {
+            if (plugin.isDebugMode()) {
+                plugin.getLogger().log(Level.WARNING, "Failed to close inventory for {0}: {1}", new Object[]{player.getName(), e.getMessage()});
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onInventoryClick(org.bukkit.event.inventory.InventoryClickEvent event) {
+        if (event.getWhoClicked() instanceof Player player && isPlayerLocked(player.getUniqueId())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onInventoryDrag(org.bukkit.event.inventory.InventoryDragEvent event) {
+        if (event.getWhoClicked() instanceof Player player && isPlayerLocked(player.getUniqueId())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPlayerDropItem(org.bukkit.event.player.PlayerDropItemEvent event) {
+        if (isPlayerLocked(event.getPlayer().getUniqueId())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityPickupItem(org.bukkit.event.entity.EntityPickupItemEvent event) {
+        if (event.getEntity() instanceof Player player && isPlayerLocked(player.getUniqueId())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPlayerInteract(org.bukkit.event.player.PlayerInteractEvent event) {
+        if (isPlayerLocked(event.getPlayer().getUniqueId())) {
+            event.setCancelled(true);
+            event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+            event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPlayerInteractEntity(org.bukkit.event.player.PlayerInteractEntityEvent event) {
+        if (isPlayerLocked(event.getPlayer().getUniqueId())) {
+            event.setCancelled(true);
+        }
     }
 }

@@ -46,15 +46,15 @@ public class MCDataBridge extends JavaPlugin {
     }
 
     private static final java.util.Map<String, java.util.Map.Entry<String, String>> COLUMN_WHITELIST = java.util.Map.of(
-        "is_locked", java.util.Map.entry("BOOLEAN DEFAULT 0", INTEGER_DEFAULT_0),
-        "locking_server", java.util.Map.entry("VARCHAR(255) DEFAULT NULL", TEXT_DEFAULT_NULL),
-        "lock_timestamp", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
-        "last_known_name", java.util.Map.entry("VARCHAR(16) DEFAULT NULL", TEXT_DEFAULT_NULL),
-        "data_checksum", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
-        "identity_hash", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
-        "name_last_updated", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
-        "last_updated", java.util.Map.entry("TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "DATETIME DEFAULT CURRENT_TIMESTAMP")
-    );
+            "is_locked", java.util.Map.entry("BOOLEAN DEFAULT 0", INTEGER_DEFAULT_0),
+            "locking_server", java.util.Map.entry("VARCHAR(255) DEFAULT NULL", TEXT_DEFAULT_NULL),
+            "lock_timestamp", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
+            "last_known_name", java.util.Map.entry("VARCHAR(16) DEFAULT NULL", TEXT_DEFAULT_NULL),
+            "data_checksum", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
+            "identity_hash", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
+            "name_last_updated", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
+            "last_updated", java.util.Map.entry("TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+                    "DATETIME DEFAULT CURRENT_TIMESTAMP"));
 
     private void startSpigot() {
         saveDefaultConfig();
@@ -78,7 +78,7 @@ public class MCDataBridge extends JavaPlugin {
             getLogger().warning("!!! This is UNSAFE for multi-server setups.           !!!");
             getLogger().warning(BANNER);
         }
-        
+
         this.securitySeed = getConfig().getString("security.seed", DEFAULT_SEED);
         if (this.securitySeed == null || this.securitySeed.isEmpty() || this.securitySeed.equals(DEFAULT_SEED)) {
             String envSeed = System.getenv("DATABRIDGE_SEED");
@@ -101,17 +101,18 @@ public class MCDataBridge extends JavaPlugin {
         this.autoMigrateFastLogin = getConfig().getBoolean("identity.auto-migrate-fastlogin", false);
         this.autoMigrateAuthMe = getConfig().getBoolean("identity.auto-migrate-authme", false);
         databaseManager = new DatabaseManager(getConfig(), this.tableName);
-        
+
         // Initialize Metrics Exporter if enabled
         if (getConfig().getBoolean("metrics.enabled", false)) {
             int metricsPort = getConfig().getInt("metrics.port", 8080);
             String metricsPath = getConfig().getString("metrics.path", "/metrics");
-            com.digitalserverhost.plugins.managers.MetricsManager.getInstance().start(this, databaseManager, metricsPort, metricsPath);
+            com.digitalserverhost.plugins.managers.MetricsManager.getInstance().start(this, databaseManager,
+                    metricsPort, metricsPath);
         }
 
         // Ensure table and columns exist synchronously before events are registered
         createServerTable();
-        
+
         com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(this, this::releaseOrphanedLocks);
 
         // Create the listener instance
@@ -122,13 +123,20 @@ public class MCDataBridge extends JavaPlugin {
 
         // Register AuthMe auto-migration listener if enabled
         if (getServer().getPluginManager().isPluginEnabled("AuthMe")) {
-            getServer().getPluginManager().registerEvents(new com.digitalserverhost.plugins.listeners.AuthMeListener(this, databaseManager), this);
+            getServer().getPluginManager().registerEvents(
+                    new com.digitalserverhost.plugins.listeners.AuthMeListener(this, databaseManager), this);
             getLogger().info("AuthMe integration enabled for auto-migration.");
         }
 
+        // Initialize GUI Manager and register GUI click listener
+        com.digitalserverhost.plugins.utils.DataManagementGUI guiManager = new com.digitalserverhost.plugins.utils.DataManagementGUI(this, databaseManager);
+        getServer().getPluginManager().registerEvents(guiManager, this);
+
         org.bukkit.command.PluginCommand cmd = getCommand("databridge");
         if (cmd != null) {
-            cmd.setExecutor(new com.digitalserverhost.plugins.commands.BridgeCommand(databaseManager));
+            com.digitalserverhost.plugins.commands.BridgeCommand bridgeCmd = new com.digitalserverhost.plugins.commands.BridgeCommand(databaseManager, guiManager);
+            cmd.setExecutor(bridgeCmd);
+            cmd.setTabCompleter(bridgeCmd);
         }
 
         // Register it as the listener for our custom plugin channel
@@ -166,22 +174,31 @@ public class MCDataBridge extends JavaPlugin {
                 Statement statement = connection.createStatement()) {
 
             migrateFromLegacyTable(connection, statement, escapedTableName);
-            
+
             String createTableSQL = getCreateTableSQL(dbType, escapedTableName);
             statement.executeUpdate(createTableSQL);
             getLogger().log(java.util.logging.Level.INFO, "Successfully verified or created the {0} table.", tableName);
 
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "is_locked", "BOOLEAN DEFAULT 0", INTEGER_DEFAULT_0);
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "locking_server", "VARCHAR(255) DEFAULT NULL", TEXT_DEFAULT_NULL);
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "lock_timestamp", BIGINT_DEFAULT_0, INTEGER_DEFAULT_0);
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "last_known_name", "VARCHAR(16) DEFAULT NULL", TEXT_DEFAULT_NULL);
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "data_checksum", VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL);
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "identity_hash", VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL);
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "name_last_updated", BIGINT_DEFAULT_0, INTEGER_DEFAULT_0);
-            ensureColumnExists(connection, statement, escapedTableName, dbType, "last_updated", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", "DATETIME DEFAULT CURRENT_TIMESTAMP");
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "is_locked", "BOOLEAN DEFAULT 0",
+                    INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "locking_server",
+                    "VARCHAR(255) DEFAULT NULL", TEXT_DEFAULT_NULL);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "lock_timestamp", BIGINT_DEFAULT_0,
+                    INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "last_known_name",
+                    "VARCHAR(16) DEFAULT NULL", TEXT_DEFAULT_NULL);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "data_checksum", VARCHAR64_DEFAULT_NULL,
+                    TEXT_DEFAULT_NULL);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "identity_hash", VARCHAR64_DEFAULT_NULL,
+                    TEXT_DEFAULT_NULL);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "name_last_updated", BIGINT_DEFAULT_0,
+                    INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "last_updated",
+                    "TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+                    "DATETIME DEFAULT CURRENT_TIMESTAMP");
 
             migrateDataColumn(connection, statement, escapedTableName, dbType);
-            
+
             // Create component tables for normalized schema
             String tablePrefix = getConfig().getString(CONFIG_TABLE_PREFIX, "");
             String escapedInventories = "`" + tablePrefix + "databridge_inventories`";
@@ -248,11 +265,12 @@ public class MCDataBridge extends JavaPlugin {
                         "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
                         "PRIMARY KEY (uuid)) ENGINE=InnoDB;");
             }
-            
+
             migrateStatisticsColumn(connection, statement, dbType);
-            
+
         } catch (Exception e) {
-            getLogger().log(java.util.logging.Level.SEVERE, "CRITICAL: Error creating or updating player_data table: {0}", e.getMessage());
+            getLogger().log(java.util.logging.Level.SEVERE,
+                    "CRITICAL: Error creating or updating player_data table: {0}", e.getMessage());
             getServer().getPluginManager().disablePlugin(this);
         }
     }
@@ -286,7 +304,8 @@ public class MCDataBridge extends JavaPlugin {
         }
     }
 
-    private void migrateFromLegacyTable(Connection connection, Statement statement, String escapedTableName) throws SQLException {
+    private void migrateFromLegacyTable(Connection connection, Statement statement, String escapedTableName)
+            throws SQLException {
         if (!tableName.equals(DEFAULT_TABLE_NAME)) {
             try {
                 ResultSet oldTable = connection.getMetaData().getTables(null, null, DEFAULT_TABLE_NAME, null);
@@ -308,8 +327,8 @@ public class MCDataBridge extends JavaPlugin {
         }
     }
 
-    private void ensureColumnExists(Connection connection, Statement statement, String escapedTableName, String dbType, 
-                                  String column, String mysqlType, String sqliteType) throws SQLException {
+    private void ensureColumnExists(Connection connection, Statement statement, String escapedTableName, String dbType,
+            String column, String mysqlType, String sqliteType) throws SQLException {
         java.util.Map.Entry<String, String> allowedTypes = COLUMN_WHITELIST.get(column);
         if (allowedTypes == null) {
             throw new SecurityException("Blocked attempt to add un-whitelisted column: " + column);
@@ -324,7 +343,8 @@ public class MCDataBridge extends JavaPlugin {
         }
     }
 
-    private void migrateDataColumn(Connection connection, Statement statement, String escapedTableName, String dbType) throws SQLException {
+    private void migrateDataColumn(Connection connection, Statement statement, String escapedTableName, String dbType)
+            throws SQLException {
         try (ResultSet columns = connection.getMetaData().getColumns(null, null, tableName, "data")) {
             if (columns.next()) {
                 String typeName = columns.getString("TYPE_NAME");
@@ -332,12 +352,16 @@ public class MCDataBridge extends JavaPlugin {
 
                 if (needsMigration) {
                     if (getConfig().getBoolean(AUTO_UPDATE_SCHEMA, false)) {
-                        if (dbType.equals(SQLITE)) return;
-                        getLogger().log(java.util.logging.Level.INFO, "Migrating 'data' column from {0} to LONGBLOB as requested...", typeName);
-                        statement.executeUpdate(ALTER_TABLE_SQL + escapedTableName + " MODIFY COLUMN data LONGBLOB NULL");
+                        if (dbType.equals(SQLITE))
+                            return;
+                        getLogger().log(java.util.logging.Level.INFO,
+                                "Migrating 'data' column from {0} to LONGBLOB as requested...", typeName);
+                        statement.executeUpdate(
+                                ALTER_TABLE_SQL + escapedTableName + " MODIFY COLUMN data LONGBLOB NULL");
                     } else {
                         getLogger().warning(BANNER);
-                        getLogger().log(java.util.logging.Level.WARNING, "!!! YOUR DATABASE IS USING {0} FOR 'data' COLUMN. !!!", typeName);
+                        getLogger().log(java.util.logging.Level.WARNING,
+                                "!!! YOUR DATABASE IS USING {0} FOR 'data' COLUMN. !!!", typeName);
                         getLogger().warning("!!! IT IS RECOMMENDED TO SWITCH TO 'LONGBLOB' !!!");
                         getLogger().warning("!!! ENABLE 'auto-update-schema: true' IN CONFIG TO FIX AUTOMATICALLY !!!");
                         getLogger().warning(BANNER);
@@ -351,7 +375,8 @@ public class MCDataBridge extends JavaPlugin {
         }
     }
 
-    private void migrateStatisticsColumn(Connection connection, Statement statement, String dbType) throws SQLException {
+    private void migrateStatisticsColumn(Connection connection, Statement statement, String dbType)
+            throws SQLException {
         if (dbType.equals(SQLITE)) {
             return;
         }
@@ -359,19 +384,28 @@ public class MCDataBridge extends JavaPlugin {
         String statisticsTable = tablePrefix + "databridge_statistics";
         String escapedStatistics = "`" + statisticsTable + "`";
 
-        try (ResultSet columns = connection.getMetaData().getColumns(null, null, statisticsTable, "vanilla_stats_json")) {
+        try (ResultSet columns = connection.getMetaData().getColumns(null, null, statisticsTable,
+                "vanilla_stats_json")) {
             if (columns.next()) {
                 String typeName = columns.getString("TYPE_NAME");
                 if ("TEXT".equalsIgnoreCase(typeName)) {
                     if (getConfig().getBoolean(AUTO_UPDATE_SCHEMA, false)) {
-                        getLogger().log(java.util.logging.Level.INFO, "Migrating 'vanilla_stats_json' column in {0} from TEXT to LONGTEXT...", statisticsTable);
-                        statement.executeUpdate(ALTER_TABLE_SQL + escapedStatistics + " MODIFY COLUMN vanilla_stats_json LONGTEXT DEFAULT NULL");
+                        getLogger().log(java.util.logging.Level.INFO,
+                                "Migrating 'vanilla_stats_json' column in {0} from TEXT to LONGTEXT...",
+                                statisticsTable);
+                        statement.executeUpdate(ALTER_TABLE_SQL + escapedStatistics
+                                + " MODIFY COLUMN vanilla_stats_json LONGTEXT DEFAULT NULL");
                     } else {
                         getLogger().warning(BANNER);
-                        getLogger().log(java.util.logging.Level.WARNING, "!!! STATISTICS TABLE IS USING {0} FOR 'vanilla_stats_json' COLUMN. !!!", typeName);
-                        getLogger().warning("!!! IT IS HIGHLY RECOMMENDED TO SWITCH TO 'LONGTEXT' TO PREVENT DATA TRUNCATION ERRORS. !!!");
-                        getLogger().warning("!!! ENABLE 'auto-update-schema: true' IN CONFIG TO FIX AUTOMATICALLY, OR RUN: !!!");
-                        getLogger().log(java.util.logging.Level.WARNING, "!!! ALTER TABLE {0} MODIFY COLUMN vanilla_stats_json LONGTEXT DEFAULT NULL; !!!", escapedStatistics);
+                        getLogger().log(java.util.logging.Level.WARNING,
+                                "!!! STATISTICS TABLE IS USING {0} FOR 'vanilla_stats_json' COLUMN. !!!", typeName);
+                        getLogger().warning(
+                                "!!! IT IS HIGHLY RECOMMENDED TO SWITCH TO 'LONGTEXT' TO PREVENT DATA TRUNCATION ERRORS. !!!");
+                        getLogger().warning(
+                                "!!! ENABLE 'auto-update-schema: true' IN CONFIG TO FIX AUTOMATICALLY, OR RUN: !!!");
+                        getLogger().log(java.util.logging.Level.WARNING,
+                                "!!! ALTER TABLE {0} MODIFY COLUMN vanilla_stats_json LONGTEXT DEFAULT NULL; !!!",
+                                escapedStatistics);
                         getLogger().warning(BANNER);
                     }
                 }
@@ -391,12 +425,16 @@ public class MCDataBridge extends JavaPlugin {
             int affectedRows = statement.executeUpdate();
 
             if (affectedRows > 0) {
-                getLogger().log(java.util.logging.Level.INFO, "Released {0} orphaned player data locks for server: {1}", new Object[]{affectedRows, this.serverId});
+                getLogger().log(java.util.logging.Level.INFO, "Released {0} orphaned player data locks for server: {1}",
+                        new Object[] { affectedRows, this.serverId });
             } else {
-                getLogger().log(java.util.logging.Level.INFO, "No orphaned player data locks found for server: {0}", this.serverId);
+                getLogger().log(java.util.logging.Level.INFO, "No orphaned player data locks found for server: {0}",
+                        this.serverId);
             }
         } catch (Exception e) {
-            getLogger().log(java.util.logging.Level.SEVERE, "CRITICAL: Could not release player data locks for {0}! Error: {1}", new Object[]{this.serverId, e.getMessage()});
+            getLogger().log(java.util.logging.Level.SEVERE,
+                    "CRITICAL: Could not release player data locks for {0}! Error: {1}",
+                    new Object[] { this.serverId, e.getMessage() });
         }
     }
 
@@ -450,9 +488,11 @@ public class MCDataBridge extends JavaPlugin {
 
     private void updateConfig() {
         java.io.File configFile = new java.io.File(getDataFolder(), "config.yml");
-        if (!configFile.exists()) return;
+        if (!configFile.exists())
+            return;
 
-        org.bukkit.configuration.file.YamlConfiguration fileConfig = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(configFile);
+        org.bukkit.configuration.file.YamlConfiguration fileConfig = org.bukkit.configuration.file.YamlConfiguration
+                .loadConfiguration(configFile);
         java.util.List<String> lines;
         try {
             lines = java.nio.file.Files.readAllLines(configFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
@@ -470,7 +510,8 @@ public class MCDataBridge extends JavaPlugin {
         }
     }
 
-    private boolean checkTopLevelKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig, StringBuilder appends) {
+    private boolean checkTopLevelKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig,
+            StringBuilder appends) {
         boolean updated = false;
         if (!fileConfig.contains("debug")) {
             appends.append("\n# Enable debug mode for verbose logging.\ndebug: false\n");
@@ -497,15 +538,18 @@ public class MCDataBridge extends JavaPlugin {
             updated = true;
         }
         if (!fileConfig.contains("security.seed")) {
-            appends.append("\n# A secret seed used to salt all cryptographic hashes.\nsecurity:\n  seed: \"" + DEFAULT_SEED + "\"\n");
+            appends.append("\n# A secret seed used to salt all cryptographic hashes.\nsecurity:\n  seed: \""
+                    + DEFAULT_SEED + "\"\n");
             updated = true;
         }
         if (!fileConfig.contains("identity.mode")) {
-            appends.append("\n# Identity and Migration Settings\nidentity:\n  mode: PREMIUM\n  auto-migrate-fastlogin: false\n");
+            appends.append(
+                    "\n# Identity and Migration Settings\nidentity:\n  mode: PREMIUM\n  auto-migrate-fastlogin: false\n");
             updated = true;
         }
         if (!fileConfig.contains("companions.scan-radius")) {
-            appends.append("\n# Companion/pet sync settings. Requires sync-data.companions: true.\ncompanions:\n  scan-radius: 32\n  mode: \"follow\"\n");
+            appends.append(
+                    "\n# Companion/pet sync settings. Requires sync-data.companions: true.\ncompanions:\n  scan-radius: 32\n  mode: \"follow\"\n");
             updated = true;
         } else if (!fileConfig.contains("companions.mode")) {
             appends.append("\ncompanions:\n  mode: \"follow\"\n");
@@ -514,8 +558,9 @@ public class MCDataBridge extends JavaPlugin {
         return updated;
     }
 
-    private boolean checkSyncKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig, java.util.List<String> lines, StringBuilder appends) {
-        String[] syncKeys = {"statistics", "pdc", "flight-gamemode", "companions"};
+    private boolean checkSyncKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig,
+            java.util.List<String> lines, StringBuilder appends) {
+        String[] syncKeys = { "statistics", "pdc", "flight-gamemode", "companions" };
         java.util.List<String> missing = new java.util.ArrayList<>();
         for (String key : syncKeys) {
             if (!fileConfig.contains(SYNC_DATA_PREFIX + key)) {
@@ -523,7 +568,8 @@ public class MCDataBridge extends JavaPlugin {
             }
         }
 
-        if (missing.isEmpty()) return false;
+        if (missing.isEmpty())
+            return false;
 
         int syncDataLine = -1;
         for (int i = 0; i < lines.size(); i++) {
