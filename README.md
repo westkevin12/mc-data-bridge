@@ -1,9 +1,7 @@
 # MC Data Bridge
 
-![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.x%20%7C%2026.1.x-blue?style=for-the-badge&logo=minecraft)
-[![Modrinth Downloads](https://img.shields.io/modrinth/dt/mc-data-bridge?style=for-the-badge&logo=modrinth&label=Modrinth)](https://modrinth.com/plugin/mc-data-bridge)
-[![Spigot Downloads](https://img.shields.io/spiget/downloads/128642?style=for-the-badge&logo=spigotmc&label=Spigot&color=orange)](https://www.spigotmc.org/resources/128642)
-[![GitHub Downloads](https://img.shields.io/github/downloads/westkevin12/mc-data-bridge/total?style=for-the-badge&logo=github&label=GitHub&color=black)](https://github.com/westkevin12/mc-data-bridge/releases)<br>
+![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.x%20%7C%2026.1.x-blue?style=for-the-badge&logo=minecraft)<br>
+[![Modrinth Downloads](https://img.shields.io/modrinth/dt/mc-data-bridge?style=for-the-badge&logo=modrinth&label=Modrinth)](https://modrinth.com/plugin/mc-data-bridge)[![Spigot Downloads](https://img.shields.io/spiget/downloads/128642?style=for-the-badge&logo=spigotmc&label=Spigot&color=orange)](https://www.spigotmc.org/resources/128642)[![GitHub Downloads](https://img.shields.io/github/downloads/westkevin12/mc-data-bridge/total?style=for-the-badge&logo=github&label=GitHub&color=black)](https://github.com/westkevin12/mc-data-bridge/releases)<br>
 ![Proxy](https://img.shields.io/badge/Proxy-Velocity%20%7C%20Bungee%20%7C%20Waterfall-blue?style=for-the-badge)
 ![Backend](https://img.shields.io/badge/Backend-Paper%20%7C%20Folia%20%7C%20Purpur%20%7C%20Spigot%20%7C%20Bukkit-brightgreen?style=for-the-badge)<br>
 
@@ -140,19 +138,29 @@ sequenceDiagram
 If a backend server crashes, the player's data lock might remain "Stuck." MC Data Bridge handles this gracefully via a configurable `lock-timeout` (Default: 60s). This ensures players aren't permanently locked out of the network while maintaining a safe window for the database to settle.
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Unlocked
+sequenceDiagram
+    autonumber
+    participant P as Player
+    participant S1 as Old Server (Crashed)
+    participant DB as Database (SQL)
+    participant S2 as New Server
 
-    state "Locked (Active)" as Locked {
-        [*] --> Valid
-        Valid --> Valid : Heartbeat (Every 30s)\nUPDATE lock_timestamp
-        Valid --> Expired : Server Crash\n(No Heartbeat > 60s)
-    }
+    Note over S1, DB: Active Lock (Timestamp: T0)
+    S1-xDB: Heartbeat Stops (Crash)
 
-    Unlocked --> Locked : Player Pre-Login\n(Acquire Lock)
-    Locked --> Unlocked : Player Quit/Switch\n(Release Lock)
+    Note over P, S2: Player Reconnects after 60s
+    P->>S2: Join Attempt
+    S2->>DB: Check Lock (Timestamp < T - 60s)
+    DB-->>S2: Lock Expired
 
-    Expired --> Locked : New Server Claims Lock\n(Steal Lock)
+    rect rgb(35, 35, 35)
+        Note over S2, DB: Auto-Recovery
+        S2->>DB: Override & Acquire Lock (Steal Lock)
+        S2->>DB: SELECT data (Load Data)
+        DB-->>S2: Return Data Snapshot
+    end
+
+    S2-->>P: Join Successful
 ```
 
 ## Configuration
@@ -268,11 +276,11 @@ identity:
   # HYBRID: Allows flexible identity shifts (useful for Cracked -> Premium transitions).
   mode: PREMIUM
 
-  # If true, and FastLogin is installed, the plugin will attempt to 
+  # If true, and FastLogin is installed, the plugin will attempt to
   # auto-migrate data if FastLogin confirms the player is a verified premium user.
   auto-migrate-fastlogin: false
 
-  # If true, and AuthMe is installed, the plugin will attempt to 
+  # If true, and AuthMe is installed, the plugin will attempt to
   # auto-migrate data once the player successfully logs in via AuthMe.
   # This supports AuthMe's native TOTP/2FA as well.
   auto-migrate-authme: false
@@ -311,11 +319,13 @@ MC Data Bridge uses a consolidated command hub for all administrative tasks.
 - `/databridge reload` - Reload plugin configuration and database connection pool.
 
 **Proxy Commands:**
+
 - `/databridge unlock <player>` - Network-wide data lock release.
 - `/databridge forceunlock <player>` - Relays immediate lock drop signal to backend server.
 
 **Aliases:** `/db`  
 **Permissions:**
+
 - `databridge.inspect` - Permission to view player data, inventories, and ender chests in safe read-only mode.
 - `databridge.inspect.edit` - Elevated permission required to interactively edit inventories/ender chests via `--edit`.
 - `databridge.admin` - Full administrative access (includes unlock, migrate, reload, forceunlock, inspect, edit).
