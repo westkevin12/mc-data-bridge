@@ -19,6 +19,15 @@ public class VelocityUnlockCommand implements SimpleCommand {
     @Override
     public void execute(Invocation invocation) {
         String[] args = invocation.arguments();
+        if (args.length > 0 && !args[0].equalsIgnoreCase("unlock")) {
+            if (invocation.source() instanceof com.velocitypowered.api.proxy.Player player) {
+                player.spoofChatInput("/mc-data-bridge:databridge " + String.join(" ", args));
+                return;
+            }
+            invocation.source().sendMessage(Component.text("Usage: /databridge unlock <player>", NamedTextColor.RED));
+            return;
+        }
+
         if (args.length < 2 || !args[0].equalsIgnoreCase("unlock")) {
             invocation.source().sendMessage(Component.text("Usage: /databridge unlock <player>", NamedTextColor.RED));
             return;

@@ -69,10 +69,14 @@ public class DataManagementGUI implements Listener {
     }
 
     public void openPlayerInspector(Player admin, UUID targetUuid, String targetName, boolean isEditable) {
+        if (isEditable && plugin.getPlayerListener() != null) {
+            plugin.getPlayerListener().setPlayerBeingEdited(targetUuid, true);
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 PlayerData data = databaseManager.loadPlayerDataComponents(plugin, targetUuid, targetName);
                 if (data != null) {
+                    syncLiveStateIfOnline(targetUuid, data);
                     SchedulerUtils.runOnEntity(plugin, admin, () -> buildAndOpenGUI(admin, targetUuid, targetName, data, isEditable));
                 } else {
                     MessageUtils.sendMessage(admin, "§cNo player data found for: " + targetName);
@@ -88,10 +92,14 @@ public class DataManagementGUI implements Listener {
     }
 
     public void openInventoryView(Player admin, UUID targetUuid, String targetName, boolean isEditable) {
+        if (isEditable && plugin.getPlayerListener() != null) {
+            plugin.getPlayerListener().setPlayerBeingEdited(targetUuid, true);
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 PlayerData data = databaseManager.loadPlayerDataComponents(plugin, targetUuid, targetName);
                 if (data != null) {
+                    syncLiveStateIfOnline(targetUuid, data);
                     SchedulerUtils.runOnEntity(plugin, admin, () -> buildAndOpenInventoryGUI(admin, targetUuid, targetName, data, isEditable));
                 } else {
                     MessageUtils.sendMessage(admin, "§cNo inventory data found for: " + targetName);
@@ -107,10 +115,14 @@ public class DataManagementGUI implements Listener {
     }
 
     public void openEnderChestView(Player admin, UUID targetUuid, String targetName, boolean isEditable) {
+        if (isEditable && plugin.getPlayerListener() != null) {
+            plugin.getPlayerListener().setPlayerBeingEdited(targetUuid, true);
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 PlayerData data = databaseManager.loadPlayerDataComponents(plugin, targetUuid, targetName);
                 if (data != null) {
+                    syncLiveStateIfOnline(targetUuid, data);
                     SchedulerUtils.runOnEntity(plugin, admin, () -> buildAndOpenEnderChestGUI(admin, targetUuid, targetName, data, isEditable));
                 } else {
                     MessageUtils.sendMessage(admin, "§cNo ender chest data found for: " + targetName);
@@ -123,6 +135,19 @@ public class DataManagementGUI implements Listener {
 
     public void openEnderChestView(Player admin, UUID targetUuid, String targetName) {
         openEnderChestView(admin, targetUuid, targetName, false);
+    }
+
+    private void syncLiveStateIfOnline(UUID targetUuid, PlayerData data) {
+        Player targetOnline = Bukkit.getPlayer(targetUuid);
+        if (targetOnline != null && targetOnline.isOnline() && data != null) {
+            data.setInventoryContentsNBT(serializeItems(targetOnline.getInventory().getContents()));
+            data.setArmorContentsNBT(serializeItems(targetOnline.getInventory().getArmorContents()));
+            data.setEnderChestContentsNBT(serializeItems(targetOnline.getEnderChest().getContents()));
+            data.setHealth(targetOnline.getHealth());
+            data.setFoodLevel(targetOnline.getFoodLevel());
+            data.setLevel(targetOnline.getLevel());
+            data.setExp(targetOnline.getExp());
+        }
     }
 
     @SuppressWarnings("deprecation")
@@ -281,6 +306,11 @@ public class DataManagementGUI implements Listener {
     public void onInventoryClose(InventoryCloseEvent event) {
         if (!(event.getPlayer() instanceof Player admin)) return;
         if (!(event.getInventory().getHolder() instanceof DataBridgeGUIHolder holder)) return;
+
+        if (holder.isEditable() && plugin.getPlayerListener() != null) {
+            plugin.getPlayerListener().setPlayerBeingEdited(holder.getTargetUuid(), false);
+        }
+
         if (!holder.isEditable()) return;
 
         Inventory inv = event.getInventory();
@@ -291,34 +321,108 @@ public class DataManagementGUI implements Listener {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> saveEditedInventory(admin, targetUuid, targetName, viewType, inv));
     }
 
+    private static class EditedItems {
+        final ItemStack[] mainItems;
+        final ItemStack[] armorItems;
+        final ItemStack[] ecItems;
+
+        EditedItems(ItemStack[] mainItems, ItemStack[] armorItems, ItemStack[] ecItems) {
+            this.mainItems = mainItems;
+            this.armorItems = armorItems;
+            this.ecItems = ecItems;
+        }
+    }
+
     private void saveEditedInventory(Player admin, UUID targetUuid, String targetName, ViewType viewType, Inventory inv) {
         try {
             PlayerData data = databaseManager.loadPlayerDataComponents(plugin, targetUuid, targetName);
             if (data == null) data = new PlayerData();
 
-            if (viewType == ViewType.INVENTORY) {
-                ItemStack[] mainItems = new ItemStack[36];
-                for (int i = 0; i < 36; i++) mainItems[i] = inv.getItem(i);
-
-                ItemStack[] armorItems = new ItemStack[4];
-                for (int i = 0; i < 4; i++) armorItems[i] = inv.getItem(36 + i);
-
-                data.setInventoryContentsNBT(serializeItems(mainItems));
-                data.setArmorContentsNBT(serializeItems(armorItems));
-            } else if (viewType == ViewType.ENDERCHEST) {
-                ItemStack[] ecItems = new ItemStack[27];
-                for (int i = 0; i < 27; i++) ecItems[i] = inv.getItem(i);
-
-                data.setEnderChestContentsNBT(serializeItems(ecItems));
-            }
+            EditedItems items = extractItemsFromGUI(inv, viewType);
+            applyEditedItemsToData(data, viewType, items);
 
             boolean success = databaseManager.saveInventoryComponent(plugin, data, targetUuid);
             if (success) {
-                MessageUtils.sendMessage(admin, "&a[DataBridge] Saved modified " + viewType.name().toLowerCase() + " for " + targetName + " to database.");
+                if (admin != null && admin.isOnline()) {
+                    MessageUtils.sendMessage(admin, "&a[DataBridge] Saved modified " + viewType.name().toLowerCase() + " for " + targetName + " to database.");
+                }
+                syncTargetPlayerLiveState(admin, targetUuid, viewType, items);
             }
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "Failed to save edited inventory for {0}: {1}", new Object[]{targetName, e.getMessage()});
-            MessageUtils.sendMessage(admin, "&cError saving modified inventory: " + e.getMessage());
+            if (admin != null && admin.isOnline()) {
+                MessageUtils.sendMessage(admin, "&cError saving modified inventory: " + e.getMessage());
+            }
+        }
+    }
+
+    private EditedItems extractItemsFromGUI(Inventory inv, ViewType viewType) {
+        switch (viewType) {
+            case INVENTORY -> {
+                ItemStack[] mainItems = new ItemStack[36];
+                for (int i = 0; i < 36; i++) mainItems[i] = inv.getItem(i);
+                ItemStack[] armorItems = new ItemStack[4];
+                for (int i = 0; i < 4; i++) armorItems[i] = inv.getItem(36 + i);
+                return new EditedItems(mainItems, armorItems, null);
+            }
+            case ENDERCHEST -> {
+                ItemStack[] ecItems = new ItemStack[27];
+                for (int i = 0; i < 27; i++) ecItems[i] = inv.getItem(i);
+                return new EditedItems(null, null, ecItems);
+            }
+            default -> {
+                return new EditedItems(null, null, null);
+            }
+        }
+    }
+
+    private void applyEditedItemsToData(PlayerData data, ViewType viewType, EditedItems items) {
+        if (viewType == ViewType.INVENTORY && items.mainItems != null && items.armorItems != null) {
+            data.setInventoryContentsNBT(serializeItems(items.mainItems));
+            data.setArmorContentsNBT(serializeItems(items.armorItems));
+        } else if (viewType == ViewType.ENDERCHEST && items.ecItems != null) {
+            data.setEnderChestContentsNBT(serializeItems(items.ecItems));
+        }
+    }
+
+    private void syncTargetPlayerLiveState(Player admin, UUID targetUuid, ViewType viewType, EditedItems items) {
+        Player onlineTarget = Bukkit.getPlayer(targetUuid);
+        if (onlineTarget != null && onlineTarget.isOnline()) {
+            SchedulerUtils.runOnEntity(plugin, onlineTarget, () -> {
+                if (!onlineTarget.isOnline()) return;
+                if (viewType == ViewType.INVENTORY && items.mainItems != null) {
+                    onlineTarget.getInventory().setContents(items.mainItems);
+                    if (items.armorItems != null) {
+                        onlineTarget.getInventory().setArmorContents(items.armorItems);
+                    }
+                    onlineTarget.updateInventory();
+                } else if (viewType == ViewType.ENDERCHEST && items.ecItems != null) {
+                    onlineTarget.getEnderChest().setContents(items.ecItems);
+                    onlineTarget.updateInventory();
+                }
+            });
+        } else {
+            sendCrossServerSyncMessage(admin, targetUuid, viewType);
+        }
+    }
+
+    private void sendCrossServerSyncMessage(Player admin, UUID targetUuid, ViewType viewType) {
+        com.google.common.io.ByteArrayDataOutput out = com.google.common.io.ByteStreams.newDataOutput();
+        out.writeUTF("LiveInventorySync");
+        out.writeUTF(java.util.Objects.requireNonNull(targetUuid.toString()));
+        out.writeUTF(java.util.Objects.requireNonNull(viewType.name()));
+
+        Player messenger = (admin != null && admin.isOnline()) ? admin : null;
+        if (messenger == null) {
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                if (p != null && p.isOnline()) {
+                    messenger = p;
+                    break;
+                }
+            }
+        }
+        if (messenger != null) {
+            messenger.sendPluginMessage(plugin, "mc-data-bridge:main", out.toByteArray());
         }
     }
 
