@@ -1,54 +1,24 @@
-[SIZE=6][B]MC Data Bridge - Release Notes (v2.1.8)[/B][/SIZE]
+[SIZE=6][B]MC Data Bridge - Release Notes (v2.1.9)[/B][/SIZE]
 
 [SIZE=5][B]Overview[/B][/SIZE]
-[SIZE=4]Version 2.1.8 introduces [B]Item Duplication Exploit Protection[/B], [B]Full Tab Completion[/B], [B]Interactive Inventory & Ender Chest Inspection (`invsee` & `endersee`)[/B] with read-only and edit modes, [B]Granular Permissions[/B], [B]Database Schema Auto-Migration[/B], and [B]Paper 26.2 Platform Parity[/B].[/SIZE]
+[SIZE=4]Version 2.1.9 delivers [B]Proxy Subcommand Auto-Forwarding[/B] across proxy platforms (Velocity, BungeeCord, and Waterfall) and [B]Real-Time Online Player Live Inventory Sync & Active Edit Lock Protection[/B].[/SIZE]
 
 [CENTER]----------------------------------------------------------------[/CENTER]
 
 [SIZE=5][B]Key Changes[/B][/SIZE]
 
-[SIZE=4][B]🛡 Item Duplication Exploit Protection (#30)[/B][/SIZE]
+[SIZE=4][B]🔄 Proxy Subcommand Auto-Forwarding (#34)[/B][/SIZE]
 [LIST]
-[*][B]Special Thanks:[/B] Special thanks to [B]@AllenLinong[/B] for discovering and reporting this critical exploit (#30)!
-[*][B]Safe Inventory Closure:[/B] Open inventory views are automatically closed before player data snapshots are captured during server switches.
-[*][B]Transfer Lock Enforcement:[/B] Cancels item drops, item pickups, container clicks, inventory drags, and interactions while a player transfer or database save is in progress.
+[*][B]Proxy-to-Backend Command Routing:[/B] Non-[I]unlock[/I] subcommands (e.g. [CODE]/databridge invsee[/CODE], [CODE]endersee[/CODE], [CODE]inspect[/CODE], [CODE]reload[/CODE], [CODE]sync[/CODE], [CODE]migrate[/CODE]) executed by players on proxy servers ([B]Velocity[/B], [B]BungeeCord[/B], and [B]Waterfall[/B]) are now automatically routed downstream to their connected backend Paper/Spigot server without requiring explicit namespace prefixes ([CODE]/mc-data-bridge:databridge[/CODE]).
+[*][B]Namespace Interception Fix:[/B] Fixes command hijack and usage rejection issues when running shorthand [CODE]/databridge[/CODE] subcommands across proxy setups.
 [/LIST]
 
-[SIZE=4][B]🔍 Interactive Inventory & Ender Chest Inspector (`invsee` / `endersee`)[/B][/SIZE]
+[SIZE=4][B]⚡ Online Player Live Inventory Sync & Active Edit Lock (#31, #32)[/B][/SIZE]
 [LIST]
-[*][B]New Subcommands & Aliases:[/B]
-[LIST]
-[*][CODE]/databridge inspect <player> [inventory|enderchest] [--edit][/CODE]
-[*][CODE]/databridge invsee <player> [--edit][/CODE]
-[*][CODE]/databridge endersee <player> [--edit][/CODE]
-[/LIST]
-[*][B]Safe View-Only Mode (Default):[/B] Inspection GUIs open in read-only mode by default ([I]Left-Click[/I] in Overview GUI) to prevent accidental item modifications or unintended edits.
-[*][B]Interactive Edit Mode ([I]--edit[/I] flag or Right-Click):[/B] Admins with [I]databridge.inspect.edit[/I] permission can interactively edit items ([I]Right-Click[/I] in Overview GUI or using [I]--edit[/I] flag) in offline/cross-server player inventories or ender chests directly inside the GUI.
-[*][B]Database Auto-Save:[/B] Closing an editable GUI automatically serializes modified item stacks back to the database so changes apply when the player logs in.
-[/LIST]
-
-[SIZE=4][B]🔑 Granular Permission Nodes[/B][/SIZE]
-[LIST]
-[*][CODE]databridge.inspect[/CODE] (or [I]databridge.admin[/I]): Permission to view player data, inventories, and ender chests in safe read-only mode.
-[*][CODE]databridge.inspect.edit[/CODE] (or [I]databridge.admin[/I]): Elevated permission required to open interactive edit mode using the [I]--edit[/I] flag.
-[*][CODE]databridge.admin[/CODE]: Full administrative access to all commands and subcommands.
-[/LIST]
-
-[SIZE=4][B]⌨️ Full Command Tab Completion[/B][/SIZE]
-[LIST]
-[*][B]TabExecutor Integration:[/B] Dynamic auto-completion for subcommands ([I]unlock[/I], [I]inspect[/I], [I]invsee[/I], [I]endersee[/I], [I]migrate[/I]), online player names, view types ([I]inventory[/I], [I]enderchest[/I]), and the [I]--edit[/I] flag.
-[/LIST]
-
-[SIZE=4][B]🗄 Database Schema Maintenance & Upgrades[/B][/SIZE]
-[LIST]
-[*][B]Auto-Update Schema:[/B] Added [I]auto-update-schema[/I] configuration toggle (default [I]true[/I]) to automatically manage table upgrades.
-[*][B]Column Expansion:[/B] Upgraded [I]vanilla_stats_json[/I] column to [I]LONGTEXT[/I] (MySQL/MariaDB) / [I]TEXT[/I] (SQLite) to accommodate large recipe books, advancements, and vanilla statistics.
-[/LIST]
-
-[SIZE=4][B]⚡ Paper 26.2 & Dependency Upgrades[/B][/SIZE]
-[LIST]
-[*][B]HikariCP:[/B] Upgraded connection pool library to [I]7.1.0[/I].
-[*][B]Paper API:[/B] Upgraded compiling API target to [I]26.2[/I] while retaining full backward compatibility for pre-26.2 versions via platform reflection.
+[*][B]Real-Time In-Memory Update:[/B] Edits made to an online player's inventory or ender chest via [CODE]/databridge invsee --edit[/CODE] or [CODE]/databridge endersee --edit[/CODE] now immediately update the target player's live, in-memory inventory on their active server instance.
+[*][B]Cross-Server Live Sync:[/B] Dispatches a [I]LiveInventorySync[/I] message over the [CODE]mc-data-bridge:main[/CODE] plugin channel when editing online players on other servers across the proxy network, forcing an instant live memory reload without requiring player relog.
+[*][B]Pre-Fetch Memory Snapshot:[/B] Opening an inspection GUI for a locally online player automatically snapshots their live memory state first, preventing recent item pickups or drops from being overwritten by older database data.
+[*][B]Active Edit Lock Protection:[/B] Protects online target players from inventory desync or duplicate item exploits while an admin is actively modifying their inventory in an edit GUI.
 [/LIST]
 
 [CENTER]----------------------------------------------------------------[/CENTER]

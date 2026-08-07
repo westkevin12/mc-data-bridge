@@ -6,7 +6,7 @@
 
     <groupId>com.digitalserverhost.plugins</groupId>
     <artifactId>mc-data-bridge</artifactId>
-    <version>2.1.8-SNAPSHOT</version>
+    <version>2.1.9</version>
 
     <name>mc-data-bridge</name>
     <url>https://mc.digitalserverhost.com</url>

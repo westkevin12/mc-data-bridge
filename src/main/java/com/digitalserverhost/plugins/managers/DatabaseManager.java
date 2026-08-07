@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
 
+@SuppressWarnings("java:S2077") // Dynamic SQL concatenation is required for configurable table prefixes; inputs are sanitized during plugin initialization.
 public class DatabaseManager {
 
     private static final Logger LOGGER = Logger.getLogger("mc-data-bridge");
@@ -269,6 +270,22 @@ public class DatabaseManager {
             LOGGER.log(java.util.logging.Level.SEVERE, "Failed to force release lock for {0}: {1}", new Object[]{uuid, e.getMessage()});
             return false;
         }
+    }
+
+    public boolean isLockOwner(UUID uuid, String serverId) {
+        String query = "SELECT locking_server FROM " + tableName + WHERE_UUID_SQL;
+        try (Connection connection = getConnection();
+                PreparedStatement checkStmt = connection.prepareStatement(query)) {
+            checkStmt.setString(1, uuid.toString());
+            try (ResultSet rs = checkStmt.executeQuery()) {
+                if (rs.next()) {
+                    return serverId.equals(rs.getString("locking_server"));
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed to check lock owner for {0}: {1}", new Object[]{uuid, e.getMessage()});
+        }
+        return false;
     }
 
     public void updateLock(UUID uuid, String serverId) {

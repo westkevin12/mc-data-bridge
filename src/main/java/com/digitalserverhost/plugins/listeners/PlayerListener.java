@@ -19,9 +19,6 @@ import com.digitalserverhost.plugins.managers.MetricsManager;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.ByteArrayDataInput;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Map;
 import java.util.UUID;
@@ -38,6 +35,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
     private final Map<UUID, PlayerData> loadingCache = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> savingPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> switchingPlayers = new ConcurrentHashMap<>();
+    private final Map<UUID, Boolean> editedPlayers = new ConcurrentHashMap<>();
 
     public PlayerListener(DatabaseManager databaseManager, MCDataBridge plugin) {
         this.databaseManager = databaseManager;
@@ -77,6 +75,34 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 plugin.getLogger().log(Level.INFO, "Received ''ForceUnlock'' request for UUID: {0}", uuid);
             }
             databaseManager.releaseLock(uuid);
+        } else if (subchannel.equals("LiveInventorySync")) {
+            String uuidStr = in.readUTF();
+            String viewTypeStr = in.readUTF();
+            UUID uuid = UUID.fromString(uuidStr);
+            Player targetPlayer = Bukkit.getPlayer(uuid);
+            if (targetPlayer != null && targetPlayer.isOnline()) {
+                if (plugin.isDebugMode()) {
+                    plugin.getLogger().log(Level.INFO, "Received ''LiveInventorySync'' request for {0} ({1}). Reloading data from DB.", new Object[]{targetPlayer.getName(), viewTypeStr});
+                }
+                com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
+                    PlayerData updatedData = loadPlayerData(uuid, targetPlayer.getName());
+                    if (updatedData != null) {
+                        com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, targetPlayer, () -> {
+                            if (!targetPlayer.isOnline()) return;
+                            if ("INVENTORY".equalsIgnoreCase(viewTypeStr) && updatedData.getInventoryContents() != null) {
+                                targetPlayer.getInventory().setContents(updatedData.getInventoryContents());
+                                if (updatedData.getArmorContents() != null) {
+                                    targetPlayer.getInventory().setArmorContents(updatedData.getArmorContents());
+                                }
+                                targetPlayer.updateInventory();
+                            } else if ("ENDERCHEST".equalsIgnoreCase(viewTypeStr) && updatedData.getEnderChestContents() != null) {
+                                targetPlayer.getEnderChest().setContents(updatedData.getEnderChestContents());
+                                targetPlayer.updateInventory();
+                            }
+                        });
+                    }
+                });
+            }
         }
     }
 
@@ -218,20 +244,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
     }
 
     private boolean isLockOwner(UUID uuid, String serverId) {
-        try (Connection connection = databaseManager.getConnection()) {
-            String query = "SELECT locking_server FROM " + databaseManager.getTableName() + " WHERE uuid = ?";
-            try (PreparedStatement checkStmt = connection.prepareStatement(query)) {
-                checkStmt.setString(1, uuid.toString());
-                try (ResultSet rs = checkStmt.executeQuery()) {
-                    if (rs.next()) {
-                        return serverId.equals(rs.getString("locking_server"));
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "Failed to check lock owner for {0}: {1}", new Object[]{uuid, e.getMessage()});
-        }
-        return false;
+        return databaseManager.isLockOwner(uuid, serverId);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -700,8 +713,21 @@ public class PlayerListener implements Listener, PluginMessageListener {
         return null;
     }
 
+    public void setPlayerBeingEdited(UUID uuid, boolean isBeingEdited) {
+        if (uuid == null) return;
+        if (isBeingEdited) {
+            editedPlayers.put(uuid, true);
+        } else {
+            editedPlayers.remove(uuid);
+        }
+    }
+
+    public boolean isPlayerBeingEdited(UUID uuid) {
+        return uuid != null && editedPlayers.containsKey(uuid);
+    }
+
     public boolean isPlayerLocked(UUID uuid) {
-        return uuid != null && (switchingPlayers.containsKey(uuid) || savingPlayers.containsKey(uuid));
+        return uuid != null && (switchingPlayers.containsKey(uuid) || savingPlayers.containsKey(uuid) || editedPlayers.containsKey(uuid));
     }
 
     private void safelyCloseInventory(Player player) {
