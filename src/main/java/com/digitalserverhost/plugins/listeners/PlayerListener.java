@@ -264,10 +264,10 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
         com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
             try {
-                // 1. Snapshot current inventory for old gamemode
+                // 1. Snapshot current inventory for old gamemode and save it
                 PlayerData oldData = new PlayerData(player, plugin);
                 oldData.setGameMode(oldMode.name());
-                databaseManager.savePlayerDataComponents(plugin, oldData, uuid);
+                databaseManager.saveInventoryComponent(plugin, oldData, uuid);
 
                 // 2. Load inventory snapshot for new gamemode
                 PlayerData newData = new PlayerData();
@@ -280,8 +280,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
                         applyInventory(player, newData);
                     }
                 });
-            } catch (Exception _) {
-                plugin.getLogger().log(Level.WARNING, "Failed to swap gamemode inventory for {0}", player.getName());
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to swap gamemode inventory for " + player.getName() + ": " + e.getMessage());
             }
         });
     }

@@ -15,6 +15,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockmc.mockmc.MockMC;
 
+import java.util.UUID;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -71,5 +73,57 @@ class GamemodeInventorySyncTest {
 
         PlayerData data = new PlayerData(player, plugin);
         assertEquals("SURVIVAL", data.getGameMode());
+    }
+
+    @Test
+    void testGamemodeInventoryMigrationFromUnifiedTable() throws Exception {
+        com.zaxxer.hikari.HikariDataSource mockDs = mock(com.zaxxer.hikari.HikariDataSource.class);
+        java.sql.Connection mockConn = mock(java.sql.Connection.class);
+        java.sql.PreparedStatement mockGamemodeStmt = mock(java.sql.PreparedStatement.class);
+        java.sql.ResultSet mockGamemodeRs = mock(java.sql.ResultSet.class);
+        java.sql.PreparedStatement mockUnifiedStmt = mock(java.sql.PreparedStatement.class);
+        java.sql.ResultSet mockUnifiedRs = mock(java.sql.ResultSet.class);
+        java.sql.PreparedStatement mockUpsertStmt = mock(java.sql.PreparedStatement.class);
+
+        java.sql.PreparedStatement mockDefaultStmt = mock(java.sql.PreparedStatement.class);
+        java.sql.ResultSet mockDefaultRs = mock(java.sql.ResultSet.class);
+        lenient().when(mockConn.prepareStatement(anyString())).thenReturn(mockDefaultStmt);
+        lenient().when(mockDefaultStmt.executeQuery()).thenReturn(mockDefaultRs);
+        lenient().when(mockDefaultRs.next()).thenReturn(false);
+
+        lenient().when(mockDs.getConnection()).thenReturn(mockConn);
+        java.sql.PreparedStatement mockLegacyStmt = mock(java.sql.PreparedStatement.class);
+        java.sql.ResultSet mockLegacyRs = mock(java.sql.ResultSet.class);
+        lenient().when(mockConn.prepareStatement(contains("SELECT data, data_checksum FROM"))).thenReturn(mockLegacyStmt);
+        lenient().when(mockLegacyStmt.executeQuery()).thenReturn(mockLegacyRs);
+        lenient().when(mockLegacyRs.next()).thenReturn(false);
+
+        lenient().when(mockConn.prepareStatement(contains("FROM `databridge_gamemode_inventories`"))).thenReturn(mockGamemodeStmt);
+        lenient().when(mockGamemodeStmt.executeQuery()).thenReturn(mockGamemodeRs);
+        lenient().when(mockGamemodeRs.next()).thenReturn(false); // No existing gamemode row
+
+        lenient().when(mockConn.prepareStatement(contains("FROM `databridge_inventories`"))).thenReturn(mockUnifiedStmt);
+        lenient().when(mockUnifiedStmt.executeQuery()).thenReturn(mockUnifiedRs);
+        lenient().when(mockUnifiedRs.next()).thenReturn(true); // Existing unified row present
+        lenient().when(mockUnifiedRs.getBytes("inventory_blob")).thenReturn("[\"item1\"]".getBytes());
+        lenient().when(mockUnifiedRs.getBytes("armor_blob")).thenReturn(null);
+        lenient().when(mockUnifiedRs.getBytes("ender_chest_blob")).thenReturn(null);
+
+        lenient().when(mockConn.prepareStatement(contains("INSERT INTO `databridge_gamemode_inventories`"))).thenReturn(mockUpsertStmt);
+
+        DatabaseManager dbManager = new DatabaseManager(mockDs, "player_data", 60000L);
+        UUID uuid = UUID.randomUUID();
+        PlayerData data = new PlayerData();
+        data.setGameMode("SURVIVAL");
+
+        PlayerData loaded = dbManager.loadPlayerDataComponents(mockPlugin, uuid);
+        assertNotNull(loaded);
+        assertNotNull(loaded.getInventoryContentsNBT());
+        assertEquals(1, loaded.getInventoryContentsNBT().size());
+        assertEquals("item1", loaded.getInventoryContentsNBT().get(0));
+
+        // Verify that the inventory was migrated into databridge_gamemode_inventories
+        verify(mockConn).prepareStatement(contains("INSERT INTO `databridge_gamemode_inventories`"));
+        verify(mockUpsertStmt).executeUpdate();
     }
 }

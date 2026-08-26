@@ -1003,20 +1003,55 @@ public class DatabaseManager {
             }
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
-                    if (plugin.isSyncEnabled(FEATURE_INVENTORY)) {
-                        data.setInventoryContentsNBT(deserializeListFromBlob(rs.getBytes("inventory_blob")));
-                    }
-                    if (plugin.isSyncEnabled(FEATURE_ARMOR)) {
-                        data.setArmorContentsNBT(deserializeListFromBlob(rs.getBytes("armor_blob")));
-                    }
-                    if (plugin.isSyncEnabledNewFeature(FEATURE_ENDER_CHEST)) {
-                        data.setEnderChestContentsNBT(deserializeListFromBlob(rs.getBytes("ender_chest_blob")));
-                    }
+                    populateInventoryDataFromResultSet(rs, plugin, data);
                     return true;
                 }
             }
         }
+
+        // Fallback/Migration: If separate-gamemode-inventories is enabled but no entry exists in gamemodeInventoriesTable,
+        // check if an existing inventory profile exists in the unified inventoriesTable and migrate it to gamemodeInventoriesTable for activeGamemode.
+        if (separateGamemodes) {
+            String fallbackSql = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + inventoriesTable + WHERE_UUID_SQL;
+            try (PreparedStatement fallbackStmt = connection.prepareStatement(fallbackSql)) {
+                fallbackStmt.setString(1, uuid.toString());
+                try (ResultSet fallbackRs = fallbackStmt.executeQuery()) {
+                    if (fallbackRs.next()) {
+                        byte[] inv = fallbackRs.getBytes("inventory_blob");
+                        byte[] armor = fallbackRs.getBytes("armor_blob");
+                        byte[] ec = fallbackRs.getBytes("ender_chest_blob");
+
+                        if (plugin.isSyncEnabled(FEATURE_INVENTORY)) {
+                            data.setInventoryContentsNBT(deserializeListFromBlob(inv));
+                        }
+                        if (plugin.isSyncEnabled(FEATURE_ARMOR)) {
+                            data.setArmorContentsNBT(deserializeListFromBlob(armor));
+                        }
+                        if (plugin.isSyncEnabledNewFeature(FEATURE_ENDER_CHEST)) {
+                            data.setEnderChestContentsNBT(deserializeListFromBlob(ec));
+                        }
+
+                        // Migrate existing inventory into gamemode table for activeGamemode
+                        executeUpsertInventory(connection, true, activeGamemode, gamemodeInventoriesTable, uuid, inv, armor, ec);
+                        return true;
+                    }
+                }
+            }
+        }
+
         return false;
+    }
+
+    private void populateInventoryDataFromResultSet(ResultSet rs, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data) throws SQLException {
+        if (plugin.isSyncEnabled(FEATURE_INVENTORY)) {
+            data.setInventoryContentsNBT(deserializeListFromBlob(rs.getBytes("inventory_blob")));
+        }
+        if (plugin.isSyncEnabled(FEATURE_ARMOR)) {
+            data.setArmorContentsNBT(deserializeListFromBlob(rs.getBytes("armor_blob")));
+        }
+        if (plugin.isSyncEnabledNewFeature(FEATURE_ENDER_CHEST)) {
+            data.setEnderChestContentsNBT(deserializeListFromBlob(rs.getBytes("ender_chest_blob")));
+        }
     }
 
     private boolean loadStatisticsComponent(Connection connection, PlayerData data, UUID uuid) throws SQLException {
