@@ -62,6 +62,9 @@ public class PlayerData {
     // Companion / Pet sync (default disabled)
     private String companionsNBT;
 
+    // Map sync (default mode: return)
+    private String mapsNBT;
+
 
     public PlayerData() {}
 
@@ -89,6 +92,7 @@ public class PlayerData {
             snapshotLocation(player);
             snapshotFlightAndGamemode(player, plugin);
             snapshotCompanions(player, plugin);
+            snapshotMaps(player, plugin);
         }
     }
 
@@ -269,6 +273,88 @@ public class PlayerData {
 
         if (!snapshots.isEmpty()) {
             this.companionsNBT = new com.google.gson.Gson().toJson(snapshots);
+        }
+    }
+
+    private void snapshotMaps(Player player, MCDataBridge plugin) {
+        if (!plugin.isSyncEnabledNewFeature("maps")) return;
+        String mode = MODE_RETURN;
+        try {
+            mode = plugin.getConfig().getString("maps.mode", MODE_RETURN).toLowerCase();
+        } catch (Exception _) { /* default to return */ }
+        if (mode.equals("untracked") || mode.equals("off")) return;
+
+        List<MapSnapshot> snapshots = new ArrayList<>();
+        tagAndStashMapsInInventory(player, player.getInventory().getContents(), "MAIN", snapshots, plugin, mode);
+        if (plugin.isSyncEnabledNewFeature("ender-chest")) {
+            tagAndStashMapsInInventory(player, player.getEnderChest().getContents(), "ENDERCHEST", snapshots, plugin, mode);
+        }
+
+        if (!snapshots.isEmpty()) {
+            this.mapsNBT = new com.google.gson.Gson().toJson(snapshots);
+        }
+    }
+
+    @SuppressWarnings("null")
+    private void tagAndStashMapsInInventory(Player player, ItemStack[] contents, String invType, List<MapSnapshot> snapshots, MCDataBridge plugin, String mode) {
+        if (contents == null) return;
+        org.bukkit.NamespacedKey serverKey = createNamespacedKey(plugin, "origin_server");
+        org.bukkit.NamespacedKey mapIdKey = createNamespacedKey(plugin, "original_map_id");
+
+        for (int i = 0; i < contents.length; i++) {
+            processSingleMapSlot(contents, i, invType, snapshots, plugin, mode, serverKey, mapIdKey);
+        }
+    }
+
+    @SuppressWarnings("null")
+    private void processSingleMapSlot(ItemStack[] contents, int index, String invType, List<MapSnapshot> snapshots, MCDataBridge plugin, String mode, org.bukkit.NamespacedKey serverKey, org.bukkit.NamespacedKey mapIdKey) {
+        ItemStack item = contents[index];
+        if (item == null || item.getType() != Material.FILLED_MAP || !(item.getItemMeta() instanceof org.bukkit.inventory.meta.MapMeta meta)) {
+            return;
+        }
+
+        int originalMapId = meta.hasMapId() ? meta.getMapId() : -1;
+        String originServer = processMapPdc(meta, item, serverKey, mapIdKey, originalMapId, plugin);
+
+        if (mode.equals(MODE_RETURN) && originServer != null && !originServer.equalsIgnoreCase(plugin.getServerId())) {
+            snapshots.add(new MapSnapshot(originServer, originalMapId, index, invType, serializeItemStack(item)));
+            contents[index] = null; // Stash item away from local foreign inventory
+        }
+    }
+
+    private String processMapPdc(org.bukkit.inventory.meta.MapMeta meta, ItemStack item, org.bukkit.NamespacedKey serverKey, org.bukkit.NamespacedKey mapIdKey, int originalMapId, MCDataBridge plugin) {
+        try {
+            var pdc = meta.getPersistentDataContainer();
+            if (pdc.has(serverKey, org.bukkit.persistence.PersistentDataType.STRING)) {
+                return pdc.get(serverKey, org.bukkit.persistence.PersistentDataType.STRING);
+            }
+            pdc.set(serverKey, org.bukkit.persistence.PersistentDataType.STRING, plugin.getServerId());
+            if (originalMapId != -1) {
+                pdc.set(mapIdKey, org.bukkit.persistence.PersistentDataType.INTEGER, originalMapId);
+            }
+            item.setItemMeta(meta);
+        } catch (Exception _) {
+            // Reflection or mock environment fallback
+        }
+        return plugin.getServerId();
+    }
+
+    private org.bukkit.NamespacedKey createNamespacedKey(MCDataBridge plugin, String key) {
+        try {
+            if (plugin != null) {
+                return new org.bukkit.NamespacedKey(plugin, key);
+            }
+        } catch (Exception _) {
+            // Fallback for mock environments
+        }
+        return new org.bukkit.NamespacedKey("mcdatabridge", key);
+    }
+
+    private String serializeItemStack(ItemStack item) {
+        try {
+            return MCDataBridge.getGson().toJson(new SerializableItemStack(item));
+        } catch (Exception _) {
+            return null;
         }
     }
 
@@ -474,6 +560,7 @@ public class PlayerData {
     public List<String> getArmorContentsNBT() { return armorContentsNBT; }
     public List<String> getEnderChestContentsNBT() { return enderChestContentsNBT; }
     public String getCompanionsNBT() { return companionsNBT; }
+    public String getMapsNBT() { return mapsNBT; }
 
     public void setHealth(double health) { this.health = health; }
     public void setFoodLevel(int foodLevel) { this.foodLevel = foodLevel; }
@@ -491,6 +578,7 @@ public class PlayerData {
     public void setStatistics(Map<String, Integer> statistics) { this.statistics = statistics; }
     public void setPdcNBT(String pdcNBT) { this.pdcNBT = pdcNBT; }
     public void setCompanionsNBT(String companionsNBT) { this.companionsNBT = companionsNBT; }
+    public void setMapsNBT(String mapsNBT) { this.mapsNBT = mapsNBT; }
     public void setFlying(boolean flying) { this.isFlying = flying; }
     public void setAllowFlight(boolean allowFlight) { this.allowFlight = allowFlight; }
     public void setGameMode(String gameMode) { this.gameMode = gameMode; }
@@ -655,7 +743,7 @@ public class PlayerData {
         }
     }
 
-    static class SerializableItemStack {
+    public static class SerializableItemStack {
         private static final String DISPLAY_NAME = "display-name";
         private static final String ITEM_NAME = "item-name";
         private static final String LORE = "lore";

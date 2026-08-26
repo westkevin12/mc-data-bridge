@@ -205,6 +205,7 @@ public class MCDataBridge extends JavaPlugin {
             String escapedStatistics = "`" + tablePrefix + "databridge_statistics`";
             String escapedMetadata = "`" + tablePrefix + "databridge_metadata`";
             String escapedCompanions = "`" + tablePrefix + "databridge_companions`";
+            String escapedMaps = "`" + tablePrefix + "databridge_maps`";
 
             if (dbType.equals(SQLITE)) {
                 statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedInventories + " (" +
@@ -232,6 +233,10 @@ public class MCDataBridge extends JavaPlugin {
                 statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedCompanions + " (" +
                         "uuid TEXT PRIMARY KEY, " +
                         "companions_nbt TEXT DEFAULT NULL, " +
+                        "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);");
+                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedMaps + " (" +
+                        "uuid TEXT PRIMARY KEY, " +
+                        "maps_nbt TEXT DEFAULT NULL, " +
                         "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);");
             } else {
                 statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedInventories + " (" +
@@ -262,6 +267,11 @@ public class MCDataBridge extends JavaPlugin {
                 statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedCompanions + " (" +
                         "uuid VARCHAR(36) NOT NULL, " +
                         "companions_nbt LONGTEXT DEFAULT NULL, " +
+                        "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                        "PRIMARY KEY (uuid)) ENGINE=InnoDB;");
+                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedMaps + " (" +
+                        "uuid VARCHAR(36) NOT NULL, " +
+                        "maps_nbt LONGTEXT DEFAULT NULL, " +
                         "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
                         "PRIMARY KEY (uuid)) ENGINE=InnoDB;");
             }
@@ -555,12 +565,16 @@ public class MCDataBridge extends JavaPlugin {
             appends.append("\ncompanions:\n  mode: \"follow\"\n");
             updated = true;
         }
+        if (!fileConfig.contains("maps.mode")) {
+            appends.append("\n# Map synchronization mode across servers.\nmaps:\n  mode: \"return\"\n");
+            updated = true;
+        }
         return updated;
     }
 
     private boolean checkSyncKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig,
             java.util.List<String> lines, StringBuilder appends) {
-        String[] syncKeys = { "statistics", "pdc", "flight-gamemode", "companions" };
+        String[] syncKeys = { "statistics", "pdc", "flight-gamemode", "companions", "maps" };
         java.util.List<String> missing = new java.util.ArrayList<>();
         for (String key : syncKeys) {
             if (!fileConfig.contains(SYNC_DATA_PREFIX + key)) {
@@ -581,13 +595,15 @@ public class MCDataBridge extends JavaPlugin {
 
         if (syncDataLine != -1) {
             for (String key : missing) {
-                lines.add(syncDataLine + 1, "  " + key + ": false");
+                boolean defaultValue = key.equals("maps"); // Default true for maps, false for others
+                lines.add(syncDataLine + 1, "  " + key + ": " + defaultValue);
             }
             return true;
         } else {
             appends.append("\nsync-data:\n");
             for (String key : missing) {
-                appends.append("  ").append(key).append(": false\n");
+                boolean defaultValue = key.equals("maps");
+                appends.append("  ").append(key).append(": ").append(defaultValue).append("\n");
             }
             return true;
         }

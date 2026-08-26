@@ -32,6 +32,7 @@ public class DatabaseManager {
     private static final String COL_ADVANCEMENTS = "advancements";
     private static final String MODE_FOLLOW = "follow";
     private static final String MODE_RETURN = "return";
+    private static final String MODE_UNTRACKED = "untracked";
     private static final Gson GSON = new GsonBuilder().create();
 
     private final HikariDataSource dataSource;
@@ -44,6 +45,7 @@ public class DatabaseManager {
     private final String statisticsTable;
     private final String metadataTable;
     private final String companionsTable;
+    private final String mapsTable;
     private final String serializationFormat;
     private final boolean isSQLite;
 
@@ -54,6 +56,7 @@ public class DatabaseManager {
         this.statisticsTable = "`" + this.tablePrefix + "databridge_statistics`";
         this.metadataTable = "`" + this.tablePrefix + "databridge_metadata`";
         this.companionsTable = "`" + this.tablePrefix + "databridge_companions`";
+        this.mapsTable = "`" + this.tablePrefix + "databridge_maps`";
         this.serializationFormat = config.getString("database.serialization-format", "json").toLowerCase();
 
         HikariConfig hikariConfig = new HikariConfig();
@@ -119,6 +122,7 @@ public class DatabaseManager {
         this.statisticsTable = "`databridge_statistics`";
         this.metadataTable = "`databridge_metadata`";
         this.companionsTable = "`databridge_companions`";
+        this.mapsTable = "`databridge_maps`";
         this.serializationFormat = "json";
         this.isSQLite = false;
     }
@@ -488,6 +492,7 @@ public class DatabaseManager {
                 saveStatisticsComponent(connection, plugin, data, uuid);
                 saveMetadataComponent(connection, plugin, data, uuid);
                 saveCompanionComponent(connection, plugin, data, uuid);
+                saveMapComponent(connection, plugin, data, uuid);
                 connection.commit();
                 return true;
             } catch (SQLException e) {
@@ -681,7 +686,7 @@ public class DatabaseManager {
         try {
             mode = plugin.getConfig().getString("companions.mode", MODE_FOLLOW).toLowerCase();
         } catch (Exception _) { /* default to follow if config is missing */ }
-        if (mode.equals("untracked") || mode.equals("off")) return;
+        if (mode.equals(MODE_UNTRACKED) || mode.equals("off")) return;
 
         String dbCompanionsNbt = null;
         String sqlSelect = "SELECT companions_nbt FROM " + companionsTable + WHERE_UUID_SQL;
@@ -706,6 +711,101 @@ public class DatabaseManager {
             stmt.setString(1, uuid.toString());
             stmt.setString(2, targetCompanionsNbt);
             stmt.executeUpdate();
+        }
+    }
+
+    private void saveMapComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        if (!plugin.isSyncEnabledNewFeature("maps")) return;
+        String mode = MODE_RETURN;
+        try {
+            mode = plugin.getConfig().getString("maps.mode", MODE_RETURN).toLowerCase();
+        } catch (Exception _) { /* default to return */ }
+        if (mode.equals(MODE_UNTRACKED) || mode.equals("off")) return;
+
+        String dbMapsNbt = null;
+        String sqlSelect = "SELECT maps_nbt FROM " + mapsTable + WHERE_UUID_SQL;
+        try (PreparedStatement selectStmt = connection.prepareStatement(sqlSelect)) {
+            selectStmt.setString(1, uuid.toString());
+            try (ResultSet rs = selectStmt.executeQuery()) {
+                if (rs.next()) dbMapsNbt = rs.getString("maps_nbt");
+            }
+        }
+
+        String targetMapsNbt = mergeMapsNbt(data.getMapsNBT(), dbMapsNbt, mode, plugin.getServerId());
+
+        String sqlUpsert;
+        if (isSQLite) {
+            sqlUpsert = INSERT_INTO_SQL + mapsTable + " (uuid, maps_nbt) VALUES (?, ?) " +
+                        "ON CONFLICT(uuid) DO UPDATE SET maps_nbt = excluded.maps_nbt";
+        } else {
+            sqlUpsert = INSERT_INTO_SQL + mapsTable + " (uuid, maps_nbt) VALUES (?, ?) " +
+                        "ON DUPLICATE KEY UPDATE maps_nbt = VALUES(maps_nbt)";
+        }
+        try (PreparedStatement stmt = connection.prepareStatement(sqlUpsert)) {
+            stmt.setString(1, uuid.toString());
+            stmt.setString(2, targetMapsNbt);
+            stmt.executeUpdate();
+        }
+    }
+
+    private String mergeMapsNbt(String localMapsNbt, String dbMapsNbt, String mode, String currentServer) {
+        if (localMapsNbt == null) {
+            if (!mode.equals(MODE_RETURN)) {
+                return null;
+            }
+            List<com.digitalserverhost.plugins.utils.MapSnapshot> toKeep = new ArrayList<>();
+            com.digitalserverhost.plugins.utils.MapSnapshot[] dbSnaps = parseMapSnapshots(dbMapsNbt);
+            addOtherServerMaps(dbSnaps, toKeep, currentServer);
+            return toKeep.isEmpty() ? null : GSON.toJson(toKeep);
+        }
+
+        if (dbMapsNbt == null || dbMapsNbt.isEmpty()) {
+            return localMapsNbt;
+        }
+
+        try {
+            com.digitalserverhost.plugins.utils.MapSnapshot[] localSnaps = parseMapSnapshots(localMapsNbt);
+            com.digitalserverhost.plugins.utils.MapSnapshot[] dbSnaps = parseMapSnapshots(dbMapsNbt);
+            List<com.digitalserverhost.plugins.utils.MapSnapshot> merged = new ArrayList<>();
+
+            if (mode.equals(MODE_RETURN)) {
+                addOtherServerMaps(dbSnaps, merged, currentServer);
+            }
+
+            addAllNonNullMapSnapshots(localSnaps, merged);
+            return merged.isEmpty() ? null : GSON.toJson(merged);
+        } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Error merging maps: {0}", e.getMessage());
+            return localMapsNbt;
+        }
+    }
+
+    private com.digitalserverhost.plugins.utils.MapSnapshot[] parseMapSnapshots(String json) {
+        if (json == null || json.isEmpty()) return new com.digitalserverhost.plugins.utils.MapSnapshot[0];
+        try {
+            com.digitalserverhost.plugins.utils.MapSnapshot[] result = GSON.fromJson(json, com.digitalserverhost.plugins.utils.MapSnapshot[].class);
+            return result != null ? result : new com.digitalserverhost.plugins.utils.MapSnapshot[0];
+        } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Failed to parse map snapshots: {0}", e.getMessage());
+            return new com.digitalserverhost.plugins.utils.MapSnapshot[0];
+        }
+    }
+
+    private void addOtherServerMaps(com.digitalserverhost.plugins.utils.MapSnapshot[] snaps, List<com.digitalserverhost.plugins.utils.MapSnapshot> list, String currentServer) {
+        if (snaps == null) return;
+        for (com.digitalserverhost.plugins.utils.MapSnapshot snap : snaps) {
+            if (snap != null && snap.getSourceServerId() != null && !snap.getSourceServerId().equalsIgnoreCase(currentServer)) {
+                list.add(snap);
+            }
+        }
+    }
+
+    private void addAllNonNullMapSnapshots(com.digitalserverhost.plugins.utils.MapSnapshot[] snaps, List<com.digitalserverhost.plugins.utils.MapSnapshot> list) {
+        if (snaps == null) return;
+        for (com.digitalserverhost.plugins.utils.MapSnapshot snap : snaps) {
+            if (snap != null) {
+                list.add(snap);
+            }
         }
     }
 
@@ -795,6 +895,9 @@ public class DatabaseManager {
             }
             if (plugin.isSyncEnabledNewFeature("companions")) {
                 loadedAny |= loadCompanionComponent(connection, plugin, data, uuid);
+            }
+            if (plugin.isSyncEnabledNewFeature("maps")) {
+                loadedAny |= loadMapComponent(connection, plugin, data, uuid);
             }
         }
 
@@ -933,7 +1036,7 @@ public class DatabaseManager {
         try {
             mode = plugin.getConfig().getString("companions.mode", MODE_FOLLOW).toLowerCase();
         } catch (Exception _) { /* default to follow if config is missing */ }
-        if (mode.equals("untracked") || mode.equals("off")) return false;
+        if (mode.equals(MODE_UNTRACKED) || mode.equals("off")) return false;
 
         String sqlComp = "SELECT companions_nbt FROM " + companionsTable + WHERE_UUID_SQL;
         try (PreparedStatement stmt = connection.prepareStatement(sqlComp)) {
@@ -955,6 +1058,55 @@ public class DatabaseManager {
                 }
                 return false;
             }
+        }
+    }
+
+    private boolean loadMapComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        String mode = MODE_RETURN;
+        try {
+            mode = plugin.getConfig().getString("maps.mode", MODE_RETURN).toLowerCase();
+        } catch (Exception _) { /* default to return if config is missing */ }
+        if (mode.equals(MODE_UNTRACKED) || mode.equals("off")) return false;
+
+        String sqlMap = "SELECT maps_nbt FROM " + mapsTable + WHERE_UUID_SQL;
+        try (PreparedStatement stmt = connection.prepareStatement(sqlMap)) {
+            stmt.setString(1, uuid.toString());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) return false;
+                String mapsNbt = rs.getString("maps_nbt");
+                if (mapsNbt != null && !mapsNbt.isEmpty()) {
+                    List<com.digitalserverhost.plugins.utils.MapSnapshot> toRestore = new ArrayList<>();
+                    List<com.digitalserverhost.plugins.utils.MapSnapshot> toKeep = new ArrayList<>();
+
+                    parseAndFilterMaps(mapsNbt, plugin.getServerId(), toRestore, toKeep);
+
+                    if (!toRestore.isEmpty()) {
+                        data.setMapsNBT(GSON.toJson(toRestore));
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+    }
+
+    private void parseAndFilterMaps(String mapsNbt, String currentServer, List<com.digitalserverhost.plugins.utils.MapSnapshot> toRestore, List<com.digitalserverhost.plugins.utils.MapSnapshot> toKeep) {
+        try {
+            com.digitalserverhost.plugins.utils.MapSnapshot[] snapshots = GSON.fromJson(mapsNbt, com.digitalserverhost.plugins.utils.MapSnapshot[].class);
+            if (snapshots != null) {
+                for (com.digitalserverhost.plugins.utils.MapSnapshot snap : snapshots) {
+                    if (snap != null) {
+                        boolean shouldRestore = snap.getSourceServerId() == null || snap.getSourceServerId().equalsIgnoreCase(currentServer);
+                        if (shouldRestore) {
+                            toRestore.add(snap);
+                        } else {
+                            toKeep.add(snap);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Failed to parse map snapshots: {0}", e.getMessage());
         }
     }
 
@@ -1033,6 +1185,7 @@ public class DatabaseManager {
                 executeMigrateQuery(connection, statisticsTable, oldUuid, newUuid);
                 executeMigrateQuery(connection, metadataTable, oldUuid, newUuid);
                 executeMigrateQuery(connection, companionsTable, oldUuid, newUuid);
+                executeMigrateQuery(connection, mapsTable, oldUuid, newUuid);
 
                 connection.commit();
                 return migrated;
