@@ -4,7 +4,7 @@ MC Data Bridge is a robust, high-performance hybrid plugin for PaperMC (Spigot),
 
 ## Compatibility
 
-- **Minecraft Version:** `1.21.x` and `26.1.x`
+- **Minecraft Version:** `1.21.x` and `26.2.x`
 - **Server Platforms:** PaperMC (Purpur), **Folia**, Spigot
 - **Proxy Platforms:** BungeeCord, Waterfall, Velocity
 - **Java Version:** 25+
@@ -68,7 +68,7 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 | `/databridge endersee <player> [--edit]`                        | Directly opens saved player ender chest view or edit GUI. | `databridge.inspect`<br>`databridge.inspect.edit` (for `--edit`) |
 | `/databridge migrate <src> <dest>`                              | Securely move data between two identities.                | `databridge.admin`                                               |
 | `/databridge unlock <player>`                                   | Manually release a stuck data lock.                       | `databridge.admin`                                               |
-| `/databridge reload`                                            | Reloads configuration and reconnects to database pool.     | `databridge.admin`                                               |
+| `/databridge reload`                                            | Reloads configuration and reconnects to database pool.    | `databridge.admin`                                               |
 
 **Proxy Commands:**
 

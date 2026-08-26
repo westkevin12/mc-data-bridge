@@ -1,24 +1,29 @@
-[SIZE=6][B]MC Data Bridge - Release Notes (v2.1.9)[/B][/SIZE]
+[SIZE=6][B]MC Data Bridge - Release Notes (v2.2.0)[/B][/SIZE]
 
 [SIZE=5][B]Overview[/B][/SIZE]
-[SIZE=4]Version 2.1.9 delivers [B]Proxy Subcommand Auto-Forwarding[/B] across proxy platforms (Velocity, BungeeCord, and Waterfall) and [B]Real-Time Online Player Live Inventory Sync & Active Edit Lock Protection[/B].[/SIZE]
+[SIZE=4]Version 2.2.0 introduces [B]Map Sync Between Servers[/B], allowing player-held map items ([CODE]Material.FILLED_MAP[/CODE]) to be stashed and restored per-server across proxy networks without map canvas corruption or ID conflicts, alongside core dependency updates.[/SIZE]
 
 [CENTER]----------------------------------------------------------------[/CENTER]
 
 [SIZE=5][B]Key Changes[/B][/SIZE]
 
-[SIZE=4][B]🔄 Proxy Subcommand Auto-Forwarding (#34)[/B][/SIZE]
+[SIZE=4][B]🗺️ Map Sync Between Servers (#36)[/B][/SIZE]
 [LIST]
-[*][B]Proxy-to-Backend Command Routing:[/B] Non-[I]unlock[/I] subcommands (e.g. [CODE]/databridge invsee[/CODE], [CODE]endersee[/CODE], [CODE]inspect[/CODE], [CODE]reload[/CODE], [CODE]sync[/CODE], [CODE]migrate[/CODE]) executed by players on proxy servers ([B]Velocity[/B], [B]BungeeCord[/B], and [B]Waterfall[/B]) are now automatically routed downstream to their connected backend Paper/Spigot server without requiring explicit namespace prefixes ([CODE]/mc-data-bridge:databridge[/CODE]).
-[*][B]Namespace Interception Fix:[/B] Fixes command hijack and usage rejection issues when running shorthand [CODE]/databridge[/CODE] subcommands across proxy setups.
+[*][B]Server-Isolated Map Stashing ([CODE]mode: return[/CODE]):[/B] Filled map items created on Server A are tagged with origin metadata ([CODE]databridge:origin_server[/CODE] and [CODE]databridge:original_map_id[/CODE]). When transferring to Server B, foreign maps are safely stashed in the database ([CODE]databridge_maps[/CODE]) and automatically restored to their inventory slots when returning to Server A.
+[*][B]Configurable Map Synchronization Modes:[/B] Added a new [CODE]maps:[/CODE] config section supporting three modes:
+[LIST]
+[*][CODE]return[/CODE] (default): Stashes and restores server-specific map items per server.
+[*][CODE]global[/CODE]: Synchronizes map canvas pixel data across all network servers.
+[*][CODE]untracked[/CODE]: Legacy vanilla map handling.
+[/LIST]
+[*][B]Component Database Storage:[/B] Added [CODE]{table-prefix}databridge_maps[/CODE] table in MySQL and SQLite for atomic map persistence and cross-server UUID data migration.
 [/LIST]
 
-[SIZE=4][B]⚡ Online Player Live Inventory Sync & Active Edit Lock (#31, #32)[/B][/SIZE]
+[SIZE=4][B]📦 Dependency Updates[/B][/SIZE]
 [LIST]
-[*][B]Real-Time In-Memory Update:[/B] Edits made to an online player's inventory or ender chest via [CODE]/databridge invsee --edit[/CODE] or [CODE]/databridge endersee --edit[/CODE] now immediately update the target player's live, in-memory inventory on their active server instance.
-[*][B]Cross-Server Live Sync:[/B] Dispatches a [I]LiveInventorySync[/I] message over the [CODE]mc-data-bridge:main[/CODE] plugin channel when editing online players on other servers across the proxy network, forcing an instant live memory reload without requiring player relog.
-[*][B]Pre-Fetch Memory Snapshot:[/B] Opening an inspection GUI for a locally online player automatically snapshots their live memory state first, preventing recent item pickups or drops from being overwritten by older database data.
-[*][B]Active Edit Lock Protection:[/B] Protects online target players from inventory desync or duplicate item exploits while an admin is actively modifying their inventory in an edit GUI.
+[*][B]MySQL Connector/J:[/B] Updated [CODE]com.mysql:mysql-connector-j[/CODE] from [CODE]9.7.0[/CODE] to [CODE]26.7.0[/CODE].
+[*][B]Item NBT API:[/B] Updated [CODE]de.tr7zw:item-nbt-api[/CODE] from [CODE]2.15.7[/CODE] to [CODE]2.16.0[/CODE].
+[*][B]JUnit Jupiter:[/B] Updated [CODE]org.junit.jupiter:junit-jupiter[/CODE] from [CODE]6.1.0[/CODE] to [CODE]6.1.3[/CODE].
 [/LIST]
 
 [CENTER]----------------------------------------------------------------[/CENTER]
