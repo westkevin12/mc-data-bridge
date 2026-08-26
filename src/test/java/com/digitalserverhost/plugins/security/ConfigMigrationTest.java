@@ -94,14 +94,11 @@ class ConfigMigrationTest {
         assertFalse(updatedConfig.getBoolean("identity.auto-migrate-fastlogin"));
         assertEquals(32, updatedConfig.getInt("companions.scan-radius"));
         assertEquals("follow", updatedConfig.getString("companions.mode"));
-        assertEquals("return", updatedConfig.getString("maps.mode"));
 
         // Verify sync-data features are appended
         assertFalse(updatedConfig.getBoolean("sync-data.statistics"));
         assertFalse(updatedConfig.getBoolean("sync-data.pdc"));
         assertFalse(updatedConfig.getBoolean("sync-data.flight-gamemode"));
         assertFalse(updatedConfig.getBoolean("sync-data.companions"));
-        assertTrue(updatedConfig.getBoolean("sync-data.maps"));
-        assertFalse(updatedConfig.getBoolean("sync-data.separate-gamemode-inventories"));
     }
 }

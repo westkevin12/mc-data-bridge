@@ -205,8 +205,6 @@ public class MCDataBridge extends JavaPlugin {
             String escapedStatistics = "`" + tablePrefix + "databridge_statistics`";
             String escapedMetadata = "`" + tablePrefix + "databridge_metadata`";
             String escapedCompanions = "`" + tablePrefix + "databridge_companions`";
-            String escapedMaps = "`" + tablePrefix + "databridge_maps`";
-            String escapedGamemodeInventories = "`" + tablePrefix + "databridge_gamemode_inventories`";
 
             if (dbType.equals(SQLITE)) {
                 statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedInventories + " (" +
@@ -235,18 +233,6 @@ public class MCDataBridge extends JavaPlugin {
                         "uuid TEXT PRIMARY KEY, " +
                         "companions_nbt TEXT DEFAULT NULL, " +
                         "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);");
-                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedMaps + " (" +
-                        "uuid TEXT PRIMARY KEY, " +
-                        "maps_nbt TEXT DEFAULT NULL, " +
-                        "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP);");
-                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedGamemodeInventories + " (" +
-                        "uuid TEXT NOT NULL, " +
-                        "gamemode TEXT NOT NULL, " +
-                        "inventory_blob TEXT, " +
-                        "armor_blob TEXT, " +
-                        "ender_chest_blob TEXT, " +
-                        "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP, " +
-                        "PRIMARY KEY (uuid, gamemode));");
             } else {
                 statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedInventories + " (" +
                         "uuid VARCHAR(36) NOT NULL, " +
@@ -278,19 +264,6 @@ public class MCDataBridge extends JavaPlugin {
                         "companions_nbt LONGTEXT DEFAULT NULL, " +
                         "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
                         "PRIMARY KEY (uuid)) ENGINE=InnoDB;");
-                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedMaps + " (" +
-                        "uuid VARCHAR(36) NOT NULL, " +
-                        "maps_nbt LONGTEXT DEFAULT NULL, " +
-                        "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
-                        "PRIMARY KEY (uuid)) ENGINE=InnoDB;");
-                statement.executeUpdate(CREATE_TABLE_IF_NOT_EXISTS + escapedGamemodeInventories + " (" +
-                        "uuid VARCHAR(36) NOT NULL, " +
-                        "gamemode VARCHAR(16) NOT NULL, " +
-                        "inventory_blob LONGBLOB DEFAULT NULL, " +
-                        "armor_blob LONGBLOB DEFAULT NULL, " +
-                        "ender_chest_blob LONGBLOB DEFAULT NULL, " +
-                        "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
-                        "PRIMARY KEY (uuid, gamemode)) ENGINE=InnoDB;");
             }
 
             migrateStatisticsColumn(connection, statement, dbType);
@@ -582,16 +555,12 @@ public class MCDataBridge extends JavaPlugin {
             appends.append("\ncompanions:\n  mode: \"follow\"\n");
             updated = true;
         }
-        if (!fileConfig.contains("maps.mode")) {
-            appends.append("\n# Map synchronization mode across servers.\nmaps:\n  mode: \"return\"\n");
-            updated = true;
-        }
         return updated;
     }
 
     private boolean checkSyncKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig,
             java.util.List<String> lines, StringBuilder appends) {
-        String[] syncKeys = { "statistics", "pdc", "flight-gamemode", "companions", "maps", "separate-gamemode-inventories" };
+        String[] syncKeys = { "statistics", "pdc", "flight-gamemode", "companions" };
         java.util.List<String> missing = new java.util.ArrayList<>();
         for (String key : syncKeys) {
             if (!fileConfig.contains(SYNC_DATA_PREFIX + key)) {
@@ -612,15 +581,13 @@ public class MCDataBridge extends JavaPlugin {
 
         if (syncDataLine != -1) {
             for (String key : missing) {
-                boolean defaultValue = key.equals("maps"); // Default true for maps, false for others
-                lines.add(syncDataLine + 1, "  " + key + ": " + defaultValue);
+                lines.add(syncDataLine + 1, "  " + key + ": false");
             }
             return true;
         } else {
             appends.append("\nsync-data:\n");
             for (String key : missing) {
-                boolean defaultValue = key.equals("maps");
-                appends.append("  ").append(key).append(": ").append(defaultValue).append("\n");
+                appends.append("  ").append(key).append(": false\n");
             }
             return true;
         }

@@ -30,8 +30,7 @@ Below is a detailed explanation of the [I]config.yml[/I] settings. This file is 
 
 [SIZE=4][B]3. Synchronization Control[/B][/SIZE]
 [LIST]
-[*][B]sync-data:*:[/B] Individual toggles for every data type. You can sync just inventories but keep health local to each server, or vice versa (includes [CODE]maps[/CODE] and [CODE]separate-gamemode-inventories[/CODE]).
-[*][B]maps.mode:[/B] Choose map synchronization mode: [CODE]return[/CODE] (stashes foreign maps per-server), [CODE]global[/CODE] (syncs canvas pixel data), or [CODE]untracked[/CODE] (vanilla behavior).
+[*][B]sync-data:*:[/B] Individual toggles for every data type. You can sync just inventories but keep health local to each server, or vice versa.
 [*][B]sync-blacklist.servers:[/B] List of [I]server-id[/I]s where data should never be loaded or saved.
 [*][B]sync-blacklist.worlds:[/B] List of world names where synchronization is temporarily suspended for the player.
 [/LIST]
@@ -158,22 +157,6 @@ For administrators managing the database directly, the plugin maintains the foll
 [LIST]
 [*][B]uuid[/B] (VARCHAR(36), PK): The player's unique ID.
 [*][B]companions_nbt[/B] (LONGTEXT/TEXT): Serialized entity metadata and attributes for player's tamed pets.
-[*][B]last_updated[/B] (TIMESTAMP/DATETIME): Auto-updated timestamp.
-[/LIST]
-
-[SIZE=4][B]6. Maps Table: [I]databridge_maps[/I][/B][/SIZE]
-[LIST]
-[*][B]uuid[/B] (VARCHAR(36), PK): The player's unique ID.
-[*][B]maps_nbt[/B] (LONGTEXT/TEXT): Serialized stashed map item snapshots for cross-server return mode.
-[*][B]last_updated[/B] (TIMESTAMP/DATETIME): Auto-updated timestamp.
-[/LIST]
-
-[SIZE=4][B]7. Gamemode Inventories Table: [I]databridge_gamemode_inventories[/I][/B][/SIZE]
-[LIST]
-[*][B]uuid, gamemode[/B] (VARCHAR(36), VARCHAR(16), PK): Composite primary key.
-[*][B]inventory_blob[/B] (LONGBLOB/TEXT): Gamemode-specific inventory items.
-[*][B]armor_blob[/B] (LONGBLOB/TEXT): Gamemode-specific armor items.
-[*][B]ender_chest_blob[/B] (LONGBLOB/TEXT): Gamemode-specific ender chest items.
 [*][B]last_updated[/B] (TIMESTAMP/DATETIME): Auto-updated timestamp.
 [/LIST]
 

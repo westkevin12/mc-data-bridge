@@ -86,20 +86,18 @@ class SchemaNormalizationTest {
         when(mockResultSet.getInt("food_level")).thenReturn(12);
         when(mockResultSet.getString("vanilla_stats_json")).thenReturn("{\"allowFlight\":true}");
 
-        lenient().when(mockPlugin.isSyncEnabledNewFeature("separate-gamemode-inventories")).thenReturn(false);
-        lenient().when(mockPlugin.isSyncEnabledNewFeature("ender-chest")).thenReturn(true);
-        lenient().when(mockPlugin.isSyncEnabled("inventory")).thenReturn(false);
-        lenient().when(mockPlugin.isSyncEnabled("armor")).thenReturn(true);
-        lenient().when(mockPlugin.isSyncEnabled("ender-chest")).thenReturn(true);
-        lenient().when(mockPlugin.isSyncEnabled("health")).thenReturn(true);
-        lenient().when(mockPlugin.isSyncEnabled("food-level")).thenReturn(false);
-        lenient().when(mockPlugin.isSyncEnabled("experience")).thenReturn(true);
-        lenient().when(mockPlugin.isSyncEnabled("potion-effects")).thenReturn(true);
-        lenient().when(mockPlugin.isSyncEnabled("flight-gamemode")).thenReturn(true);
-        lenient().when(mockPlugin.isSyncEnabledNewFeature("location")).thenReturn(true);
-        lenient().when(mockPlugin.isSyncEnabledNewFeature("statistics")).thenReturn(true);
-        lenient().when(mockPlugin.isSyncEnabled("pdc")).thenReturn(true);
-        lenient().when(mockPlugin.isSyncEnabled("advancements")).thenReturn(true);
+        when(mockPlugin.isSyncEnabled("inventory")).thenReturn(false);
+        when(mockPlugin.isSyncEnabled("armor")).thenReturn(true);
+        when(mockPlugin.isSyncEnabled("ender-chest")).thenReturn(true);
+        when(mockPlugin.isSyncEnabled("health")).thenReturn(true);
+        when(mockPlugin.isSyncEnabled("food-level")).thenReturn(false);
+        when(mockPlugin.isSyncEnabled("experience")).thenReturn(true);
+        when(mockPlugin.isSyncEnabled("potion-effects")).thenReturn(true);
+        when(mockPlugin.isSyncEnabled("flight-gamemode")).thenReturn(true);
+        when(mockPlugin.isSyncEnabledNewFeature("location")).thenReturn(true);
+        when(mockPlugin.isSyncEnabledNewFeature("statistics")).thenReturn(true);
+        when(mockPlugin.isSyncEnabled("pdc")).thenReturn(true);
+        when(mockPlugin.isSyncEnabled("advancements")).thenReturn(true);
 
         PlayerData data = new PlayerData();
         data.setInventoryContentsNBT(Arrays.asList("new_inv"));

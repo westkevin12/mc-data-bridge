@@ -29,7 +29,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
     private static final String WARNING_BORDER = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
     private static final String PLAYER_PREFIX = "Player ";
-    private static final String MODE_RETURN = "return";
 
     private final DatabaseManager databaseManager;
     private final MCDataBridge plugin;
@@ -248,44 +247,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
         return databaseManager.isLockOwner(uuid, serverId);
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onGameModeChange(org.bukkit.event.player.PlayerGameModeChangeEvent event) {
-        if (!plugin.isSyncEnabledNewFeature("separate-gamemode-inventories")) return;
-
-        Player player = event.getPlayer();
-        UUID uuid = player.getUniqueId();
-        if (plugin.isServerBlacklisted(plugin.getServerId()) || plugin.isWorldBlacklisted(player.getWorld().getName())) {
-            return;
-        }
-
-        org.bukkit.GameMode oldMode = player.getGameMode();
-        org.bukkit.GameMode newMode = event.getNewGameMode();
-        if (oldMode == newMode) return;
-
-        com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
-            try {
-                // 1. Snapshot current inventory for old gamemode
-                PlayerData oldData = new PlayerData(player, plugin);
-                oldData.setGameMode(oldMode.name());
-                databaseManager.savePlayerDataComponents(plugin, oldData, uuid);
-
-                // 2. Load inventory snapshot for new gamemode
-                PlayerData newData = new PlayerData();
-                newData.setGameMode(newMode.name());
-                databaseManager.loadPlayerDataComponents(plugin, uuid, player.getName());
-
-                // 3. Apply new gamemode inventory profile on main thread
-                com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
-                    if (player.isOnline()) {
-                        applyInventory(player, newData);
-                    }
-                });
-            } catch (Exception _) {
-                plugin.getLogger().log(Level.WARNING, "Failed to swap gamemode inventory for {0}", player.getName());
-            }
-        });
-    }
-
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
@@ -443,7 +404,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 applyFlightAndGameMode(player, data);
                 applyLocation(player, data);
                 applyCompanions(player, data);
-                applyMaps(player, data);
  
                 plugin.getLogger().log(Level.INFO, "Successfully applied data to player {0}", player.getName());
             } catch (Exception e) {
@@ -666,54 +626,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 spawnCompanion(player, snap);
             }
         });
-    }
-
-    private void applyMaps(Player player, PlayerData data) {
-        if (!plugin.isSyncEnabledNewFeature("maps")) return;
-        String mode = plugin.getConfig().getString("maps.mode", MODE_RETURN).toLowerCase();
-        if (mode.equals("untracked") || mode.equals("off")) return;
-
-        String mapsNbt = data.getMapsNBT();
-        if (mapsNbt == null || mapsNbt.isEmpty()) return;
-
-        com.digitalserverhost.plugins.utils.MapSnapshot[] snapshots;
-        try {
-            snapshots = new com.google.gson.Gson().fromJson(mapsNbt, com.digitalserverhost.plugins.utils.MapSnapshot[].class);
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to parse maps NBT for {0}: {1}",
-                    new Object[]{player.getName(), e.getMessage()});
-            return;
-        }
-        if (snapshots == null || snapshots.length == 0) return;
-
-        com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
-            if (!player.isOnline()) return;
-            for (com.digitalserverhost.plugins.utils.MapSnapshot snap : snapshots) {
-                restoreMapSnapshot(player, snap);
-            }
-        });
-    }
-
-    @SuppressWarnings("null")
-    private void restoreMapSnapshot(Player player, com.digitalserverhost.plugins.utils.MapSnapshot snap) {
-        if (snap == null || snap.getItemNBT() == null) return;
-        try {
-            PlayerData.SerializableItemStack serializableItem = MCDataBridge.getGson().fromJson(snap.getItemNBT(), PlayerData.SerializableItemStack.class);
-            if (serializableItem != null) {
-                org.bukkit.inventory.ItemStack item = serializableItem.toItemStack();
-                if ("ENDERCHEST".equalsIgnoreCase(snap.getInventoryType())) {
-                    if (snap.getSlot() >= 0 && snap.getSlot() < player.getEnderChest().getSize()) {
-                        player.getEnderChest().setItem(snap.getSlot(), item);
-                    }
-                } else {
-                    if (snap.getSlot() >= 0 && snap.getSlot() < player.getInventory().getSize()) {
-                        player.getInventory().setItem(snap.getSlot(), item);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to restore stashed map item for {0}: {1}", new Object[]{player.getName(), e.getMessage()});
-        }
     }
 
     private void spawnCompanion(Player player, PlayerData.CompanionSnapshot snap) {

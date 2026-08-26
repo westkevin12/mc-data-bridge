@@ -32,7 +32,6 @@ public class DatabaseManager {
     private static final String COL_ADVANCEMENTS = "advancements";
     private static final String MODE_FOLLOW = "follow";
     private static final String MODE_RETURN = "return";
-    private static final String MODE_UNTRACKED = "untracked";
     private static final Gson GSON = new GsonBuilder().create();
 
     private final HikariDataSource dataSource;
@@ -45,8 +44,6 @@ public class DatabaseManager {
     private final String statisticsTable;
     private final String metadataTable;
     private final String companionsTable;
-    private final String mapsTable;
-    private final String gamemodeInventoriesTable;
     private final String serializationFormat;
     private final boolean isSQLite;
 
@@ -57,8 +54,6 @@ public class DatabaseManager {
         this.statisticsTable = "`" + this.tablePrefix + "databridge_statistics`";
         this.metadataTable = "`" + this.tablePrefix + "databridge_metadata`";
         this.companionsTable = "`" + this.tablePrefix + "databridge_companions`";
-        this.mapsTable = "`" + this.tablePrefix + "databridge_maps`";
-        this.gamemodeInventoriesTable = "`" + this.tablePrefix + "databridge_gamemode_inventories`";
         this.serializationFormat = config.getString("database.serialization-format", "json").toLowerCase();
 
         HikariConfig hikariConfig = new HikariConfig();
@@ -124,8 +119,6 @@ public class DatabaseManager {
         this.statisticsTable = "`databridge_statistics`";
         this.metadataTable = "`databridge_metadata`";
         this.companionsTable = "`databridge_companions`";
-        this.mapsTable = "`databridge_maps`";
-        this.gamemodeInventoriesTable = "`databridge_gamemode_inventories`";
         this.serializationFormat = "json";
         this.isSQLite = false;
     }
@@ -495,7 +488,6 @@ public class DatabaseManager {
                 saveStatisticsComponent(connection, plugin, data, uuid);
                 saveMetadataComponent(connection, plugin, data, uuid);
                 saveCompanionComponent(connection, plugin, data, uuid);
-                saveMapComponent(connection, plugin, data, uuid);
                 connection.commit();
                 return true;
             } catch (SQLException e) {
@@ -514,36 +506,14 @@ public class DatabaseManager {
         }
     }
 
-    private static final String FEATURE_INVENTORY = "inventory";
-    private static final String FEATURE_ARMOR = "armor";
-    private static final String FEATURE_ENDER_CHEST = "ender-chest";
-
     private void saveInventoryComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
-        boolean separateGamemodes = plugin.isSyncEnabledNewFeature("separate-gamemode-inventories");
-        String activeGamemode = data.getGameMode() != null ? data.getGameMode() : "SURVIVAL";
-        String targetTable = separateGamemodes ? gamemodeInventoriesTable : inventoriesTable;
-
-        byte[][] blobs = fetchCurrentInventoryBlobs(connection, separateGamemodes, activeGamemode, targetTable, uuid);
-        byte[] targetInventory = plugin.isSyncEnabled(FEATURE_INVENTORY) ? serializeListToBlob(data.getInventoryContentsNBT()) : blobs[0];
-        byte[] targetArmor = plugin.isSyncEnabled(FEATURE_ARMOR) ? serializeListToBlob(data.getArmorContentsNBT()) : blobs[1];
-        byte[] targetEnderChest = plugin.isSyncEnabledNewFeature(FEATURE_ENDER_CHEST) ? serializeListToBlob(data.getEnderChestContentsNBT()) : blobs[2];
-
-        executeUpsertInventory(connection, separateGamemodes, activeGamemode, targetTable, uuid, targetInventory, targetArmor, targetEnderChest);
-    }
-
-    private byte[][] fetchCurrentInventoryBlobs(Connection connection, boolean separateGamemodes, String activeGamemode, String targetTable, UUID uuid) throws SQLException {
         byte[] dbInventory = null;
         byte[] dbArmor = null;
         byte[] dbEnderChest = null;
 
-        String whereClause = separateGamemodes ? " WHERE uuid = ? AND gamemode = ?" : WHERE_UUID_SQL;
-        String sqlSelect = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + targetTable + whereClause;
-
+        String sqlSelect = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + inventoriesTable + WHERE_UUID_SQL;
         try (PreparedStatement selectStmt = connection.prepareStatement(sqlSelect)) {
             selectStmt.setString(1, uuid.toString());
-            if (separateGamemodes) {
-                selectStmt.setString(2, activeGamemode);
-            }
             try (ResultSet rs = selectStmt.executeQuery()) {
                 if (rs.next()) {
                     dbInventory = rs.getBytes("inventory_blob");
@@ -552,41 +522,24 @@ public class DatabaseManager {
                 }
             }
         }
-        return new byte[][]{dbInventory, dbArmor, dbEnderChest};
-    }
 
-    private void executeUpsertInventory(Connection connection, boolean separateGamemodes, String activeGamemode, String targetTable, UUID uuid, byte[] inv, byte[] armor, byte[] ec) throws SQLException {
+        byte[] targetInventory = plugin.isSyncEnabled("inventory") ? serializeListToBlob(data.getInventoryContentsNBT()) : dbInventory;
+        byte[] targetArmor = plugin.isSyncEnabled("armor") ? serializeListToBlob(data.getArmorContentsNBT()) : dbArmor;
+        byte[] targetEnderChest = plugin.isSyncEnabled("ender-chest") ? serializeListToBlob(data.getEnderChestContentsNBT()) : dbEnderChest;
+
         String sqlUpsert;
-        if (separateGamemodes) {
-            if (isSQLite) {
-                sqlUpsert = INSERT_INTO_SQL + targetTable + " (uuid, gamemode, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?, ?) " +
-                            "ON CONFLICT(uuid, gamemode) DO UPDATE SET inventory_blob = excluded.inventory_blob, armor_blob = excluded.armor_blob, ender_chest_blob = excluded.ender_chest_blob";
-            } else {
-                sqlUpsert = INSERT_INTO_SQL + targetTable + " (uuid, gamemode, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?, ?) " +
-                            "ON DUPLICATE KEY UPDATE inventory_blob = VALUES(inventory_blob), armor_blob = VALUES(armor_blob), ender_chest_blob = VALUES(ender_chest_blob)";
-            }
+        if (isSQLite) {
+            sqlUpsert = INSERT_INTO_SQL + inventoriesTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?) " +
+                        "ON CONFLICT(uuid) DO UPDATE SET inventory_blob = excluded.inventory_blob, armor_blob = excluded.armor_blob, ender_chest_blob = excluded.ender_chest_blob";
         } else {
-            if (isSQLite) {
-                sqlUpsert = INSERT_INTO_SQL + targetTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?) " +
-                            "ON CONFLICT(uuid) DO UPDATE SET inventory_blob = excluded.inventory_blob, armor_blob = excluded.armor_blob, ender_chest_blob = excluded.ender_chest_blob";
-            } else {
-                sqlUpsert = INSERT_INTO_SQL + targetTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?) " +
-                            "ON DUPLICATE KEY UPDATE inventory_blob = VALUES(inventory_blob), armor_blob = VALUES(armor_blob), ender_chest_blob = VALUES(ender_chest_blob)";
-            }
+            sqlUpsert = INSERT_INTO_SQL + inventoriesTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?) " +
+                        "ON DUPLICATE KEY UPDATE inventory_blob = VALUES(inventory_blob), armor_blob = VALUES(armor_blob), ender_chest_blob = VALUES(ender_chest_blob)";
         }
-
         try (PreparedStatement stmt = connection.prepareStatement(sqlUpsert)) {
             stmt.setString(1, uuid.toString());
-            if (separateGamemodes) {
-                stmt.setString(2, activeGamemode);
-                stmt.setBytes(3, inv);
-                stmt.setBytes(4, armor);
-                stmt.setBytes(5, ec);
-            } else {
-                stmt.setBytes(2, inv);
-                stmt.setBytes(3, armor);
-                stmt.setBytes(4, ec);
-            }
+            stmt.setBytes(2, targetInventory);
+            stmt.setBytes(3, targetArmor);
+            stmt.setBytes(4, targetEnderChest);
             stmt.executeUpdate();
         }
     }
@@ -728,7 +681,7 @@ public class DatabaseManager {
         try {
             mode = plugin.getConfig().getString("companions.mode", MODE_FOLLOW).toLowerCase();
         } catch (Exception _) { /* default to follow if config is missing */ }
-        if (mode.equals(MODE_UNTRACKED) || mode.equals("off")) return;
+        if (mode.equals("untracked") || mode.equals("off")) return;
 
         String dbCompanionsNbt = null;
         String sqlSelect = "SELECT companions_nbt FROM " + companionsTable + WHERE_UUID_SQL;
@@ -753,101 +706,6 @@ public class DatabaseManager {
             stmt.setString(1, uuid.toString());
             stmt.setString(2, targetCompanionsNbt);
             stmt.executeUpdate();
-        }
-    }
-
-    private void saveMapComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
-        if (!plugin.isSyncEnabledNewFeature("maps")) return;
-        String mode = MODE_RETURN;
-        try {
-            mode = plugin.getConfig().getString("maps.mode", MODE_RETURN).toLowerCase();
-        } catch (Exception _) { /* default to return */ }
-        if (mode.equals(MODE_UNTRACKED) || mode.equals("off")) return;
-
-        String dbMapsNbt = null;
-        String sqlSelect = "SELECT maps_nbt FROM " + mapsTable + WHERE_UUID_SQL;
-        try (PreparedStatement selectStmt = connection.prepareStatement(sqlSelect)) {
-            selectStmt.setString(1, uuid.toString());
-            try (ResultSet rs = selectStmt.executeQuery()) {
-                if (rs.next()) dbMapsNbt = rs.getString("maps_nbt");
-            }
-        }
-
-        String targetMapsNbt = mergeMapsNbt(data.getMapsNBT(), dbMapsNbt, mode, plugin.getServerId());
-
-        String sqlUpsert;
-        if (isSQLite) {
-            sqlUpsert = INSERT_INTO_SQL + mapsTable + " (uuid, maps_nbt) VALUES (?, ?) " +
-                        "ON CONFLICT(uuid) DO UPDATE SET maps_nbt = excluded.maps_nbt";
-        } else {
-            sqlUpsert = INSERT_INTO_SQL + mapsTable + " (uuid, maps_nbt) VALUES (?, ?) " +
-                        "ON DUPLICATE KEY UPDATE maps_nbt = VALUES(maps_nbt)";
-        }
-        try (PreparedStatement stmt = connection.prepareStatement(sqlUpsert)) {
-            stmt.setString(1, uuid.toString());
-            stmt.setString(2, targetMapsNbt);
-            stmt.executeUpdate();
-        }
-    }
-
-    private String mergeMapsNbt(String localMapsNbt, String dbMapsNbt, String mode, String currentServer) {
-        if (localMapsNbt == null) {
-            if (!mode.equals(MODE_RETURN)) {
-                return null;
-            }
-            List<com.digitalserverhost.plugins.utils.MapSnapshot> toKeep = new ArrayList<>();
-            com.digitalserverhost.plugins.utils.MapSnapshot[] dbSnaps = parseMapSnapshots(dbMapsNbt);
-            addOtherServerMaps(dbSnaps, toKeep, currentServer);
-            return toKeep.isEmpty() ? null : GSON.toJson(toKeep);
-        }
-
-        if (dbMapsNbt == null || dbMapsNbt.isEmpty()) {
-            return localMapsNbt;
-        }
-
-        try {
-            com.digitalserverhost.plugins.utils.MapSnapshot[] localSnaps = parseMapSnapshots(localMapsNbt);
-            com.digitalserverhost.plugins.utils.MapSnapshot[] dbSnaps = parseMapSnapshots(dbMapsNbt);
-            List<com.digitalserverhost.plugins.utils.MapSnapshot> merged = new ArrayList<>();
-
-            if (mode.equals(MODE_RETURN)) {
-                addOtherServerMaps(dbSnaps, merged, currentServer);
-            }
-
-            addAllNonNullMapSnapshots(localSnaps, merged);
-            return merged.isEmpty() ? null : GSON.toJson(merged);
-        } catch (Exception e) {
-            LOGGER.log(java.util.logging.Level.WARNING, "Error merging maps: {0}", e.getMessage());
-            return localMapsNbt;
-        }
-    }
-
-    private com.digitalserverhost.plugins.utils.MapSnapshot[] parseMapSnapshots(String json) {
-        if (json == null || json.isEmpty()) return new com.digitalserverhost.plugins.utils.MapSnapshot[0];
-        try {
-            com.digitalserverhost.plugins.utils.MapSnapshot[] result = GSON.fromJson(json, com.digitalserverhost.plugins.utils.MapSnapshot[].class);
-            return result != null ? result : new com.digitalserverhost.plugins.utils.MapSnapshot[0];
-        } catch (Exception e) {
-            LOGGER.log(java.util.logging.Level.WARNING, "Failed to parse map snapshots: {0}", e.getMessage());
-            return new com.digitalserverhost.plugins.utils.MapSnapshot[0];
-        }
-    }
-
-    private void addOtherServerMaps(com.digitalserverhost.plugins.utils.MapSnapshot[] snaps, List<com.digitalserverhost.plugins.utils.MapSnapshot> list, String currentServer) {
-        if (snaps == null) return;
-        for (com.digitalserverhost.plugins.utils.MapSnapshot snap : snaps) {
-            if (snap != null && snap.getSourceServerId() != null && !snap.getSourceServerId().equalsIgnoreCase(currentServer)) {
-                list.add(snap);
-            }
-        }
-    }
-
-    private void addAllNonNullMapSnapshots(com.digitalserverhost.plugins.utils.MapSnapshot[] snaps, List<com.digitalserverhost.plugins.utils.MapSnapshot> list) {
-        if (snaps == null) return;
-        for (com.digitalserverhost.plugins.utils.MapSnapshot snap : snaps) {
-            if (snap != null) {
-                list.add(snap);
-            }
         }
     }
 
@@ -928,8 +786,8 @@ public class DatabaseManager {
         boolean loadedAny = false;
 
         try (Connection connection = getConnection()) {
-            if (plugin.isSyncEnabled("inventory") || plugin.isSyncEnabled("armor") || plugin.isSyncEnabledNewFeature("ender-chest")) {
-                loadedAny |= loadInventoryComponent(connection, plugin, data, uuid);
+            if (plugin.isSyncEnabled("inventory") || plugin.isSyncEnabled("armor") || plugin.isSyncEnabled("ender-chest")) {
+                loadedAny |= loadInventoryComponent(connection, data, uuid);
             }
             loadedAny |= loadStatisticsComponent(connection, data, uuid);
             if (plugin.isSyncEnabled("pdc") || plugin.isSyncEnabled(COL_ADVANCEMENTS)) {
@@ -937,9 +795,6 @@ public class DatabaseManager {
             }
             if (plugin.isSyncEnabledNewFeature("companions")) {
                 loadedAny |= loadCompanionComponent(connection, plugin, data, uuid);
-            }
-            if (plugin.isSyncEnabledNewFeature("maps")) {
-                loadedAny |= loadMapComponent(connection, plugin, data, uuid);
             }
         }
 
@@ -989,34 +844,21 @@ public class DatabaseManager {
         }
     }
 
-    private boolean loadInventoryComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
-        boolean separateGamemodes = plugin.isSyncEnabledNewFeature("separate-gamemode-inventories");
-        String activeGamemode = data.getGameMode() != null ? data.getGameMode() : "SURVIVAL";
-        String targetTable = separateGamemodes ? gamemodeInventoriesTable : inventoriesTable;
-        String whereClause = separateGamemodes ? " WHERE uuid = ? AND gamemode = ?" : WHERE_UUID_SQL;
-
-        String sql = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + targetTable + whereClause;
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+    private boolean loadInventoryComponent(Connection connection, PlayerData data, UUID uuid) throws SQLException {
+        String sqlInv = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + inventoriesTable + WHERE_UUID_SQL;
+        try (PreparedStatement stmt = connection.prepareStatement(sqlInv)) {
             stmt.setString(1, uuid.toString());
-            if (separateGamemodes) {
-                stmt.setString(2, activeGamemode);
-            }
             try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    if (plugin.isSyncEnabled(FEATURE_INVENTORY)) {
-                        data.setInventoryContentsNBT(deserializeListFromBlob(rs.getBytes("inventory_blob")));
-                    }
-                    if (plugin.isSyncEnabled(FEATURE_ARMOR)) {
-                        data.setArmorContentsNBT(deserializeListFromBlob(rs.getBytes("armor_blob")));
-                    }
-                    if (plugin.isSyncEnabledNewFeature(FEATURE_ENDER_CHEST)) {
-                        data.setEnderChestContentsNBT(deserializeListFromBlob(rs.getBytes("ender_chest_blob")));
-                    }
-                    return true;
-                }
+                if (!rs.next()) return false;
+                byte[] invBlob = rs.getBytes("inventory_blob");
+                byte[] armorBlob = rs.getBytes("armor_blob");
+                byte[] ecBlob = rs.getBytes("ender_chest_blob");
+                if (invBlob != null) data.setInventoryContentsNBT(deserializeListFromBlob(invBlob));
+                if (armorBlob != null) data.setArmorContentsNBT(deserializeListFromBlob(armorBlob));
+                if (ecBlob != null) data.setEnderChestContentsNBT(deserializeListFromBlob(ecBlob));
+                return true;
             }
         }
-        return false;
     }
 
     private boolean loadStatisticsComponent(Connection connection, PlayerData data, UUID uuid) throws SQLException {
@@ -1091,7 +933,7 @@ public class DatabaseManager {
         try {
             mode = plugin.getConfig().getString("companions.mode", MODE_FOLLOW).toLowerCase();
         } catch (Exception _) { /* default to follow if config is missing */ }
-        if (mode.equals(MODE_UNTRACKED) || mode.equals("off")) return false;
+        if (mode.equals("untracked") || mode.equals("off")) return false;
 
         String sqlComp = "SELECT companions_nbt FROM " + companionsTable + WHERE_UUID_SQL;
         try (PreparedStatement stmt = connection.prepareStatement(sqlComp)) {
@@ -1113,55 +955,6 @@ public class DatabaseManager {
                 }
                 return false;
             }
-        }
-    }
-
-    private boolean loadMapComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
-        String mode = MODE_RETURN;
-        try {
-            mode = plugin.getConfig().getString("maps.mode", MODE_RETURN).toLowerCase();
-        } catch (Exception _) { /* default to return if config is missing */ }
-        if (mode.equals(MODE_UNTRACKED) || mode.equals("off")) return false;
-
-        String sqlMap = "SELECT maps_nbt FROM " + mapsTable + WHERE_UUID_SQL;
-        try (PreparedStatement stmt = connection.prepareStatement(sqlMap)) {
-            stmt.setString(1, uuid.toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (!rs.next()) return false;
-                String mapsNbt = rs.getString("maps_nbt");
-                if (mapsNbt != null && !mapsNbt.isEmpty()) {
-                    List<com.digitalserverhost.plugins.utils.MapSnapshot> toRestore = new ArrayList<>();
-                    List<com.digitalserverhost.plugins.utils.MapSnapshot> toKeep = new ArrayList<>();
-
-                    parseAndFilterMaps(mapsNbt, plugin.getServerId(), toRestore, toKeep);
-
-                    if (!toRestore.isEmpty()) {
-                        data.setMapsNBT(GSON.toJson(toRestore));
-                        return true;
-                    }
-                }
-                return false;
-            }
-        }
-    }
-
-    private void parseAndFilterMaps(String mapsNbt, String currentServer, List<com.digitalserverhost.plugins.utils.MapSnapshot> toRestore, List<com.digitalserverhost.plugins.utils.MapSnapshot> toKeep) {
-        try {
-            com.digitalserverhost.plugins.utils.MapSnapshot[] snapshots = GSON.fromJson(mapsNbt, com.digitalserverhost.plugins.utils.MapSnapshot[].class);
-            if (snapshots != null) {
-                for (com.digitalserverhost.plugins.utils.MapSnapshot snap : snapshots) {
-                    if (snap != null) {
-                        boolean shouldRestore = snap.getSourceServerId() == null || snap.getSourceServerId().equalsIgnoreCase(currentServer);
-                        if (shouldRestore) {
-                            toRestore.add(snap);
-                        } else {
-                            toKeep.add(snap);
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.log(java.util.logging.Level.WARNING, "Failed to parse map snapshots: {0}", e.getMessage());
         }
     }
 
@@ -1240,8 +1033,6 @@ public class DatabaseManager {
                 executeMigrateQuery(connection, statisticsTable, oldUuid, newUuid);
                 executeMigrateQuery(connection, metadataTable, oldUuid, newUuid);
                 executeMigrateQuery(connection, companionsTable, oldUuid, newUuid);
-                executeMigrateQuery(connection, mapsTable, oldUuid, newUuid);
-                executeMigrateQuery(connection, gamemodeInventoriesTable, oldUuid, newUuid);
 
                 connection.commit();
                 return migrated;

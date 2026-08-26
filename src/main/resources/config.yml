@@ -112,19 +112,6 @@ sync-data:
   pdc: false
   flight-gamemode: false
   companions: false
-  maps: true
-  separate-gamemode-inventories: false
-
-# Map Synchronization Settings
-maps:
-  # Map synchronization mode across servers:
-  # - return (default): Map items belong to the server where they were created. When moving to another server,
-  #   foreign maps are stashed safely in the database and restored when returning to their origin server.
-  # - global: Map canvas pixel data is synchronized via database. Maps are re-rendered on target
-  #   servers so artwork and explored maps appear identical across all network servers.
-  # - untracked: Legacy vanilla behavior (no map PDC tagging or stashing).
-  # Default: return
-  mode: "return"
 
 # Server/World Blacklist
 # Data synchronization will be disabled for players on these servers or in these worlds.
