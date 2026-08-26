@@ -37,6 +37,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
     private final Map<UUID, Boolean> savingPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> switchingPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> editedPlayers = new ConcurrentHashMap<>();
+    private final Map<UUID, Boolean> applyingDataPlayers = new ConcurrentHashMap<>();
 
     public PlayerListener(DatabaseManager databaseManager, MCDataBridge plugin) {
         this.databaseManager = databaseManager;
@@ -262,6 +263,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
+        if (applyingDataPlayers.containsKey(uuid)) return;
         if (plugin.isServerBlacklisted(plugin.getServerId()) || plugin.isWorldBlacklisted(player.getWorld().getName())) {
             return;
         }
@@ -442,18 +444,27 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
     public void applyPlayerData(Player player, PlayerData data) {
         if (data == null || player == null) return;
+        final UUID uuid = player.getUniqueId();
  
         com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
             try {
                 if (!player.isOnline()) return;
+                applyingDataPlayers.put(uuid, true);
  
+                applyFlightAndGameMode(player, data);
+
+                if (plugin.isSyncEnabledNewFeature("separate-gamemode-inventories") && data.getGameMode() != null 
+                        && !player.getGameMode().name().equalsIgnoreCase(data.getGameMode())) {
+                    loadAndApplyGamemodeInventory(player, player.getGameMode().name());
+                } else {
+                    applyInventory(player, data);
+                }
+
                 applyPotionEffects(player, data);
                 applyBasicStats(player, data);
-                applyInventory(player, data);
                 applyAdvancementsAndRecipes(player, data);
                 applyStatistics(player, data);
                 applyPersistentData(player, data);
-                applyFlightAndGameMode(player, data);
                 applyLocation(player, data);
                 applyCompanions(player, data);
                 applyMaps(player, data);
@@ -461,6 +472,35 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 plugin.getLogger().log(Level.INFO, "Successfully applied data to player {0}", player.getName());
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, e, () -> "A critical error occurred while applying data to player " + player.getName());
+            } finally {
+                applyingDataPlayers.remove(uuid);
+            }
+        });
+    }
+
+    private void loadAndApplyGamemodeInventory(Player player, String gamemode) {
+        final UUID uuid = player.getUniqueId();
+        final String name = player.getName();
+        com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
+            try {
+                PlayerData gmData = databaseManager.loadPlayerDataComponents(plugin, uuid, name, gamemode);
+                com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
+                    if (player.isOnline() && player.getGameMode().name().equalsIgnoreCase(gamemode)) {
+                        applyingDataPlayers.put(uuid, true);
+                        try {
+                            if (gmData != null) {
+                                applyInventory(player, gmData);
+                            } else {
+                                player.getInventory().clear();
+                                player.updateInventory();
+                            }
+                        } finally {
+                            applyingDataPlayers.remove(uuid);
+                        }
+                    }
+                });
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to load {0} inventory for {1}: {2}", new Object[]{gamemode, name, e.getMessage()});
             }
         });
     }

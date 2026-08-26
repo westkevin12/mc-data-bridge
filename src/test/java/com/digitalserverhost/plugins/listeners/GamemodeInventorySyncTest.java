@@ -51,6 +51,7 @@ class GamemodeInventorySyncTest {
                     return null;
                 });
 
+        lenient().when(mockPlugin.getLogger()).thenReturn(java.util.logging.Logger.getLogger("GamemodeInventorySyncTest"));
         lenient().when(mockPlugin.getConfig()).thenReturn(mockConfig);
         lenient().when(mockPlugin.getServerId()).thenReturn("survival-1");
         lenient().when(mockPlugin.isSyncEnabledNewFeature("separate-gamemode-inventories")).thenReturn(true);
@@ -166,5 +167,43 @@ class GamemodeInventorySyncTest {
 
         verify(mockDatabaseManager).saveInventoryComponent(eq(mockPlugin), any(PlayerData.class), eq(player.getUniqueId()));
         verify(mockDatabaseManager).loadPlayerDataComponents(eq(mockPlugin), eq(player.getUniqueId()), eq(player.getName()), eq("CREATIVE"));
+    }
+
+    @Test
+    void testApplyPlayerData_SuppressesOnGameModeChange() throws Exception {
+        Player player = MockMC.getMock().addPlayer("Joiner");
+        player.setGameMode(GameMode.SURVIVAL);
+
+        PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
+
+        PlayerData joinData = new PlayerData();
+        joinData.setGameMode("CREATIVE");
+
+        listener.applyPlayerData(player, joinData);
+
+        // Verify that applyPlayerData set player to CREATIVE without triggering onGameModeChange inventory save
+        assertEquals(GameMode.CREATIVE, player.getGameMode());
+        verify(mockDatabaseManager, never()).saveInventoryComponent(eq(mockPlugin), any(PlayerData.class), eq(player.getUniqueId()));
+    }
+
+    @Test
+    void testApplyPlayerData_GamemodeMismatch_LoadsTargetGamemodeInventory() throws Exception {
+        Player player = MockMC.getMock().addPlayer("JoinerSurvival");
+        player.setGameMode(GameMode.SURVIVAL);
+
+        // Suppose flight-gamemode sync is disabled or server forced SURVIVAL
+        lenient().when(mockPlugin.isSyncEnabledNewFeature("flight-gamemode")).thenReturn(false);
+
+        PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
+
+        PlayerData joinData = new PlayerData();
+        joinData.setGameMode("CREATIVE");
+        joinData.setInventoryContentsNBT(java.util.Collections.singletonList("creativeItemJson"));
+
+        listener.applyPlayerData(player, joinData);
+
+        // Because player remains in SURVIVAL mode and gamemode sync is disabled, loadAndApplyGamemodeInventory should be triggered for SURVIVAL
+        assertEquals(GameMode.SURVIVAL, player.getGameMode());
+        verify(mockDatabaseManager).loadPlayerDataComponents(eq(mockPlugin), eq(player.getUniqueId()), eq(player.getName()), eq("SURVIVAL"));
     }
 }
