@@ -248,6 +248,44 @@ public class PlayerListener implements Listener, PluginMessageListener {
         return databaseManager.isLockOwner(uuid, serverId);
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onGameModeChange(org.bukkit.event.player.PlayerGameModeChangeEvent event) {
+        if (!plugin.isSyncEnabledNewFeature("separate-gamemode-inventories")) return;
+
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        if (plugin.isServerBlacklisted(plugin.getServerId()) || plugin.isWorldBlacklisted(player.getWorld().getName())) {
+            return;
+        }
+
+        org.bukkit.GameMode oldMode = player.getGameMode();
+        org.bukkit.GameMode newMode = event.getNewGameMode();
+        if (oldMode == newMode) return;
+
+        com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
+            try {
+                // 1. Snapshot current inventory for old gamemode
+                PlayerData oldData = new PlayerData(player, plugin);
+                oldData.setGameMode(oldMode.name());
+                databaseManager.savePlayerDataComponents(plugin, oldData, uuid);
+
+                // 2. Load inventory snapshot for new gamemode
+                PlayerData newData = new PlayerData();
+                newData.setGameMode(newMode.name());
+                databaseManager.loadPlayerDataComponents(plugin, uuid, player.getName());
+
+                // 3. Apply new gamemode inventory profile on main thread
+                com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
+                    if (player.isOnline()) {
+                        applyInventory(player, newData);
+                    }
+                });
+            } catch (Exception _) {
+                plugin.getLogger().log(Level.WARNING, "Failed to swap gamemode inventory for {0}", player.getName());
+            }
+        });
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();

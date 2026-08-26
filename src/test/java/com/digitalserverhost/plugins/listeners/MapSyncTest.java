@@ -49,4 +49,42 @@ class MapSyncTest {
         assertNotNull(data.getMapsNBT());
         assertTrue(data.getMapsNBT().contains("survival-1"));
     }
+
+    @Test
+    void testMapSyncDisabled_DoesNotSnapshotMaps() {
+        org.mockmc.mockmc.MockMC.mock();
+        try {
+            org.bukkit.entity.Player player = org.mockmc.mockmc.MockMC.getMock().addPlayer("MapPlayer");
+            player.getInventory().setItem(0, new org.bukkit.inventory.ItemStack(org.bukkit.Material.FILLED_MAP));
+
+            MCDataBridge plugin = mock(MCDataBridge.class);
+            lenient().when(plugin.isSyncEnabledNewFeature(anyString())).thenReturn(true);
+            when(plugin.isSyncEnabledNewFeature("maps")).thenReturn(false);
+
+            PlayerData data = new PlayerData(player, plugin);
+            assertNull(data.getMapsNBT());
+        } finally {
+            org.mockmc.mockmc.MockMC.unmock();
+        }
+    }
+
+    @Test
+    void testUntrackedMode_BypassesMapStashing() {
+        org.mockmc.mockmc.MockMC.mock();
+        try {
+            org.bukkit.entity.Player player = org.mockmc.mockmc.MockMC.getMock().addPlayer("MapPlayer");
+            player.getInventory().setItem(0, new org.bukkit.inventory.ItemStack(org.bukkit.Material.FILLED_MAP));
+
+            MCDataBridge plugin = mock(MCDataBridge.class);
+            FileConfiguration config = mock(FileConfiguration.class);
+            lenient().when(plugin.getConfig()).thenReturn(config);
+            lenient().when(config.getString(eq("maps.mode"), anyString())).thenReturn("untracked");
+            lenient().when(plugin.isSyncEnabledNewFeature(anyString())).thenReturn(true);
+
+            PlayerData data = new PlayerData(player, plugin);
+            assertNull(data.getMapsNBT());
+        } finally {
+            org.mockmc.mockmc.MockMC.unmock();
+        }
+    }
 }

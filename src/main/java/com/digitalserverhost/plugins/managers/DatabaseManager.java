@@ -46,6 +46,7 @@ public class DatabaseManager {
     private final String metadataTable;
     private final String companionsTable;
     private final String mapsTable;
+    private final String gamemodeInventoriesTable;
     private final String serializationFormat;
     private final boolean isSQLite;
 
@@ -57,6 +58,7 @@ public class DatabaseManager {
         this.metadataTable = "`" + this.tablePrefix + "databridge_metadata`";
         this.companionsTable = "`" + this.tablePrefix + "databridge_companions`";
         this.mapsTable = "`" + this.tablePrefix + "databridge_maps`";
+        this.gamemodeInventoriesTable = "`" + this.tablePrefix + "databridge_gamemode_inventories`";
         this.serializationFormat = config.getString("database.serialization-format", "json").toLowerCase();
 
         HikariConfig hikariConfig = new HikariConfig();
@@ -123,6 +125,7 @@ public class DatabaseManager {
         this.metadataTable = "`databridge_metadata`";
         this.companionsTable = "`databridge_companions`";
         this.mapsTable = "`databridge_maps`";
+        this.gamemodeInventoriesTable = "`databridge_gamemode_inventories`";
         this.serializationFormat = "json";
         this.isSQLite = false;
     }
@@ -511,14 +514,36 @@ public class DatabaseManager {
         }
     }
 
+    private static final String FEATURE_INVENTORY = "inventory";
+    private static final String FEATURE_ARMOR = "armor";
+    private static final String FEATURE_ENDER_CHEST = "ender-chest";
+
     private void saveInventoryComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        boolean separateGamemodes = plugin.isSyncEnabledNewFeature("separate-gamemode-inventories");
+        String activeGamemode = data.getGameMode() != null ? data.getGameMode() : "SURVIVAL";
+        String targetTable = separateGamemodes ? gamemodeInventoriesTable : inventoriesTable;
+
+        byte[][] blobs = fetchCurrentInventoryBlobs(connection, separateGamemodes, activeGamemode, targetTable, uuid);
+        byte[] targetInventory = plugin.isSyncEnabled(FEATURE_INVENTORY) ? serializeListToBlob(data.getInventoryContentsNBT()) : blobs[0];
+        byte[] targetArmor = plugin.isSyncEnabled(FEATURE_ARMOR) ? serializeListToBlob(data.getArmorContentsNBT()) : blobs[1];
+        byte[] targetEnderChest = plugin.isSyncEnabledNewFeature(FEATURE_ENDER_CHEST) ? serializeListToBlob(data.getEnderChestContentsNBT()) : blobs[2];
+
+        executeUpsertInventory(connection, separateGamemodes, activeGamemode, targetTable, uuid, targetInventory, targetArmor, targetEnderChest);
+    }
+
+    private byte[][] fetchCurrentInventoryBlobs(Connection connection, boolean separateGamemodes, String activeGamemode, String targetTable, UUID uuid) throws SQLException {
         byte[] dbInventory = null;
         byte[] dbArmor = null;
         byte[] dbEnderChest = null;
 
-        String sqlSelect = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + inventoriesTable + WHERE_UUID_SQL;
+        String whereClause = separateGamemodes ? " WHERE uuid = ? AND gamemode = ?" : WHERE_UUID_SQL;
+        String sqlSelect = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + targetTable + whereClause;
+
         try (PreparedStatement selectStmt = connection.prepareStatement(sqlSelect)) {
             selectStmt.setString(1, uuid.toString());
+            if (separateGamemodes) {
+                selectStmt.setString(2, activeGamemode);
+            }
             try (ResultSet rs = selectStmt.executeQuery()) {
                 if (rs.next()) {
                     dbInventory = rs.getBytes("inventory_blob");
@@ -527,24 +552,41 @@ public class DatabaseManager {
                 }
             }
         }
+        return new byte[][]{dbInventory, dbArmor, dbEnderChest};
+    }
 
-        byte[] targetInventory = plugin.isSyncEnabled("inventory") ? serializeListToBlob(data.getInventoryContentsNBT()) : dbInventory;
-        byte[] targetArmor = plugin.isSyncEnabled("armor") ? serializeListToBlob(data.getArmorContentsNBT()) : dbArmor;
-        byte[] targetEnderChest = plugin.isSyncEnabled("ender-chest") ? serializeListToBlob(data.getEnderChestContentsNBT()) : dbEnderChest;
-
+    private void executeUpsertInventory(Connection connection, boolean separateGamemodes, String activeGamemode, String targetTable, UUID uuid, byte[] inv, byte[] armor, byte[] ec) throws SQLException {
         String sqlUpsert;
-        if (isSQLite) {
-            sqlUpsert = INSERT_INTO_SQL + inventoriesTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?) " +
-                        "ON CONFLICT(uuid) DO UPDATE SET inventory_blob = excluded.inventory_blob, armor_blob = excluded.armor_blob, ender_chest_blob = excluded.ender_chest_blob";
+        if (separateGamemodes) {
+            if (isSQLite) {
+                sqlUpsert = INSERT_INTO_SQL + targetTable + " (uuid, gamemode, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?, ?) " +
+                            "ON CONFLICT(uuid, gamemode) DO UPDATE SET inventory_blob = excluded.inventory_blob, armor_blob = excluded.armor_blob, ender_chest_blob = excluded.ender_chest_blob";
+            } else {
+                sqlUpsert = INSERT_INTO_SQL + targetTable + " (uuid, gamemode, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?, ?) " +
+                            "ON DUPLICATE KEY UPDATE inventory_blob = VALUES(inventory_blob), armor_blob = VALUES(armor_blob), ender_chest_blob = VALUES(ender_chest_blob)";
+            }
         } else {
-            sqlUpsert = INSERT_INTO_SQL + inventoriesTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?) " +
-                        "ON DUPLICATE KEY UPDATE inventory_blob = VALUES(inventory_blob), armor_blob = VALUES(armor_blob), ender_chest_blob = VALUES(ender_chest_blob)";
+            if (isSQLite) {
+                sqlUpsert = INSERT_INTO_SQL + targetTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?) " +
+                            "ON CONFLICT(uuid) DO UPDATE SET inventory_blob = excluded.inventory_blob, armor_blob = excluded.armor_blob, ender_chest_blob = excluded.ender_chest_blob";
+            } else {
+                sqlUpsert = INSERT_INTO_SQL + targetTable + " (uuid, inventory_blob, armor_blob, ender_chest_blob) VALUES (?, ?, ?, ?) " +
+                            "ON DUPLICATE KEY UPDATE inventory_blob = VALUES(inventory_blob), armor_blob = VALUES(armor_blob), ender_chest_blob = VALUES(ender_chest_blob)";
+            }
         }
+
         try (PreparedStatement stmt = connection.prepareStatement(sqlUpsert)) {
             stmt.setString(1, uuid.toString());
-            stmt.setBytes(2, targetInventory);
-            stmt.setBytes(3, targetArmor);
-            stmt.setBytes(4, targetEnderChest);
+            if (separateGamemodes) {
+                stmt.setString(2, activeGamemode);
+                stmt.setBytes(3, inv);
+                stmt.setBytes(4, armor);
+                stmt.setBytes(5, ec);
+            } else {
+                stmt.setBytes(2, inv);
+                stmt.setBytes(3, armor);
+                stmt.setBytes(4, ec);
+            }
             stmt.executeUpdate();
         }
     }
@@ -886,8 +928,8 @@ public class DatabaseManager {
         boolean loadedAny = false;
 
         try (Connection connection = getConnection()) {
-            if (plugin.isSyncEnabled("inventory") || plugin.isSyncEnabled("armor") || plugin.isSyncEnabled("ender-chest")) {
-                loadedAny |= loadInventoryComponent(connection, data, uuid);
+            if (plugin.isSyncEnabled("inventory") || plugin.isSyncEnabled("armor") || plugin.isSyncEnabledNewFeature("ender-chest")) {
+                loadedAny |= loadInventoryComponent(connection, plugin, data, uuid);
             }
             loadedAny |= loadStatisticsComponent(connection, data, uuid);
             if (plugin.isSyncEnabled("pdc") || plugin.isSyncEnabled(COL_ADVANCEMENTS)) {
@@ -947,21 +989,34 @@ public class DatabaseManager {
         }
     }
 
-    private boolean loadInventoryComponent(Connection connection, PlayerData data, UUID uuid) throws SQLException {
-        String sqlInv = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + inventoriesTable + WHERE_UUID_SQL;
-        try (PreparedStatement stmt = connection.prepareStatement(sqlInv)) {
+    private boolean loadInventoryComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        boolean separateGamemodes = plugin.isSyncEnabledNewFeature("separate-gamemode-inventories");
+        String activeGamemode = data.getGameMode() != null ? data.getGameMode() : "SURVIVAL";
+        String targetTable = separateGamemodes ? gamemodeInventoriesTable : inventoriesTable;
+        String whereClause = separateGamemodes ? " WHERE uuid = ? AND gamemode = ?" : WHERE_UUID_SQL;
+
+        String sql = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + targetTable + whereClause;
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setString(1, uuid.toString());
+            if (separateGamemodes) {
+                stmt.setString(2, activeGamemode);
+            }
             try (ResultSet rs = stmt.executeQuery()) {
-                if (!rs.next()) return false;
-                byte[] invBlob = rs.getBytes("inventory_blob");
-                byte[] armorBlob = rs.getBytes("armor_blob");
-                byte[] ecBlob = rs.getBytes("ender_chest_blob");
-                if (invBlob != null) data.setInventoryContentsNBT(deserializeListFromBlob(invBlob));
-                if (armorBlob != null) data.setArmorContentsNBT(deserializeListFromBlob(armorBlob));
-                if (ecBlob != null) data.setEnderChestContentsNBT(deserializeListFromBlob(ecBlob));
-                return true;
+                if (rs.next()) {
+                    if (plugin.isSyncEnabled(FEATURE_INVENTORY)) {
+                        data.setInventoryContentsNBT(deserializeListFromBlob(rs.getBytes("inventory_blob")));
+                    }
+                    if (plugin.isSyncEnabled(FEATURE_ARMOR)) {
+                        data.setArmorContentsNBT(deserializeListFromBlob(rs.getBytes("armor_blob")));
+                    }
+                    if (plugin.isSyncEnabledNewFeature(FEATURE_ENDER_CHEST)) {
+                        data.setEnderChestContentsNBT(deserializeListFromBlob(rs.getBytes("ender_chest_blob")));
+                    }
+                    return true;
+                }
             }
         }
+        return false;
     }
 
     private boolean loadStatisticsComponent(Connection connection, PlayerData data, UUID uuid) throws SQLException {
@@ -1186,6 +1241,7 @@ public class DatabaseManager {
                 executeMigrateQuery(connection, metadataTable, oldUuid, newUuid);
                 executeMigrateQuery(connection, companionsTable, oldUuid, newUuid);
                 executeMigrateQuery(connection, mapsTable, oldUuid, newUuid);
+                executeMigrateQuery(connection, gamemodeInventoriesTable, oldUuid, newUuid);
 
                 connection.commit();
                 return migrated;

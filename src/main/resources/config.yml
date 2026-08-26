@@ -113,6 +113,7 @@ sync-data:
   flight-gamemode: false
   companions: false
   maps: true
+  separate-gamemode-inventories: false
 
 # Map Synchronization Settings
 maps:

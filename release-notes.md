@@ -2,7 +2,7 @@
 
 ## Overview
 
-Version 2.2.0 introduces **Map Sync Between Servers**, allowing player-held map items (`Material.FILLED_MAP`) to be stashed and restored per-server across proxy networks without map canvas corruption or ID conflicts, alongside core dependency updates.
+Version 2.2.0 introduces **Map Sync Between Servers** and **Separate Gamemode Inventories**, allowing players and staff members to maintain isolated inventory profiles per gamemode and stash maps per-server across proxy networks without data conflicts, alongside core dependency updates.
 
 ---
 
@@ -16,6 +16,12 @@ Version 2.2.0 introduces **Map Sync Between Servers**, allowing player-held map 
   - `global`: Synchronizes map canvas pixel data across all network servers.
   - `untracked`: Legacy vanilla map handling.
 - **Component Database Storage:** Added `{table-prefix}databridge_maps` table in MySQL and SQLite for atomic map persistence and cross-server UUID data migration.
+
+### 🎒 Separate Gamemode Inventories (#33)
+
+- **Opt-In Gamemode Inventory Separation (`sync-data.separate-gamemode-inventories`):** Staff members and players can maintain separate inventory, armor, and Ender Chest profiles for Survival, Creative, Adventure, and Spectator modes.
+- **Live Gamemode Swapping Hook:** Automatically snapshots and restores gamemode-specific inventory profiles when switching gamemodes on the fly (`PlayerGameModeChangeEvent`).
+- **Isolated Component Table:** Stores gamemode inventory profiles in `{table-prefix}databridge_gamemode_inventories` using `(uuid, gamemode)` composite key.
 
 ### 📦 Dependency Updates
 

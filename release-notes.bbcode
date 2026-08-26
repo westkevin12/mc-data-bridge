@@ -1,7 +1,7 @@
 [SIZE=6][B]MC Data Bridge - Release Notes (v2.2.0)[/B][/SIZE]
 
 [SIZE=5][B]Overview[/B][/SIZE]
-[SIZE=4]Version 2.2.0 introduces [B]Map Sync Between Servers[/B], allowing player-held map items ([CODE]Material.FILLED_MAP[/CODE]) to be stashed and restored per-server across proxy networks without map canvas corruption or ID conflicts, alongside core dependency updates.[/SIZE]
+[SIZE=4]Version 2.2.0 introduces [B]Map Sync Between Servers[/B] and [B]Separate Gamemode Inventories[/B], allowing players and staff members to maintain isolated inventory profiles per gamemode and stash maps per-server across proxy networks without data conflicts, alongside core dependency updates.[/SIZE]
 
 [CENTER]----------------------------------------------------------------[/CENTER]
 
@@ -17,6 +17,13 @@
 [*][CODE]untracked[/CODE]: Legacy vanilla map handling.
 [/LIST]
 [*][B]Component Database Storage:[/B] Added [CODE]{table-prefix}databridge_maps[/CODE] table in MySQL and SQLite for atomic map persistence and cross-server UUID data migration.
+[/LIST]
+
+[SIZE=4][B]🎒 Separate Gamemode Inventories (#33)[/B][/SIZE]
+[LIST]
+[*][B]Opt-In Gamemode Inventory Separation ([CODE]sync-data.separate-gamemode-inventories[/CODE]):[/B] Staff members and players can maintain separate inventory, armor, and Ender Chest profiles for Survival, Creative, Adventure, and Spectator modes.
+[*][B]Live Gamemode Swapping Hook:[/B] Automatically snapshots and restores gamemode-specific inventory profiles when switching gamemodes on the fly ([CODE]PlayerGameModeChangeEvent[/CODE]).
+[*][B]Isolated Component Table:[/B] Stores gamemode inventory profiles in [CODE]{table-prefix}databridge_gamemode_inventories[/CODE] using [CODE](uuid, gamemode)[/CODE] composite key.
 [/LIST]
 
 [SIZE=4][B]📦 Dependency Updates[/B][/SIZE]

@@ -102,5 +102,6 @@ class ConfigMigrationTest {
         assertFalse(updatedConfig.getBoolean("sync-data.flight-gamemode"));
         assertFalse(updatedConfig.getBoolean("sync-data.companions"));
         assertTrue(updatedConfig.getBoolean("sync-data.maps"));
+        assertFalse(updatedConfig.getBoolean("sync-data.separate-gamemode-inventories"));
     }
 }
