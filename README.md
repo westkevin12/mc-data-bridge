@@ -1,6 +1,6 @@
 # MC Data Bridge
 
-![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.x%20%7C%2026.1.x-blue?style=for-the-badge&logo=minecraft)<br>
+![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.x%20%7C%2026.2.x-blue?style=for-the-badge&logo=minecraft)<br>
 [![Modrinth Downloads](https://img.shields.io/modrinth/dt/mc-data-bridge?style=for-the-badge&logo=modrinth&label=Modrinth)](https://modrinth.com/plugin/mc-data-bridge)[![Spigot Downloads](https://img.shields.io/spiget/downloads/128642?style=for-the-badge&logo=spigotmc&label=Spigot&color=orange)](https://www.spigotmc.org/resources/128642)[![GitHub Downloads](https://img.shields.io/github/downloads/westkevin12/mc-data-bridge/total?style=for-the-badge&logo=github&label=GitHub&color=black)](https://github.com/westkevin12/mc-data-bridge/releases)<br>
 ![Proxy](https://img.shields.io/badge/Proxy-Velocity%20%7C%20Bungee%20%7C%20Waterfall-blue?style=for-the-badge)
 ![Backend](https://img.shields.io/badge/Backend-Paper%20%7C%20Folia%20%7C%20Purpur%20%7C%20Spigot%20%7C%20Bukkit-brightgreen?style=for-the-badge)<br>
@@ -9,7 +9,7 @@ MC Data Bridge is a robust, high-performance hybrid plugin for **PaperMC** (and 
 
 ## Compatibility
 
-- **Minecraft Version:** `1.21.x` `26.1.x`
+- **Minecraft Version:** `1.21.x` `26.2.x`
 - **Server Platforms:** PaperMC, Purpur, Spigot, Bukkit, **Folia**
 - **Proxy Platforms:** BungeeCord, Waterfall, Velocity
 
@@ -47,6 +47,8 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
   - **Persistent Data Container (PDC)** (Custom metadata from other plugins)
   - **Flight & GameMode** status
   - **Companions & Pets** (Tamed wolves, cats, parrots, etc., with NBT properties and sitting status)
+  - **Map Items & Canvas Sync** (Cross-server map stashing via `mode: return` or canvas sync via `global`)
+  - **Separate Gamemode Inventories** (Opt-in separate profiles for Survival, Creative, Adventure, Spectator)
 - **Resilient Connection Pooling:** Uses HikariCP with optimized settings to ensure that the database connection is resilient to network issues and database restarts.
 - **Prometheus Metrics Exporter:** Built-in lightweight HTTP server exposing live synchronization performance metrics (sync latency, cache metrics, HikariCP pool status) for Grafana dashboards.
 - **Granular Sync Control**: Enable or disable synchronization for any specific data type via `config.yml`.
@@ -253,6 +255,13 @@ sync-data:
   pdc: true
   flight-gamemode: true
   companions: false
+  maps: true
+  separate-gamemode-inventories: false
+
+# Map Synchronization Settings
+maps:
+  # Synchronization mode: return (default), global, untracked
+  mode: "return"
 
 # Companion/pet sync settings. Requires sync-data.companions: true.
 companions:
