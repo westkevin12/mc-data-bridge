@@ -1,24 +1,33 @@
-# MC Data Bridge - Release Notes (v2.1.9)
+# MC Data Bridge - Release Notes (v2.2.0)
 
 ## Overview
 
-Version 2.1.9 delivers **Proxy Subcommand Auto-Forwarding** across proxy platforms (Velocity, BungeeCord, and Waterfall) and **Real-Time Online Player Live Inventory Sync & Active Edit Lock Protection**.
+Version 2.2.0 introduces **Map Sync Between Servers** and **Separate Gamemode Inventories**, allowing players and staff members to maintain isolated inventory profiles per gamemode and stash maps per-server across proxy networks without data conflicts, alongside core dependency updates.
 
 ---
 
 ## Key Changes
 
-### 🔄 Proxy Subcommand Auto-Forwarding (#34)
+### 🗺️ Map Sync Between Servers (#36)
 
-- **Proxy-to-Backend Command Routing:** Non-`unlock` subcommands (e.g. `/databridge invsee`, `endersee`, `inspect`, `reload`, `sync`, `migrate`) executed by players on proxy servers (**Velocity**, **BungeeCord**, and **Waterfall**) are now automatically routed downstream to their connected backend Paper/Spigot server without requiring explicit namespace prefixes (`/mc-data-bridge:databridge`).
-- **Namespace Interception Fix:** Fixes command hijack and usage rejection issues when running shorthand `/databridge` subcommands across proxy setups.
+- **Server-Isolated Map Stashing (`mode: return`):** Filled map items created on Server A are tagged with origin metadata (`databridge:origin_server` and `databridge:original_map_id`). When transferring to Server B, foreign maps are safely stashed in the database (`databridge_maps`) and automatically restored to their inventory slots when returning to Server A.
+- **Configurable Map Synchronization Modes:** Added a new `maps:` config section supporting three modes:
+  - `return` (default): Stashes and restores server-specific map items per server.
+  - `global`: Synchronizes map canvas pixel data across all network servers.
+  - `untracked`: Legacy vanilla map handling.
+- **Component Database Storage:** Added `{table-prefix}databridge_maps` table in MySQL and SQLite for atomic map persistence and cross-server UUID data migration.
 
-### ⚡ Online Player Live Inventory Sync & Active Edit Lock (#31, #32)
+### 🎒 Separate Gamemode Inventories (#33)
 
-- **Real-Time In-Memory Update:** Edits made to an online player's inventory or ender chest via `/databridge invsee --edit` or `/databridge endersee --edit` now immediately update the target player's live, in-memory inventory on their active server instance.
-- **Cross-Server Live Sync:** Dispatches a `LiveInventorySync` message over the `mc-data-bridge:main` plugin channel when editing online players on other servers across the proxy network, forcing an instant live memory reload without requiring player relog.
-- **Pre-Fetch Memory Snapshot:** Opening an inspection GUI for a locally online player automatically snapshots their live memory state first, preventing recent item pickups or drops from being overwritten by older database data.
-- **Active Edit Lock Protection:** Protects online target players from inventory desync or duplicate item exploits while an admin is actively modifying their inventory in an edit GUI.
+- **Opt-In Gamemode Inventory Separation (`sync-data.separate-gamemode-inventories`):** Staff members and players can maintain separate inventory, armor, and Ender Chest profiles for Survival, Creative, Adventure, and Spectator modes.
+- **Live Gamemode Swapping Hook:** Automatically snapshots and restores gamemode-specific inventory profiles when switching gamemodes on the fly (`PlayerGameModeChangeEvent`).
+- **Isolated Component Table:** Stores gamemode inventory profiles in `{table-prefix}databridge_gamemode_inventories` using `(uuid, gamemode)` composite key.
+
+### 📦 Dependency Updates
+
+- **MySQL Connector/J:** Updated `com.mysql:mysql-connector-j` from `9.7.0` to `26.7.0`.
+- **Item NBT API:** Updated `de.tr7zw:item-nbt-api` from `2.15.7` to `2.16.0`.
+- **JUnit Jupiter:** Updated `org.junit.jupiter:junit-jupiter` from `6.1.0` to `6.1.3`.
 
 ---
 

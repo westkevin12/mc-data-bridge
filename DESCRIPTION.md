@@ -4,7 +4,7 @@ MC Data Bridge is a robust, high-performance hybrid plugin for PaperMC (Spigot),
 
 ## Compatibility
 
-- **Minecraft Version:** `1.21.x` and `26.1.x`
+- **Minecraft Version:** `1.21.x` and `26.2.x`
 - **Server Platforms:** PaperMC (Purpur), **Folia**, Spigot
 - **Proxy Platforms:** BungeeCord, Waterfall, Velocity
 - **Java Version:** 25+
@@ -44,6 +44,8 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
   - **Persistent Data Container (PDC)** (Custom metadata)
   - **Flight & GameMode** status
   - **Companions & Pets** (Tamed wolves, cats, parrots, etc.)
+  - **Map Items & Canvas Sync** (Cross-server map stashing via `mode: return` or canvas sync via `global`)
+  - **Separate Gamemode Inventories** (Opt-in separate profiles for Survival, Creative, Adventure, Spectator)
 - **Resilient Connection Pooling:** Uses HikariCP with optimized settings for resilience against network jitter.
 - **Flexible Storage:** Support for **MySQL/MariaDB** or local **SQLite** databases.
 - **Granular Sync Control**: Enable or disable synchronization for any specific data type via `config.yml`.
@@ -68,7 +70,7 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 | `/databridge endersee <player> [--edit]`                        | Directly opens saved player ender chest view or edit GUI. | `databridge.inspect`<br>`databridge.inspect.edit` (for `--edit`) |
 | `/databridge migrate <src> <dest>`                              | Securely move data between two identities.                | `databridge.admin`                                               |
 | `/databridge unlock <player>`                                   | Manually release a stuck data lock.                       | `databridge.admin`                                               |
-| `/databridge reload`                                            | Reloads configuration and reconnects to database pool.     | `databridge.admin`                                               |
+| `/databridge reload`                                            | Reloads configuration and reconnects to database pool.    | `databridge.admin`                                               |
 
 **Proxy Commands:**
 
@@ -131,6 +133,12 @@ sync-data:
   pdc: true
   flight-gamemode: true
   companions: true
+  maps: true
+  separate-gamemode-inventories: false
+
+# Map Synchronization Settings
+maps:
+  mode: "return" # "return", "global", or "untracked"
 
 # Security & Identity
 security:
