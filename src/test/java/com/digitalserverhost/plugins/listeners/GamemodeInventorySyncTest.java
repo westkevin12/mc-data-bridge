@@ -32,9 +32,25 @@ class GamemodeInventorySyncTest {
     @Mock
     private FileConfiguration mockConfig;
 
+    private org.mockito.MockedStatic<com.digitalserverhost.plugins.utils.SchedulerUtils> mockedSchedulerUtils;
+
     @BeforeEach
     void setUp() {
         MockMC.mock();
+        mockedSchedulerUtils = mockStatic(com.digitalserverhost.plugins.utils.SchedulerUtils.class);
+        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(any(), any()))
+                .thenAnswer(invocation -> {
+                    Runnable runnable = invocation.getArgument(1);
+                    runnable.run();
+                    return null;
+                });
+        mockedSchedulerUtils.when(() -> com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    Runnable runnable = invocation.getArgument(2);
+                    runnable.run();
+                    return null;
+                });
+
         lenient().when(mockPlugin.getConfig()).thenReturn(mockConfig);
         lenient().when(mockPlugin.getServerId()).thenReturn("survival-1");
         lenient().when(mockPlugin.isSyncEnabledNewFeature("separate-gamemode-inventories")).thenReturn(true);
@@ -44,6 +60,9 @@ class GamemodeInventorySyncTest {
 
     @org.junit.jupiter.api.AfterEach
     void tearDown() {
+        if (mockedSchedulerUtils != null) {
+            mockedSchedulerUtils.close();
+        }
         MockMC.unmock();
     }
 
@@ -125,5 +144,27 @@ class GamemodeInventorySyncTest {
         // Verify that the inventory was migrated into databridge_gamemode_inventories
         verify(mockConn).prepareStatement(contains("INSERT INTO `databridge_gamemode_inventories`"));
         verify(mockUpsertStmt).executeUpdate();
+    }
+
+    @Test
+    void testOnGameModeChangeSwapsInventory() throws Exception {
+        Player player = MockMC.getMock().addPlayer("Swapper");
+        player.setGameMode(GameMode.SURVIVAL);
+        player.getInventory().setItem(0, new ItemStack(Material.DIAMOND_SWORD));
+
+        PlayerListener listener = new PlayerListener(mockDatabaseManager, mockPlugin);
+        org.bukkit.event.player.PlayerGameModeChangeEvent event = new org.bukkit.event.player.PlayerGameModeChangeEvent(player, GameMode.CREATIVE);
+
+        PlayerData creativeData = new PlayerData();
+        creativeData.setGameMode("CREATIVE");
+        creativeData.setInventoryContentsNBT(java.util.Collections.singletonList(null));
+
+        when(mockDatabaseManager.loadPlayerDataComponents(eq(mockPlugin), eq(player.getUniqueId()), eq(player.getName()), eq("CREATIVE")))
+            .thenReturn(creativeData);
+
+        listener.onGameModeChange(event);
+
+        verify(mockDatabaseManager).saveInventoryComponent(eq(mockPlugin), any(PlayerData.class), eq(player.getUniqueId()));
+        verify(mockDatabaseManager).loadPlayerDataComponents(eq(mockPlugin), eq(player.getUniqueId()), eq(player.getName()), eq("CREATIVE"));
     }
 }

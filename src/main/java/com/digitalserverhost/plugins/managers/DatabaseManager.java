@@ -913,10 +913,14 @@ public class DatabaseManager {
     }
 
     public PlayerData loadPlayerDataComponents(com.digitalserverhost.plugins.MCDataBridge plugin, UUID uuid) throws SQLException {
-        return loadPlayerDataComponents(plugin, uuid, null);
+        return loadPlayerDataComponents(plugin, uuid, null, null);
     }
 
     public PlayerData loadPlayerDataComponents(com.digitalserverhost.plugins.MCDataBridge plugin, UUID uuid, String name) throws SQLException {
+        return loadPlayerDataComponents(plugin, uuid, name, null);
+    }
+
+    public PlayerData loadPlayerDataComponents(com.digitalserverhost.plugins.MCDataBridge plugin, UUID uuid, String name, String targetGameMode) throws SQLException {
         // First check for legacy monolithic data in the main table
         try (Connection connection = getConnection()) {
             PlayerData legacy = loadLegacyData(connection, plugin, uuid, name);
@@ -925,13 +929,19 @@ public class DatabaseManager {
 
         // Component-based loading
         PlayerData data = new PlayerData();
+        if (targetGameMode != null) {
+            data.setGameMode(targetGameMode);
+        }
         boolean loadedAny = false;
 
         try (Connection connection = getConnection()) {
+            loadedAny |= loadStatisticsComponent(connection, data, uuid);
+            if (targetGameMode != null) {
+                data.setGameMode(targetGameMode);
+            }
             if (plugin.isSyncEnabled("inventory") || plugin.isSyncEnabled("armor") || plugin.isSyncEnabledNewFeature("ender-chest")) {
                 loadedAny |= loadInventoryComponent(connection, plugin, data, uuid);
             }
-            loadedAny |= loadStatisticsComponent(connection, data, uuid);
             if (plugin.isSyncEnabled("pdc") || plugin.isSyncEnabled(COL_ADVANCEMENTS)) {
                 loadedAny |= loadMetadataComponent(connection, data, uuid);
             }
@@ -1010,8 +1020,8 @@ public class DatabaseManager {
         }
 
         // Fallback/Migration: If separate-gamemode-inventories is enabled but no entry exists in gamemodeInventoriesTable,
-        // check if an existing inventory profile exists in the unified inventoriesTable and migrate it to gamemodeInventoriesTable for activeGamemode.
-        if (separateGamemodes) {
+        // check if an existing inventory profile exists in the unified inventoriesTable and migrate it to gamemodeInventoriesTable for activeGamemode (if SURVIVAL).
+        if (separateGamemodes && "SURVIVAL".equalsIgnoreCase(activeGamemode)) {
             String fallbackSql = "SELECT inventory_blob, armor_blob, ender_chest_blob FROM " + inventoriesTable + WHERE_UUID_SQL;
             try (PreparedStatement fallbackStmt = connection.prepareStatement(fallbackSql)) {
                 fallbackStmt.setString(1, uuid.toString());

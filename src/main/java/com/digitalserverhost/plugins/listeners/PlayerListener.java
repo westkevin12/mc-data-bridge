@@ -45,65 +45,73 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
     @Override
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
-        if (!channel.equals("mc-data-bridge:main")) {
+        if (!"mc-data-bridge:main".equals(channel) || message == null) {
             return;
         }
-
-        if (message == null)
-            return;
 
         ByteArrayDataInput in = ByteStreams.newDataInput(message);
         String subchannel = in.readUTF();
 
-        if (subchannel.equals("SaveAndRelease")) {
-            String uuidStr = in.readUTF();
-            UUID uuid = UUID.fromString(uuidStr);
-            Player playerToSave = Bukkit.getPlayer(uuid);
+        switch (subchannel) {
+            case "SaveAndRelease" -> handleSaveAndReleaseMessage(in);
+            case "ForceUnlock" -> handleForceUnlockMessage(in);
+            case "LiveInventorySync" -> handleLiveInventorySyncMessage(in);
+            default -> { /* ignore unrecognized subchannels */ }
+        }
+    }
 
-            if (playerToSave != null) {
-                if (plugin.isDebugMode()) {
-                    plugin.getLogger().log(Level.INFO, "Received ''SaveAndRelease'' request for {0}. Triggering save.", playerToSave.getName());
-                }
+    private void handleSaveAndReleaseMessage(ByteArrayDataInput in) {
+        String uuidStr = in.readUTF();
+        UUID uuid = UUID.fromString(uuidStr);
+        Player playerToSave = Bukkit.getPlayer(uuid);
 
-                switchingPlayers.put(uuid, true);
-                safelyCloseInventory(playerToSave);
-                savePlayerDataAndReleaseLock(playerToSave);
-            }
-        } else if (subchannel.equals("ForceUnlock")) {
-            String uuidStr = in.readUTF();
-            UUID uuid = UUID.fromString(uuidStr);
+        if (playerToSave != null) {
             if (plugin.isDebugMode()) {
-                plugin.getLogger().log(Level.INFO, "Received ''ForceUnlock'' request for UUID: {0}", uuid);
+                plugin.getLogger().log(Level.INFO, "Received ''SaveAndRelease'' request for {0}. Triggering save.", playerToSave.getName());
             }
-            databaseManager.releaseLock(uuid);
-        } else if (subchannel.equals("LiveInventorySync")) {
-            String uuidStr = in.readUTF();
-            String viewTypeStr = in.readUTF();
-            UUID uuid = UUID.fromString(uuidStr);
-            Player targetPlayer = Bukkit.getPlayer(uuid);
-            if (targetPlayer != null && targetPlayer.isOnline()) {
-                if (plugin.isDebugMode()) {
-                    plugin.getLogger().log(Level.INFO, "Received ''LiveInventorySync'' request for {0} ({1}). Reloading data from DB.", new Object[]{targetPlayer.getName(), viewTypeStr});
-                }
-                com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
-                    PlayerData updatedData = loadPlayerData(uuid, targetPlayer.getName());
-                    if (updatedData != null) {
-                        com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, targetPlayer, () -> {
-                            if (!targetPlayer.isOnline()) return;
-                            if ("INVENTORY".equalsIgnoreCase(viewTypeStr) && updatedData.getInventoryContents() != null) {
-                                targetPlayer.getInventory().setContents(updatedData.getInventoryContents());
-                                if (updatedData.getArmorContents() != null) {
-                                    targetPlayer.getInventory().setArmorContents(updatedData.getArmorContents());
-                                }
-                                targetPlayer.updateInventory();
-                            } else if ("ENDERCHEST".equalsIgnoreCase(viewTypeStr) && updatedData.getEnderChestContents() != null) {
-                                targetPlayer.getEnderChest().setContents(updatedData.getEnderChestContents());
-                                targetPlayer.updateInventory();
+
+            switchingPlayers.put(uuid, true);
+            safelyCloseInventory(playerToSave);
+            savePlayerDataAndReleaseLock(playerToSave);
+        }
+    }
+
+    private void handleForceUnlockMessage(ByteArrayDataInput in) {
+        String uuidStr = in.readUTF();
+        UUID uuid = UUID.fromString(uuidStr);
+        if (plugin.isDebugMode()) {
+            plugin.getLogger().log(Level.INFO, "Received ''ForceUnlock'' request for UUID: {0}", uuid);
+        }
+        databaseManager.releaseLock(uuid);
+    }
+
+    private void handleLiveInventorySyncMessage(ByteArrayDataInput in) {
+        String uuidStr = in.readUTF();
+        String viewTypeStr = in.readUTF();
+        UUID uuid = UUID.fromString(uuidStr);
+        Player targetPlayer = Bukkit.getPlayer(uuid);
+        if (targetPlayer != null && targetPlayer.isOnline()) {
+            if (plugin.isDebugMode()) {
+                plugin.getLogger().log(Level.INFO, "Received ''LiveInventorySync'' request for {0} ({1}). Reloading data from DB.", new Object[]{targetPlayer.getName(), viewTypeStr});
+            }
+            com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
+                PlayerData updatedData = loadPlayerData(uuid, targetPlayer.getName(), targetPlayer.getGameMode().name());
+                if (updatedData != null) {
+                    com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, targetPlayer, () -> {
+                        if (!targetPlayer.isOnline()) return;
+                        if ("INVENTORY".equalsIgnoreCase(viewTypeStr) && updatedData.getInventoryContents() != null) {
+                            targetPlayer.getInventory().setContents(updatedData.getInventoryContents());
+                            if (updatedData.getArmorContents() != null) {
+                                targetPlayer.getInventory().setArmorContents(updatedData.getArmorContents());
                             }
-                        });
-                    }
-                });
-            }
+                            targetPlayer.updateInventory();
+                        } else if ("ENDERCHEST".equalsIgnoreCase(viewTypeStr) && updatedData.getEnderChestContents() != null) {
+                            targetPlayer.getEnderChest().setContents(updatedData.getEnderChestContents());
+                            targetPlayer.updateInventory();
+                        }
+                    });
+                }
+            });
         }
     }
 
@@ -262,26 +270,31 @@ public class PlayerListener implements Listener, PluginMessageListener {
         org.bukkit.GameMode newMode = event.getNewGameMode();
         if (oldMode == newMode) return;
 
+        // Snapshot inventory synchronously on the main/entity thread before entering async scheduler
+        PlayerData oldData = new PlayerData(player, plugin);
+        oldData.setGameMode(oldMode.name());
+
         com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
             try {
-                // 1. Snapshot current inventory for old gamemode and save it
-                PlayerData oldData = new PlayerData(player, plugin);
-                oldData.setGameMode(oldMode.name());
+                // 1. Save old gamemode inventory profile asynchronously
                 databaseManager.saveInventoryComponent(plugin, oldData, uuid);
 
                 // 2. Load inventory snapshot for new gamemode
-                PlayerData newData = new PlayerData();
-                newData.setGameMode(newMode.name());
-                databaseManager.loadPlayerDataComponents(plugin, uuid, player.getName());
+                PlayerData newData = databaseManager.loadPlayerDataComponents(plugin, uuid, player.getName(), newMode.name());
+                if (newData == null) {
+                    newData = new PlayerData();
+                    newData.setGameMode(newMode.name());
+                }
 
                 // 3. Apply new gamemode inventory profile on main thread
+                final PlayerData targetData = newData;
                 com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
                     if (player.isOnline()) {
-                        applyInventory(player, newData);
+                        applyInventory(player, targetData);
                     }
                 });
             } catch (Exception e) {
-                plugin.getLogger().log(Level.WARNING, "Failed to swap gamemode inventory for " + player.getName() + ": " + e.getMessage());
+                plugin.getLogger().log(Level.WARNING, "Failed to swap gamemode inventory for {0}: {1}", new Object[]{player.getName(), e.getMessage()});
             }
         });
     }
@@ -795,6 +808,15 @@ public class PlayerListener implements Listener, PluginMessageListener {
     public PlayerData loadPlayerData(UUID uuid, String name) {
         try {
             return databaseManager.loadPlayerDataComponents(plugin, uuid, name);
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.SEVERE, "Failed to load player data for {0}: {1}", new Object[]{uuid, e.getMessage()});
+        }
+        return null;
+    }
+
+    public PlayerData loadPlayerData(UUID uuid, String name, String gameMode) {
+        try {
+            return databaseManager.loadPlayerDataComponents(plugin, uuid, name, gameMode);
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "Failed to load player data for {0}: {1}", new Object[]{uuid, e.getMessage()});
         }
