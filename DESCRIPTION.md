@@ -44,6 +44,8 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
   - **Persistent Data Container (PDC)** (Custom metadata)
   - **Flight & GameMode** status
   - **Companions & Pets** (Tamed wolves, cats, parrots, etc.)
+  - **Map Items & Canvas Sync** (Cross-server map stashing via `mode: return` or canvas sync via `global`)
+  - **Separate Gamemode Inventories** (Opt-in separate profiles for Survival, Creative, Adventure, Spectator)
 - **Resilient Connection Pooling:** Uses HikariCP with optimized settings for resilience against network jitter.
 - **Flexible Storage:** Support for **MySQL/MariaDB** or local **SQLite** databases.
 - **Granular Sync Control**: Enable or disable synchronization for any specific data type via `config.yml`.
@@ -131,6 +133,12 @@ sync-data:
   pdc: true
   flight-gamemode: true
   companions: true
+  maps: true
+  separate-gamemode-inventories: false
+
+# Map Synchronization Settings
+maps:
+  mode: "return" # "return", "global", or "untracked"
 
 # Security & Identity
 security:
