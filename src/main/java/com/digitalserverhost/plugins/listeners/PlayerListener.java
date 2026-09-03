@@ -29,7 +29,6 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
     private static final String WARNING_BORDER = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
     private static final String PLAYER_PREFIX = "Player ";
-    private static final String MODE_RETURN = "return";
 
     private final DatabaseManager databaseManager;
     private final MCDataBridge plugin;
@@ -57,7 +56,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
             case "SaveAndRelease" -> handleSaveAndReleaseMessage(in);
             case "ForceUnlock" -> handleForceUnlockMessage(in);
             case "LiveInventorySync" -> handleLiveInventorySyncMessage(in);
-            default -> { /* ignore unrecognized subchannels */ }
+            default -> {
+                /* ignore unrecognized subchannels */ }
         }
     }
 
@@ -68,7 +68,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
         if (playerToSave != null) {
             if (plugin.isDebugMode()) {
-                plugin.getLogger().log(Level.INFO, "Received ''SaveAndRelease'' request for {0}. Triggering save.", playerToSave.getName());
+                plugin.getLogger().log(Level.INFO, "Received ''SaveAndRelease'' request for {0}. Triggering save.",
+                        playerToSave.getName());
             }
 
             switchingPlayers.put(uuid, true);
@@ -93,20 +94,25 @@ public class PlayerListener implements Listener, PluginMessageListener {
         Player targetPlayer = Bukkit.getPlayer(uuid);
         if (targetPlayer != null && targetPlayer.isOnline()) {
             if (plugin.isDebugMode()) {
-                plugin.getLogger().log(Level.INFO, "Received ''LiveInventorySync'' request for {0} ({1}). Reloading data from DB.", new Object[]{targetPlayer.getName(), viewTypeStr});
+                plugin.getLogger().log(Level.INFO,
+                        "Received ''LiveInventorySync'' request for {0} ({1}). Reloading data from DB.",
+                        new Object[] { targetPlayer.getName(), viewTypeStr });
             }
             com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
-                PlayerData updatedData = loadPlayerData(uuid, targetPlayer.getName(), targetPlayer.getGameMode().name());
+                PlayerData updatedData = loadPlayerData(uuid, targetPlayer.getName(),
+                        targetPlayer.getGameMode().name());
                 if (updatedData != null) {
                     com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, targetPlayer, () -> {
-                        if (!targetPlayer.isOnline()) return;
+                        if (!targetPlayer.isOnline())
+                            return;
                         if ("INVENTORY".equalsIgnoreCase(viewTypeStr) && updatedData.getInventoryContents() != null) {
                             targetPlayer.getInventory().setContents(updatedData.getInventoryContents());
                             if (updatedData.getArmorContents() != null) {
                                 targetPlayer.getInventory().setArmorContents(updatedData.getArmorContents());
                             }
                             targetPlayer.updateInventory();
-                        } else if ("ENDERCHEST".equalsIgnoreCase(viewTypeStr) && updatedData.getEnderChestContents() != null) {
+                        } else if ("ENDERCHEST".equalsIgnoreCase(viewTypeStr)
+                                && updatedData.getEnderChestContents() != null) {
                             targetPlayer.getEnderChest().setContents(updatedData.getEnderChestContents());
                             targetPlayer.updateInventory();
                         }
@@ -133,9 +139,9 @@ public class PlayerListener implements Listener, PluginMessageListener {
             if (!waitForLock(uuid, name, serverId)) {
                 String kickMsg = "§c[DataBridge] Your data is still being saved by another server.\n§7Please wait a few seconds and try again.";
                 com.digitalserverhost.plugins.utils.SchedulerUtils.getBridge().disallowPlayer(
-                    event, AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg
-                );
-                plugin.getLogger().log(Level.WARNING, "{0}{1} was disallowed due to a persistent data lock.", new Object[]{PLAYER_PREFIX, name});
+                        event, AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg);
+                plugin.getLogger().log(Level.WARNING, "{0}{1} was disallowed due to a persistent data lock.",
+                        new Object[] { PLAYER_PREFIX, name });
                 return;
             }
 
@@ -147,18 +153,23 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 loadingCache.put(uuid, data);
             }
         } catch (PlayerData.ItemDeserializationException e) {
-            plugin.getLogger().log(Level.SEVERE, "A critical error occurred while deserializing inventory for player {0}. {1}", new Object[]{name, e.getMessage()});
+            plugin.getLogger().log(Level.SEVERE,
+                    "A critical error occurred while deserializing inventory for player {0}. {1}",
+                    new Object[] { name, e.getMessage() });
             String kickMsg = "§c[DataBridge] A critical error occurred while deserializing your inventory. Please contact an administrator.";
-            com.digitalserverhost.plugins.utils.SchedulerUtils.getBridge().disallowPlayer(event, AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg);
+            com.digitalserverhost.plugins.utils.SchedulerUtils.getBridge().disallowPlayer(event,
+                    AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg);
             databaseManager.releaseLock(uuid, serverId);
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             plugin.getLogger().log(Level.SEVERE, "Pre-login thread was interrupted for player {0}", name);
             databaseManager.releaseLock(uuid, serverId);
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "Critical error during pre-login for player {0}: {1}", new Object[]{name, e.getMessage()});
+            plugin.getLogger().log(Level.SEVERE, "Critical error during pre-login for player {0}: {1}",
+                    new Object[] { name, e.getMessage() });
             String kickMsg = "§c[DataBridge] Could not process your player data. Please relog.";
-            com.digitalserverhost.plugins.utils.SchedulerUtils.getBridge().disallowPlayer(event, AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg);
+            com.digitalserverhost.plugins.utils.SchedulerUtils.getBridge().disallowPlayer(event,
+                    AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickMsg);
             databaseManager.releaseLock(uuid, serverId);
         }
     }
@@ -176,7 +187,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
             MetricsManager.getInstance().incrementLockContentionRetries();
 
             if (plugin.isDebugMode()) {
-                plugin.getLogger().log(Level.INFO, "{0}{1}''s data is locked. Waiting... (Attempt {2})", new Object[]{PLAYER_PREFIX, name, attempts + 1});
+                plugin.getLogger().log(Level.INFO, "{0}{1}''s data is locked. Waiting... (Attempt {2})",
+                        new Object[] { PLAYER_PREFIX, name, attempts + 1 });
             }
             Thread.sleep(WAIT_TIME_MS);
             attempts++;
@@ -198,7 +210,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
         if (!autoMigrated) {
             if ("PREMIUM".equals(plugin.getIdentityMode())) {
                 plugin.getLogger().log(Level.SEVERE, WARNING_BORDER);
-                plugin.getLogger().log(Level.SEVERE, "!!! IDENTITY COLLISION (PREMIUM): {0} joined with new UUID !!!", name);
+                plugin.getLogger().log(Level.SEVERE, "!!! IDENTITY COLLISION (PREMIUM): {0} joined with new UUID !!!",
+                        name);
                 plugin.getLogger().log(Level.SEVERE, "!!! Current UUID:  {0}", uuid);
                 plugin.getLogger().log(Level.SEVERE, "!!! Previous UUID: {0}", nameOwnerUuid);
                 plugin.getLogger().log(Level.SEVERE, "!!! Join ALLOWED, but data load is BLOCKED for safety. !!!");
@@ -206,7 +219,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 plugin.getLogger().log(Level.SEVERE, WARNING_BORDER);
             } else if (plugin.getConfig().getBoolean("security.log-uuid-mismatches", true)) {
                 plugin.getLogger().log(Level.WARNING, WARNING_BORDER);
-                plugin.getLogger().log(Level.WARNING, "!!! IDENTITY COLLISION: Player {0} joined with new UUID !!!", name);
+                plugin.getLogger().log(Level.WARNING, "!!! IDENTITY COLLISION: Player {0} joined with new UUID !!!",
+                        name);
                 plugin.getLogger().log(Level.WARNING, "!!! Current UUID:  {0}", uuid);
                 plugin.getLogger().log(Level.WARNING, "!!! Previous UUID: {0}", nameOwnerUuid);
                 plugin.getLogger().log(Level.WARNING, "!!! This is common in Cracked -> Premium transitions.   !!!");
@@ -221,11 +235,14 @@ public class PlayerListener implements Listener, PluginMessageListener {
         try {
             org.bukkit.plugin.Plugin fastLoginPlugin = Bukkit.getPluginManager().getPlugin("FastLogin");
             if (fastLoginPlugin != null && fastLoginPlugin.isEnabled()) {
-                Object status = fastLoginPlugin.getClass().getMethod("getStatus", UUID.class).invoke(fastLoginPlugin, uuid);
+                Object status = fastLoginPlugin.getClass().getMethod("getStatus", UUID.class).invoke(fastLoginPlugin,
+                        uuid);
                 boolean isPremium = (boolean) status.getClass().getMethod("isPremium").invoke(status);
-                
+
                 if (isPremium) {
-                    plugin.getLogger().log(Level.INFO, "FastLogin verified Premium status for {0}. Attempting auto-migration from {1} to {2}", new Object[]{name, nameOwnerUuid, uuid});
+                    plugin.getLogger().log(Level.INFO,
+                            "FastLogin verified Premium status for {0}. Attempting auto-migration from {1} to {2}",
+                            new Object[] { name, nameOwnerUuid, uuid });
                     if (databaseManager.migrateData(nameOwnerUuid, uuid)) {
                         plugin.getLogger().log(Level.INFO, "Auto-migration successful for {0}", name);
                         return true;
@@ -243,12 +260,13 @@ public class PlayerListener implements Listener, PluginMessageListener {
     private void verifyIdentityRecord(UUID uuid, String name) {
         DatabaseManager.IdentityRecord identityRecord = databaseManager.getIdentityRecord(uuid);
         if (identityRecord != null) {
-            String currentHash = com.digitalserverhost.plugins.utils.HashUtils.generateIdentityHash(name, uuid, plugin.getSecuritySeed());
+            String currentHash = com.digitalserverhost.plugins.utils.HashUtils.generateIdentityHash(name, uuid,
+                    plugin.getSecuritySeed());
             String storedHash = identityRecord.getIdentityHash();
-            
+
             if (storedHash != null && !currentHash.equals(storedHash) && plugin.isDebugMode()) {
-                plugin.getLogger().log(Level.INFO, "Verified name change or seed update for {0}: {1} -> {2}", 
-                    new Object[]{uuid, identityRecord.getLastKnownName(), name});
+                plugin.getLogger().log(Level.INFO, "Verified name change or seed update for {0}: {1} -> {2}",
+                        new Object[] { uuid, identityRecord.getLastKnownName(), name });
             }
         }
     }
@@ -259,20 +277,25 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onGameModeChange(org.bukkit.event.player.PlayerGameModeChangeEvent event) {
-        if (!plugin.isSyncEnabledNewFeature("separate-gamemode-inventories")) return;
+        if (!plugin.isSyncEnabledNewFeature("separate-gamemode-inventories"))
+            return;
 
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
-        if (applyingDataPlayers.containsKey(uuid)) return;
-        if (plugin.isServerBlacklisted(plugin.getServerId()) || plugin.isWorldBlacklisted(player.getWorld().getName())) {
+        if (applyingDataPlayers.containsKey(uuid))
+            return;
+        if (plugin.isServerBlacklisted(plugin.getServerId())
+                || plugin.isWorldBlacklisted(player.getWorld().getName())) {
             return;
         }
 
         org.bukkit.GameMode oldMode = player.getGameMode();
         org.bukkit.GameMode newMode = event.getNewGameMode();
-        if (oldMode == newMode) return;
+        if (oldMode == newMode)
+            return;
 
-        // Snapshot inventory synchronously on the main/entity thread before entering async scheduler
+        // Snapshot inventory synchronously on the main/entity thread before entering
+        // async scheduler
         PlayerData oldData = new PlayerData(player, plugin);
         oldData.setGameMode(oldMode.name());
 
@@ -282,7 +305,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 databaseManager.saveInventoryComponent(plugin, oldData, uuid);
 
                 // 2. Load inventory snapshot for new gamemode
-                PlayerData newData = databaseManager.loadPlayerDataComponents(plugin, uuid, player.getName(), newMode.name());
+                PlayerData newData = databaseManager.loadPlayerDataComponents(plugin, uuid, player.getName(),
+                        newMode.name());
                 if (newData == null) {
                     newData = new PlayerData();
                     newData.setGameMode(newMode.name());
@@ -296,7 +320,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
                     }
                 });
             } catch (Exception e) {
-                plugin.getLogger().log(Level.WARNING, "Failed to swap gamemode inventory for {0}: {1}", new Object[]{player.getName(), e.getMessage()});
+                plugin.getLogger().log(Level.WARNING, "Failed to swap gamemode inventory for {0}: {1}",
+                        new Object[] { player.getName(), e.getMessage() });
             }
         });
     }
@@ -309,7 +334,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
         if (plugin.isServerBlacklisted(serverId) || plugin.isWorldBlacklisted(player.getWorld().getName())) {
             if (plugin.isDebugMode()) {
-                plugin.getLogger().log(Level.INFO, "{0}{1} joined a blacklisted server/world. Sync disabled.", new Object[]{PLAYER_PREFIX, player.getName()});
+                plugin.getLogger().log(Level.INFO, "{0}{1} joined a blacklisted server/world. Sync disabled.",
+                        new Object[] { PLAYER_PREFIX, player.getName() });
             }
             return;
         }
@@ -320,25 +346,25 @@ public class PlayerListener implements Listener, PluginMessageListener {
         if (data != null) {
             applyPlayerData(player, data);
         } else {
-            plugin.getLogger().log(Level.INFO, "{0}{1} joining with fresh profile. Lock will be released on quit.", new Object[]{PLAYER_PREFIX, player.getName()});
+            plugin.getLogger().log(Level.INFO, "{0}{1} joining with fresh profile. Lock will be released on quit.",
+                    new Object[] { PLAYER_PREFIX, player.getName() });
         }
 
-        com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> 
-            databaseManager.updateLastKnownName(uuid, player.getName(), plugin.getSecuritySeed())
-        );
+        com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin,
+                () -> databaseManager.updateLastKnownName(uuid, player.getName(), plugin.getSecuritySeed()));
 
         long heartbeatTicks = plugin.getLockHeartbeatSeconds() * 20L;
         com.digitalserverhost.plugins.utils.SchedulerUtils.getScheduler().startHeartbeat(
-            plugin, player, uuid, serverId, heartbeatTicks,
-            targetUuid -> databaseManager.updateLock(targetUuid, serverId)
-        );
+                plugin, player, uuid, serverId, heartbeatTicks,
+                targetUuid -> databaseManager.updateLock(targetUuid, serverId));
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerKick(PlayerKickEvent event) {
         if (switchingPlayers.remove(event.getPlayer().getUniqueId()) != null) {
             if (plugin.isDebugMode()) {
-                plugin.getLogger().log(Level.INFO, "PlayerKickEvent for {0} ignored, handled by ''SaveAndRelease''.", event.getPlayer().getName());
+                plugin.getLogger().log(Level.INFO, "PlayerKickEvent for {0} ignored, handled by ''SaveAndRelease''.",
+                        event.getPlayer().getName());
             }
             return;
         }
@@ -349,7 +375,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
     public void onPlayerQuit(PlayerQuitEvent event) {
         if (switchingPlayers.remove(event.getPlayer().getUniqueId()) != null) {
             if (plugin.isDebugMode()) {
-                plugin.getLogger().log(Level.INFO, "PlayerQuitEvent for {0} ignored, handled by ''SaveAndRelease''.", event.getPlayer().getName());
+                plugin.getLogger().log(Level.INFO, "PlayerQuitEvent for {0} ignored, handled by ''SaveAndRelease''.",
+                        event.getPlayer().getName());
             }
             return;
         }
@@ -375,7 +402,9 @@ public class PlayerListener implements Listener, PluginMessageListener {
             safelyCloseInventory(player);
             finalData = new PlayerData(player, plugin);
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "Failed to create final data snapshot for {0}. Data will not be saved. Error: {1}", new Object[]{name, e.getMessage()});
+            plugin.getLogger().log(Level.SEVERE,
+                    "Failed to create final data snapshot for {0}. Data will not be saved. Error: {1}",
+                    new Object[] { name, e.getMessage() });
             databaseManager.releaseLock(uuid, serverId);
             savingPlayers.remove(uuid);
             return;
@@ -388,17 +417,22 @@ public class PlayerListener implements Listener, PluginMessageListener {
         com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin, () -> {
             try {
                 String seed = plugin.getSecuritySeed();
-                boolean success = databaseManager.saveAndReleaseLockComponents(plugin, finalData, name, uuid, serverId, seed);
+                boolean success = databaseManager.saveAndReleaseLockComponents(plugin, finalData, name, uuid, serverId,
+                        seed);
 
                 if (success) {
                     if (plugin.isDebugMode()) {
                         plugin.getLogger().log(Level.INFO, "Successfully saved data and released lock for {0}.", name);
                     }
                 } else if (plugin.isDebugMode()) {
-                    plugin.getLogger().log(Level.WARNING, "Could not save data for {0}: lock was lost or not held by this server ({1}).", new Object[]{name, serverId});
+                    plugin.getLogger().log(Level.WARNING,
+                            "Could not save data for {0}: lock was lost or not held by this server ({1}).",
+                            new Object[] { name, serverId });
                 }
             } catch (Exception e) {
-                plugin.getLogger().log(Level.SEVERE, "A critical error occurred during async save for {0}. Releasing lock to prevent player being stuck. ERROR: {1}", new Object[]{name, e.getMessage()});
+                plugin.getLogger().log(Level.SEVERE,
+                        "A critical error occurred during async save for {0}. Releasing lock to prevent player being stuck. ERROR: {1}",
+                        new Object[] { name, e.getMessage() });
                 databaseManager.releaseLock(uuid, serverId);
             } finally {
                 savingPlayers.remove(uuid);
@@ -443,17 +477,19 @@ public class PlayerListener implements Listener, PluginMessageListener {
     }
 
     public void applyPlayerData(Player player, PlayerData data) {
-        if (data == null || player == null) return;
+        if (data == null || player == null)
+            return;
         final UUID uuid = player.getUniqueId();
- 
+
         com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
             try {
-                if (!player.isOnline()) return;
+                if (!player.isOnline())
+                    return;
                 applyingDataPlayers.put(uuid, true);
- 
+
                 applyFlightAndGameMode(player, data);
 
-                if (plugin.isSyncEnabledNewFeature("separate-gamemode-inventories") && data.getGameMode() != null 
+                if (plugin.isSyncEnabledNewFeature("separate-gamemode-inventories") && data.getGameMode() != null
                         && !player.getGameMode().name().equalsIgnoreCase(data.getGameMode())) {
                     loadAndApplyGamemodeInventory(player, player.getGameMode().name());
                 } else {
@@ -467,11 +503,29 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 applyPersistentData(player, data);
                 applyLocation(player, data);
                 applyCompanions(player, data);
-                applyMaps(player, data);
- 
+
+                // Schedule delayed map packet dispatch to force client rendering after player
+                // spawns
+                com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntityLater(plugin, player, () -> {
+                    if (!player.isOnline())
+                        return;
+                    for (org.bukkit.inventory.ItemStack item : player.getInventory().getContents()) {
+                        if (item != null && item.getType() == org.bukkit.Material.FILLED_MAP
+                                && item.getItemMeta() instanceof org.bukkit.inventory.meta.MapMeta meta
+                                && meta.hasMapView()) {
+                            org.bukkit.map.MapView view = meta.getMapView();
+                            if (view != null) {
+                                player.sendMap(view);
+                            }
+                        }
+                    }
+                    player.updateInventory();
+                }, 20L);
+
                 plugin.getLogger().log(Level.INFO, "Successfully applied data to player {0}", player.getName());
             } catch (Exception e) {
-                plugin.getLogger().log(Level.SEVERE, e, () -> "A critical error occurred while applying data to player " + player.getName());
+                plugin.getLogger().log(Level.SEVERE, e,
+                        () -> "A critical error occurred while applying data to player " + player.getName());
             } finally {
                 applyingDataPlayers.remove(uuid);
             }
@@ -500,11 +554,12 @@ public class PlayerListener implements Listener, PluginMessageListener {
                     }
                 });
             } catch (Exception e) {
-                plugin.getLogger().log(Level.WARNING, "Failed to load {0} inventory for {1}: {2}", new Object[]{gamemode, name, e.getMessage()});
+                plugin.getLogger().log(Level.WARNING, "Failed to load {0} inventory for {1}: {2}",
+                        new Object[] { gamemode, name, e.getMessage() });
             }
         });
     }
- 
+
     private void applyBasicStats(Player player, PlayerData data) {
         if (plugin.isSyncEnabled("food-level")) {
             player.setFoodLevel(data.getFoodLevel());
@@ -517,24 +572,112 @@ public class PlayerListener implements Listener, PluginMessageListener {
             player.setLevel(data.getLevel());
         }
         if (plugin.isSyncEnabled("health")) {
-            org.bukkit.attribute.AttributeInstance maxHealthAttr = player.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
+            org.bukkit.attribute.AttributeInstance maxHealthAttr = player
+                    .getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
             double maxHealth = maxHealthAttr != null ? maxHealthAttr.getValue() : 20.0;
             player.setHealth(Math.min(data.getHealth(), maxHealth));
         }
     }
- 
+
     private void applyInventory(Player player, PlayerData data) {
+        com.digitalserverhost.plugins.utils.MapSnapshot[] mapSnapshots = null;
+        if (plugin.isSyncEnabledNewFeature("maps") && data.getMapsNBT() != null && !data.getMapsNBT().isEmpty()) {
+            try {
+                mapSnapshots = MCDataBridge.getGson().fromJson(data.getMapsNBT(),
+                        com.digitalserverhost.plugins.utils.MapSnapshot[].class);
+            } catch (Exception _) {
+                // Default to null if maps snapshot JSON parsing fails
+            }
+        }
+
         if (plugin.isSyncEnabled("inventory")) {
-            player.getInventory().setContents(data.getInventoryContents());
+            player.getInventory()
+                    .setContents(processMapItemsInline(player, data.getInventoryContents(), "MAIN", mapSnapshots));
         }
         if (plugin.isSyncEnabled("armor")) {
-            player.getInventory().setArmorContents(data.getArmorContents());
+            player.getInventory()
+                    .setArmorContents(processMapItemsInline(player, data.getArmorContents(), "ARMOR", mapSnapshots));
         }
-        if (plugin.isSyncEnabledNewFeature("ender-chest") && data.getEnderChestContents() != null && data.getEnderChestContents().length > 0) {
-            player.getEnderChest().setContents(data.getEnderChestContents());
+        if (plugin.isSyncEnabledNewFeature("ender-chest") && data.getEnderChestContents() != null
+                && data.getEnderChestContents().length > 0) {
+            player.getEnderChest().setContents(
+                    processMapItemsInline(player, data.getEnderChestContents(), "ENDERCHEST", mapSnapshots));
         }
     }
- 
+
+    private org.bukkit.inventory.ItemStack[] processMapItemsInline(Player player,
+            org.bukkit.inventory.ItemStack[] items, String invType,
+            com.digitalserverhost.plugins.utils.MapSnapshot[] mapSnapshots) {
+        if (items == null)
+            return new org.bukkit.inventory.ItemStack[0];
+        org.bukkit.inventory.ItemStack[] processed = new org.bukkit.inventory.ItemStack[items.length];
+        for (int i = 0; i < items.length; i++) {
+            org.bukkit.inventory.ItemStack item = items[i];
+            if (item != null && item.getType() == org.bukkit.Material.FILLED_MAP
+                    && item.getItemMeta() instanceof org.bukkit.inventory.meta.MapMeta meta) {
+                // Find matching map snapshot for pixel artwork
+                byte[] canvasPixels = null;
+                if (mapSnapshots != null) {
+                    for (com.digitalserverhost.plugins.utils.MapSnapshot snap : mapSnapshots) {
+                        if (snap != null && snap.getCanvasPixels() != null && snap.getCanvasPixels().length > 0
+                                && snap.getSlot() == i && invType.equalsIgnoreCase(snap.getInventoryType())) {
+                            canvasPixels = snap.getCanvasPixels();
+                            break;
+                        }
+                    }
+                    if (canvasPixels == null && meta.hasMapId()) {
+                        int mapId = meta.getMapId();
+                        for (com.digitalserverhost.plugins.utils.MapSnapshot snap : mapSnapshots) {
+                            if (snap != null && snap.getCanvasPixels() != null && snap.getCanvasPixels().length > 0
+                                    && snap.getOriginalMapId() == mapId) {
+                                canvasPixels = snap.getCanvasPixels();
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                org.bukkit.inventory.ItemStack cleanItem = new org.bukkit.inventory.ItemStack(
+                        org.bukkit.Material.FILLED_MAP, item.getAmount());
+                org.bukkit.inventory.meta.MapMeta cleanMeta = (org.bukkit.inventory.meta.MapMeta) cleanItem
+                        .getItemMeta();
+                if (cleanMeta != null) {
+                    if (meta.hasDisplayName())
+                        cleanMeta.setDisplayName(meta.getDisplayName());
+                    if (meta.hasLore())
+                        cleanMeta.setLore(meta.getLore());
+                    if (meta.hasCustomModelData())
+                        cleanMeta.setCustomModelData(meta.getCustomModelData());
+                    cleanItem.setItemMeta(cleanMeta);
+
+                    if (canvasPixels != null && canvasPixels.length > 0) {
+                        applyGlobalMapCanvasRenderer(player,
+                                (org.bukkit.inventory.meta.MapMeta) cleanItem.getItemMeta(), cleanItem, canvasPixels);
+                    } else {
+                        org.bukkit.map.MapView view = meta.hasMapView() ? meta.getMapView()
+                                : Bukkit.createMap(player.getWorld());
+                        boolean lockGlobal = plugin.getConfig().getBoolean("maps.lock-global-maps", false);
+                        if (lockGlobal && view != null) {
+                            view.setLocked(true);
+                        }
+                        org.bukkit.inventory.meta.MapMeta currentMeta = (org.bukkit.inventory.meta.MapMeta) cleanItem
+                                .getItemMeta();
+                        if (currentMeta != null) {
+                            currentMeta.setMapView(view);
+                            cleanItem.setItemMeta(currentMeta);
+                        }
+                    }
+                    processed[i] = cleanItem;
+                } else {
+                    processed[i] = item;
+                }
+            } else {
+                processed[i] = item;
+            }
+        }
+        return processed;
+    }
+
     private void applyPotionEffects(Player player, PlayerData data) {
         if (plugin.isSyncEnabled("potion-effects")) {
             for (PotionEffect effect : player.getActivePotionEffects()) {
@@ -549,15 +692,17 @@ public class PlayerListener implements Listener, PluginMessageListener {
             }
         }
     }
- 
+
     private void applyAdvancementsAndRecipes(Player player, PlayerData data) {
-        if (!plugin.isSyncEnabledNewFeature("advancements")) return;
+        if (!plugin.isSyncEnabledNewFeature("advancements"))
+            return;
         applyDiscoveredRecipes(player, data);
         applyAdvancementProgress(player, data);
     }
 
     private void applyDiscoveredRecipes(Player player, PlayerData data) {
-        if (data.getDiscoveredRecipes() == null) return;
+        if (data.getDiscoveredRecipes() == null)
+            return;
         for (String recipeKey : data.getDiscoveredRecipes()) {
             try {
                 org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(recipeKey);
@@ -571,7 +716,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
     }
 
     private void applyAdvancementProgress(Player player, PlayerData data) {
-        if (data.getAdvancements() == null) return;
+        if (data.getAdvancements() == null)
+            return;
         for (java.util.Map.Entry<String, java.util.List<String>> entry : data.getAdvancements().entrySet()) {
             applySingleAdvancement(player, entry.getKey(), entry.getValue());
         }
@@ -595,7 +741,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
             // Skip invalid advancements
         }
     }
- 
+
     private void applyStatistics(Player player, PlayerData data) {
         if (plugin.isSyncEnabledNewFeature("statistics") && data.getStatistics() != null) {
             Map<String, Integer> dbStats = data.getStatistics();
@@ -609,21 +755,24 @@ public class PlayerListener implements Listener, PluginMessageListener {
         }
     }
 
-    private void applySingleStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat, @NotNull Map<String, Integer> dbStats) {
+    private void applySingleStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat,
+            @NotNull Map<String, Integer> dbStats) {
         if (stat.getType() == org.bukkit.Statistic.Type.UNTYPED) {
             String key = stat.name();
             int dbVal = dbStats.getOrDefault(key, 0);
             if (player.getStatistic(stat) != dbVal) {
                 player.setStatistic(stat, dbVal);
             }
-        } else if (stat.getType() == org.bukkit.Statistic.Type.BLOCK || stat.getType() == org.bukkit.Statistic.Type.ITEM) {
+        } else if (stat.getType() == org.bukkit.Statistic.Type.BLOCK
+                || stat.getType() == org.bukkit.Statistic.Type.ITEM) {
             applyMaterialStatistic(player, stat, dbStats);
         } else if (stat.getType() == org.bukkit.Statistic.Type.ENTITY) {
             applyEntityStatistic(player, stat, dbStats);
         }
     }
 
-    private void applyMaterialStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat, @NotNull Map<String, Integer> dbStats) {
+    private void applyMaterialStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat,
+            @NotNull Map<String, Integer> dbStats) {
         for (org.bukkit.Material mat : org.bukkit.Material.values()) {
             try {
                 String key = stat.name() + ":" + mat.name();
@@ -637,7 +786,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
         }
     }
 
-    private void applyEntityStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat, @NotNull Map<String, Integer> dbStats) {
+    private void applyEntityStatistic(@NotNull Player player, @NotNull org.bukkit.Statistic stat,
+            @NotNull Map<String, Integer> dbStats) {
         for (org.bukkit.entity.EntityType entityType : org.bukkit.entity.EntityType.values()) {
             try {
                 String key = stat.name() + ":" + entityType.name();
@@ -650,22 +800,25 @@ public class PlayerListener implements Listener, PluginMessageListener {
             }
         }
     }
- 
+
     private void applyPersistentData(Player player, PlayerData data) {
         if (plugin.isSyncEnabledNewFeature("pdc") && data.getPdcNBT() != null && !data.getPdcNBT().isEmpty()) {
             try {
-                de.tr7zw.changeme.nbtapi.NBT.modify(player, (java.util.function.Consumer<de.tr7zw.changeme.nbtapi.iface.ReadWriteNBT>) nbt -> 
-                    nbt.getOrCreateCompound("PublicBukkitValues").mergeCompound(de.tr7zw.changeme.nbtapi.NBT.parseNBT(data.getPdcNBT()))
-                );
+                de.tr7zw.changeme.nbtapi.NBT.modify(player,
+                        (java.util.function.Consumer<de.tr7zw.changeme.nbtapi.iface.ReadWriteNBT>) nbt -> nbt
+                                .getOrCreateCompound("PublicBukkitValues")
+                                .mergeCompound(de.tr7zw.changeme.nbtapi.NBT.parseNBT(data.getPdcNBT())));
             } catch (Exception e) {
-                plugin.getLogger().log(Level.WARNING, "Failed to apply PDC for {0}: {1}", new Object[]{player.getName(), e.getMessage()});
+                plugin.getLogger().log(Level.WARNING, "Failed to apply PDC for {0}: {1}",
+                        new Object[] { player.getName(), e.getMessage() });
             }
         }
     }
- 
+
     private void applyFlightAndGameMode(Player player, PlayerData data) {
-        if (!plugin.isSyncEnabledNewFeature("flight-gamemode")) return;
- 
+        if (!plugin.isSyncEnabledNewFeature("flight-gamemode"))
+            return;
+
         if (data.getGameMode() != null) {
             try {
                 player.setGameMode(org.bukkit.GameMode.valueOf(data.getGameMode()));
@@ -673,106 +826,244 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 // Ignore invalid gamemode
             }
         }
-        
+
         com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntityLater(plugin, player, () -> {
             if (player.isOnline()) {
                 player.setAllowFlight(data.isAllowFlight());
                 player.setFlying(data.isFlying());
                 if (plugin.isDebugMode()) {
-                    plugin.getLogger().log(Level.INFO, "Delayed flight applied for {0}: Allow={1}, Flying={2}", new Object[]{player.getName(), data.isAllowFlight(), data.isFlying()});
+                    plugin.getLogger().log(Level.INFO, "Delayed flight applied for {0}: Allow={1}, Flying={2}",
+                            new Object[] { player.getName(), data.isAllowFlight(), data.isFlying() });
                 }
             }
         }, 5L);
     }
- 
+
     private void applyLocation(Player player, PlayerData data) {
         if (plugin.isSyncEnabledNewFeature("location") && data.getWorld() != null) {
             org.bukkit.World world = Bukkit.getWorld(data.getWorld());
             if (world != null) {
-                org.bukkit.Location loc = new org.bukkit.Location(world, data.getX(), data.getY(), data.getZ(), data.getYaw(), data.getPitch());
+                org.bukkit.Location loc = new org.bukkit.Location(world, data.getX(), data.getY(), data.getZ(),
+                        data.getYaw(), data.getPitch());
                 player.teleport(loc);
             }
         }
     }
 
     private void applyCompanions(Player player, PlayerData data) {
-        if (!plugin.isSyncEnabledNewFeature("companions")) return;
+        if (!plugin.isSyncEnabledNewFeature("companions"))
+            return;
         String mode = plugin.getConfig().getString("companions.mode", "follow").toLowerCase();
-        if (mode.equals("untracked") || mode.equals("off")) return;
+        if (mode.equals("untracked") || mode.equals("off"))
+            return;
 
         String companionsNbt = data.getCompanionsNBT();
-        if (companionsNbt == null || companionsNbt.isEmpty()) return;
+        if (companionsNbt == null || companionsNbt.isEmpty())
+            return;
 
         PlayerData.CompanionSnapshot[] snapshots;
         try {
             snapshots = new com.google.gson.Gson().fromJson(companionsNbt, PlayerData.CompanionSnapshot[].class);
         } catch (Exception e) {
             plugin.getLogger().log(Level.WARNING, "Failed to parse companions NBT for {0}: {1}",
-                    new Object[]{player.getName(), e.getMessage()});
+                    new Object[] { player.getName(), e.getMessage() });
             return;
         }
-        if (snapshots == null || snapshots.length == 0) return;
+        if (snapshots == null || snapshots.length == 0)
+            return;
 
         com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
-            if (!player.isOnline()) return;
+            if (!player.isOnline())
+                return;
             for (PlayerData.CompanionSnapshot snap : snapshots) {
                 spawnCompanion(player, snap);
             }
         });
     }
 
-    private void applyMaps(Player player, PlayerData data) {
-        if (!plugin.isSyncEnabledNewFeature("maps")) return;
-        String mode = plugin.getConfig().getString("maps.mode", MODE_RETURN).toLowerCase();
-        if (mode.equals("untracked") || mode.equals("off")) return;
-
-        String mapsNbt = data.getMapsNBT();
-        if (mapsNbt == null || mapsNbt.isEmpty()) return;
-
-        com.digitalserverhost.plugins.utils.MapSnapshot[] snapshots;
+    private void applyGlobalMapCanvasRenderer(Player player, org.bukkit.inventory.meta.MapMeta meta,
+            org.bukkit.inventory.ItemStack item, byte[] canvasPixels) {
         try {
-            snapshots = new com.google.gson.Gson().fromJson(mapsNbt, com.digitalserverhost.plugins.utils.MapSnapshot[].class);
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to parse maps NBT for {0}: {1}",
-                    new Object[]{player.getName(), e.getMessage()});
-            return;
-        }
-        if (snapshots == null || snapshots.length == 0) return;
+            org.bukkit.map.MapView view = meta.hasMapView() ? meta.getMapView() : Bukkit.createMap(player.getWorld());
+            if (view != null) {
+                boolean lockGlobal = plugin.getConfig().getBoolean("maps.lock-global-maps", false);
+                if (lockGlobal) {
+                    view.setLocked(true);
+                }
+                updateNmsMapBuffer(view, canvasPixels);
+                writeMapDatFiles(view, canvasPixels);
 
-        com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, () -> {
-            if (!player.isOnline()) return;
-            for (com.digitalserverhost.plugins.utils.MapSnapshot snap : snapshots) {
-                restoreMapSnapshot(player, snap);
-            }
-        });
-    }
-
-    @SuppressWarnings("null")
-    private void restoreMapSnapshot(Player player, com.digitalserverhost.plugins.utils.MapSnapshot snap) {
-        if (snap == null || snap.getItemNBT() == null) return;
-        try {
-            PlayerData.SerializableItemStack serializableItem = MCDataBridge.getGson().fromJson(snap.getItemNBT(), PlayerData.SerializableItemStack.class);
-            if (serializableItem != null) {
-                org.bukkit.inventory.ItemStack item = serializableItem.toItemStack();
-                if ("ENDERCHEST".equalsIgnoreCase(snap.getInventoryType())) {
-                    if (snap.getSlot() >= 0 && snap.getSlot() < player.getEnderChest().getSize()) {
-                        player.getEnderChest().setItem(snap.getSlot(), item);
-                    }
-                } else {
-                    if (snap.getSlot() >= 0 && snap.getSlot() < player.getInventory().getSize()) {
-                        player.getInventory().setItem(snap.getSlot(), item);
-                    }
+                view.getRenderers().clear();
+                byte[] pixels = canvasPixels;
+                if (pixels != null && pixels.length > 0) {
+                    // Set contextual = false so rendering applies globally regardless of held item state
+                    view.addRenderer(new org.bukkit.map.MapRenderer(false) {
+                        @Override
+                        public void render(@NotNull org.bukkit.map.MapView mapView,
+                                @NotNull org.bukkit.map.MapCanvas mapCanvas, @NotNull Player p) {
+                            for (int x = 0; x < 128; x++) {
+                                for (int y = 0; y < 128; y++) {
+                                    int idx = y * 128 + x;
+                                    if (idx < pixels.length) {
+                                        mapCanvas.setPixel(x, y, pixels[idx]);
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+                org.bukkit.inventory.meta.MapMeta finalMeta = (org.bukkit.inventory.meta.MapMeta) item.getItemMeta();
+                if (finalMeta != null) {
+                    finalMeta.setMapView(view);
+                    item.setItemMeta(finalMeta);
                 }
             }
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to restore stashed map item for {0}: {1}", new Object[]{player.getName(), e.getMessage()});
+            if (plugin.isDebugMode()) {
+                plugin.getLogger().log(Level.WARNING, "Failed to apply custom map canvas renderer: {0}",
+                        e.getMessage());
+            }
+        }
+    }
+
+    private void updateNmsMapBuffer(org.bukkit.map.MapView view, byte[] canvasPixels) {
+        try {
+            Object targetMap = findNmsWorldMapObject(view);
+            if (targetMap == null) return;
+            Class<?> targetClass = targetMap.getClass();
+            while (targetClass != null && targetClass != Object.class) {
+                if (tryInjectCanvasPixelsIntoField(targetClass, targetMap, canvasPixels)) {
+                    markMapDataDirty(targetClass, targetMap);
+                    break;
+                }
+                targetClass = targetClass.getSuperclass();
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.FINE, "NMS map buffer reflection skipped: {0}", e.getMessage());
+        }
+    }
+
+    private Object findNmsWorldMapObject(Object target) {
+        Class<?> currentClass = target.getClass();
+        while (currentClass != null && currentClass != Object.class) {
+            for (java.lang.reflect.Field field : currentClass.getDeclaredFields()) {
+                field.setAccessible(true);
+                try {
+                    Object val = field.get(target);
+                    if (val != null && (val.getClass().getName().contains("WorldMap")
+                            || val.getClass().getName().contains("MapItemSavedData")
+                            || val.getClass().getName().contains("MapData")
+                            || val.getClass().getName().contains("SavedData"))) {
+                        return val;
+                    }
+                } catch (Exception _) {
+                    // Ignore field access exceptions during reflection lookup
+                }
+            }
+            currentClass = currentClass.getSuperclass();
+        }
+        return null;
+    }
+
+    private boolean tryInjectCanvasPixelsIntoField(Class<?> targetClass, Object targetMap, byte[] canvasPixels) {
+        for (java.lang.reflect.Field field : targetClass.getDeclaredFields()) {
+            field.setAccessible(true);
+            if (field.getType() == byte[].class) {
+                try {
+                    byte[] rawColors = (byte[]) field.get(targetMap);
+                    if (rawColors != null && rawColors.length >= 16384) {
+                        System.arraycopy(canvasPixels, 0, rawColors, 0, Math.min(canvasPixels.length, 16384));
+                        return true;
+                    }
+                } catch (Exception _) {
+                    // Ignore reflection read/write failures
+                }
+            }
+        }
+        return false;
+    }
+
+    private void markMapDataDirty(Class<?> targetClass, Object targetMap) {
+        if (tryInvokeDirtyMethod(targetClass, targetMap, "setDirty", true)) return;
+        if (tryInvokeDirtyNoArgMethod(targetClass, targetMap, "setDirty")) return;
+        setDirtyFieldFallback(targetClass, targetMap);
+    }
+
+    private boolean tryInvokeDirtyMethod(Class<?> targetClass, Object targetMap, String methodName, boolean value) {
+        try {
+            java.lang.reflect.Method method = targetClass.getMethod(methodName, boolean.class);
+            method.invoke(targetMap, value);
+            return true;
+        } catch (Exception _) {
+            return false;
+        }
+    }
+
+    private boolean tryInvokeDirtyNoArgMethod(Class<?> targetClass, Object targetMap, String methodName) {
+        try {
+            java.lang.reflect.Method method = targetClass.getMethod(methodName);
+            method.invoke(targetMap);
+            return true;
+        } catch (Exception _) {
+            return false;
+        }
+    }
+
+    private void setDirtyFieldFallback(Class<?> targetClass, Object targetMap) {
+        for (java.lang.reflect.Field boolField : targetClass.getDeclaredFields()) {
+            if (boolField.getType() == boolean.class && boolField.getName().toLowerCase().contains("dirty")) {
+                boolField.setAccessible(true);
+                try {
+                    boolField.setBoolean(targetMap, true);
+                } catch (Exception _) {
+                    // Ignore field mutation failure
+                }
+            }
+        }
+    }
+
+    private void writeMapDatFiles(org.bukkit.map.MapView view, byte[] canvasPixels) {
+        try {
+            org.bukkit.World mainWorld = Bukkit.getWorlds().get(0);
+            java.io.File rootFolder = mainWorld.getWorldFolder();
+            java.io.File mapsFolder = new java.io.File(rootFolder, "data/minecraft/maps");
+            if (!mapsFolder.exists())
+                mapsFolder.mkdirs();
+
+            java.io.File mapFileModern = new java.io.File(mapsFolder, view.getId() + ".dat");
+            java.io.File mapFileLegacy = new java.io.File(mapsFolder, "map_" + view.getId() + ".dat");
+
+            if (canvasPixels != null && canvasPixels.length >= 16384) {
+                for (java.io.File mapFile : new java.io.File[] { mapFileModern, mapFileLegacy }) {
+                    writeSingleMapDatFile(view, mapFile, canvasPixels);
+                }
+            }
+        } catch (Exception _) {
+            // Ignore world folder retrieval failures
+        }
+    }
+
+    private void writeSingleMapDatFile(org.bukkit.map.MapView view, java.io.File mapFile, byte[] canvasPixels) {
+        try {
+            de.tr7zw.changeme.nbtapi.NBTFile nbtFile = new de.tr7zw.changeme.nbtapi.NBTFile(mapFile);
+            de.tr7zw.changeme.nbtapi.NBTCompound nbtData = nbtFile.getOrCreateCompound("data");
+            nbtData.setByte("scale", view.getScale().getValue());
+            nbtData.setByte("dimension", (byte) 0);
+            nbtData.setByte("trackingPosition", (byte) 0);
+            nbtData.setByte("unlimitedTracking", (byte) 0);
+            nbtData.setByte("locked", (byte) (view.isLocked() ? 1 : 0));
+            nbtData.setInteger("xCenter", view.getCenterX());
+            nbtData.setInteger("zCenter", view.getCenterZ());
+            nbtData.setByteArray("colors", canvasPixels);
+            nbtFile.save();
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.FINE, "NBT map file creation fallback error: {0}", e.getMessage());
         }
     }
 
     private void spawnCompanion(Player player, PlayerData.CompanionSnapshot snap) {
         try {
-            org.bukkit.entity.EntityType entityType =
-                    org.bukkit.entity.EntityType.valueOf(snap.entityType);
+            org.bukkit.entity.EntityType entityType = org.bukkit.entity.EntityType.valueOf(snap.entityType);
             Class<? extends org.bukkit.entity.Entity> entityClass = entityType.getEntityClass();
             org.bukkit.Location loc = player.getLocation();
             if (entityClass != null && loc != null) {
@@ -788,32 +1079,36 @@ public class PlayerListener implements Listener, PluginMessageListener {
             }
         } catch (Exception e) {
             plugin.getLogger().log(Level.WARNING, "[mc-data-bridge] Failed to reconstruct companion {0}: {1}",
-                    new Object[]{snap.entityType, e.getMessage()});
+                    new Object[] { snap.entityType, e.getMessage() });
         }
     }
 
     @SuppressWarnings("deprecation")
-    private void applyCompanionProperties(Player player, org.bukkit.entity.Entity entity, PlayerData.CompanionSnapshot snap) {
+    private void applyCompanionProperties(Player player, org.bukkit.entity.Entity entity,
+            PlayerData.CompanionSnapshot snap) {
         // Inject NBT before entity enters world tick
         if (snap.nbtData != null && !snap.nbtData.isEmpty()) {
             try {
-                de.tr7zw.changeme.nbtapi.NBT.modify(entity, (java.util.function.Consumer<de.tr7zw.changeme.nbtapi.iface.ReadWriteNBT>) nbt -> {
-                    de.tr7zw.changeme.nbtapi.iface.ReadWriteNBT sourceNbt = de.tr7zw.changeme.nbtapi.NBT.parseNBT(snap.nbtData);
-                    sourceNbt.removeKey("UUID");
-                    sourceNbt.removeKey("UUIDMost");
-                    sourceNbt.removeKey("UUIDLeast");
-                    sourceNbt.removeKey("Pos");
-                    sourceNbt.removeKey("Motion");
-                    sourceNbt.removeKey("Rotation");
-                    sourceNbt.removeKey("Dimension");
-                    sourceNbt.removeKey("WorldUUIDMost");
-                    sourceNbt.removeKey("WorldUUIDLeast");
-                    sourceNbt.removeKey("OnGround");
-                    sourceNbt.removeKey("FallDistance");
-                    sourceNbt.removeKey("PortalCooldown");
-                    nbt.mergeCompound(sourceNbt);
-                });
-            } catch (Exception _) { /* NBT injection failed — spawn bare entity */ }
+                de.tr7zw.changeme.nbtapi.NBT.modify(entity,
+                        (java.util.function.Consumer<de.tr7zw.changeme.nbtapi.iface.ReadWriteNBT>) nbt -> {
+                            de.tr7zw.changeme.nbtapi.iface.ReadWriteNBT sourceNbt = de.tr7zw.changeme.nbtapi.NBT
+                                    .parseNBT(snap.nbtData);
+                            sourceNbt.removeKey("UUID");
+                            sourceNbt.removeKey("UUIDMost");
+                            sourceNbt.removeKey("UUIDLeast");
+                            sourceNbt.removeKey("Pos");
+                            sourceNbt.removeKey("Motion");
+                            sourceNbt.removeKey("Rotation");
+                            sourceNbt.removeKey("Dimension");
+                            sourceNbt.removeKey("WorldUUIDMost");
+                            sourceNbt.removeKey("WorldUUIDLeast");
+                            sourceNbt.removeKey("OnGround");
+                            sourceNbt.removeKey("FallDistance");
+                            sourceNbt.removeKey("PortalCooldown");
+                            nbt.mergeCompound(sourceNbt);
+                        });
+            } catch (Exception _) {
+                /* NBT injection failed — spawn bare entity */ }
         }
         // Re-bind ownership
         if (entity instanceof org.bukkit.entity.Tameable tame) {
@@ -837,19 +1132,20 @@ public class PlayerListener implements Listener, PluginMessageListener {
             }
         } catch (Exception e) {
             plugin.getLogger().log(Level.WARNING, "Failed to set shoulder entity for {0}: {1}",
-                    new Object[]{player.getName(), e.getMessage()});
+                    new Object[] { player.getName(), e.getMessage() });
         }
     }
 
     public PlayerData loadPlayerData(UUID uuid) {
         return loadPlayerData(uuid, null);
     }
- 
+
     public PlayerData loadPlayerData(UUID uuid, String name) {
         try {
             return databaseManager.loadPlayerDataComponents(plugin, uuid, name);
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "Failed to load player data for {0}: {1}", new Object[]{uuid, e.getMessage()});
+            plugin.getLogger().log(Level.SEVERE, "Failed to load player data for {0}: {1}",
+                    new Object[] { uuid, e.getMessage() });
         }
         return null;
     }
@@ -858,13 +1154,15 @@ public class PlayerListener implements Listener, PluginMessageListener {
         try {
             return databaseManager.loadPlayerDataComponents(plugin, uuid, name, gameMode);
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "Failed to load player data for {0}: {1}", new Object[]{uuid, e.getMessage()});
+            plugin.getLogger().log(Level.SEVERE, "Failed to load player data for {0}: {1}",
+                    new Object[] { uuid, e.getMessage() });
         }
         return null;
     }
 
     public void setPlayerBeingEdited(UUID uuid, boolean isBeingEdited) {
-        if (uuid == null) return;
+        if (uuid == null)
+            return;
         if (isBeingEdited) {
             editedPlayers.put(uuid, true);
         } else {
@@ -877,16 +1175,19 @@ public class PlayerListener implements Listener, PluginMessageListener {
     }
 
     public boolean isPlayerLocked(UUID uuid) {
-        return uuid != null && (switchingPlayers.containsKey(uuid) || savingPlayers.containsKey(uuid) || editedPlayers.containsKey(uuid));
+        return uuid != null && (switchingPlayers.containsKey(uuid) || savingPlayers.containsKey(uuid)
+                || editedPlayers.containsKey(uuid));
     }
 
     private void safelyCloseInventory(Player player) {
-        if (player == null) return;
+        if (player == null)
+            return;
         try {
             com.digitalserverhost.plugins.utils.SchedulerUtils.runOnEntity(plugin, player, player::closeInventory);
         } catch (Exception e) {
             if (plugin.isDebugMode()) {
-                plugin.getLogger().log(Level.WARNING, "Failed to close inventory for {0}: {1}", new Object[]{player.getName(), e.getMessage()});
+                plugin.getLogger().log(Level.WARNING, "Failed to close inventory for {0}: {1}",
+                        new Object[] { player.getName(), e.getMessage() });
             }
         }
     }

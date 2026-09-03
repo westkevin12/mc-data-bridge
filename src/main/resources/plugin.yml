@@ -1,5 +1,5 @@
 main: com.digitalserverhost.plugins.MCDataBridge
-version: 2.2.0
+version: 2.2.1
 name: mc-data-bridge
 author: DigitalServerHost
 api-version: 1.21

@@ -25,7 +25,6 @@ class MapSyncTest {
     @BeforeEach
     void setUp() {
         lenient().when(mockPlugin.getConfig()).thenReturn(mockConfig);
-        lenient().when(mockConfig.getString(eq("maps.mode"), anyString())).thenReturn("return");
         lenient().when(mockPlugin.isSyncEnabledNewFeature("maps")).thenReturn(true);
         lenient().when(mockPlugin.getServerId()).thenReturn("survival-1");
     }
@@ -69,7 +68,7 @@ class MapSyncTest {
     }
 
     @Test
-    void testUntrackedMode_BypassesMapStashing() {
+    void testMapSyncEnabled_SnapshotsMaps() {
         org.mockmc.mockmc.MockMC.mock();
         try {
             org.bukkit.entity.Player player = org.mockmc.mockmc.MockMC.getMock().addPlayer("MapPlayer");
@@ -78,11 +77,12 @@ class MapSyncTest {
             MCDataBridge plugin = mock(MCDataBridge.class);
             FileConfiguration config = mock(FileConfiguration.class);
             lenient().when(plugin.getConfig()).thenReturn(config);
-            lenient().when(config.getString(eq("maps.mode"), anyString())).thenReturn("untracked");
             lenient().when(plugin.isSyncEnabledNewFeature(anyString())).thenReturn(true);
+            lenient().when(plugin.getServerId()).thenReturn("survival-1");
 
             PlayerData data = new PlayerData(player, plugin);
-            assertNull(data.getMapsNBT());
+            assertNotNull(data.getMapsNBT());
+            assertTrue(data.getMapsNBT().contains("survival-1"));
         } finally {
             org.mockmc.mockmc.MockMC.unmock();
         }

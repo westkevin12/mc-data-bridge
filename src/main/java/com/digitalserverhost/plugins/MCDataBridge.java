@@ -529,12 +529,89 @@ public class MCDataBridge extends JavaPlugin {
         }
 
         StringBuilder topLevelAppends = new StringBuilder();
-        boolean updated = checkTopLevelKeys(fileConfig, topLevelAppends);
-        updated |= checkSyncKeys(fileConfig, lines, topLevelAppends);
+        boolean updated = migrateLegacyMapConfig(fileConfig, lines);
+        updated = checkSyncKeys(fileConfig, lines, topLevelAppends) || updated;
+        updated = checkTopLevelKeys(fileConfig, topLevelAppends) || updated;
 
         if (updated) {
             saveUpdatedConfig(configFile, lines, topLevelAppends);
         }
+    }
+
+    private boolean migrateLegacyMapConfig(org.bukkit.configuration.file.YamlConfiguration fileConfig, java.util.List<String> lines) {
+        boolean updated = false;
+        if (fileConfig.contains("maps.mode")) {
+            String legacyMode = fileConfig.getString("maps.mode", "return").toLowerCase();
+            boolean mapSyncValue;
+            boolean mapLockValue;
+
+            if (legacyMode.equals("global")) {
+                mapSyncValue = true;
+                mapLockValue = true;
+            } else {
+                // "return", "untracked", "off", or any other legacy value -> false, false
+                mapSyncValue = false;
+                mapLockValue = false;
+            }
+
+            // Set migrated values in YamlConfiguration
+            fileConfig.set(SYNC_DATA_PREFIX + "maps", mapSyncValue);
+            fileConfig.set("maps.lock-global-maps", mapLockValue);
+
+            // Update or insert sync-data.maps in raw lines
+            boolean mapLineFound = false;
+            int syncDataSectionLine = -1;
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                if (line.trim().startsWith("sync-data:")) {
+                    syncDataSectionLine = i;
+                } else if (syncDataSectionLine != -1 && (line.startsWith("  maps:") || line.startsWith("\tmaps:"))) {
+                    lines.set(i, "  maps: " + mapSyncValue);
+                    mapLineFound = true;
+                    break;
+                } else if (syncDataSectionLine != -1 && !line.startsWith(" ") && !line.startsWith("\t") && !line.trim().isEmpty() && !line.trim().startsWith("#")) {
+                    break;
+                }
+            }
+            if (!mapLineFound) {
+                if (syncDataSectionLine != -1) {
+                    lines.add(syncDataSectionLine + 1, "  maps: " + mapSyncValue);
+                } else {
+                    lines.add("sync-data:");
+                    lines.add("  maps: " + mapSyncValue);
+                }
+            }
+
+            // Remove legacy mode: line under maps:
+            lines.removeIf(line -> line.trim().startsWith("mode:") && !line.contains("#"));
+
+            // Check if lock-global-maps: is already present under maps: or anywhere
+            boolean lockLineFound = false;
+            int topLevelMapsLine = -1;
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                if (line.trim().startsWith("maps:") && (i == 0 || !lines.get(i - 1).trim().startsWith("sync-data:"))) {
+                    topLevelMapsLine = i;
+                }
+                if (line.trim().startsWith("lock-global-maps:")) {
+                    lines.set(i, "  lock-global-maps: " + mapLockValue);
+                    lockLineFound = true;
+                    break;
+                }
+            }
+            if (!lockLineFound) {
+                if (topLevelMapsLine != -1) {
+                    lines.add(topLevelMapsLine + 1, "  # Force Map Locking on Synced Maps (true = locked, false = vanilla style)");
+                    lines.add(topLevelMapsLine + 2, "  lock-global-maps: " + mapLockValue);
+                } else {
+                    lines.add("\n# Map Synchronization Settings\nmaps:\n  # Force Map Locking on Synced Maps (true = locked, false = vanilla style)\n  lock-global-maps: " + mapLockValue + "\n");
+                }
+            }
+
+            getLogger().info("Migrated legacy 'maps.mode: " + legacyMode + "' to 'sync-data.maps: " + mapSyncValue + "' and 'maps.lock-global-maps: " + mapLockValue + "'.");
+            updated = true;
+        }
+        return updated;
     }
 
     private boolean checkTopLevelKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig,
@@ -582,8 +659,8 @@ public class MCDataBridge extends JavaPlugin {
             appends.append("\ncompanions:\n  mode: \"follow\"\n");
             updated = true;
         }
-        if (!fileConfig.contains("maps.mode")) {
-            appends.append("\n# Map synchronization mode across servers.\nmaps:\n  mode: \"return\"\n");
+        if (!fileConfig.contains("maps.lock-global-maps")) {
+            appends.append("\n# Map Synchronization Settings\nmaps:\n  # Force Map Locking on Synced Maps (true = locked, false = vanilla style)\n  lock-global-maps: false\n");
             updated = true;
         }
         return updated;
@@ -612,14 +689,14 @@ public class MCDataBridge extends JavaPlugin {
 
         if (syncDataLine != -1) {
             for (String key : missing) {
-                boolean defaultValue = key.equals("maps"); // Default true for maps, false for others
+                boolean defaultValue = false; // Default false for all optional features including maps (vanilla style handling)
                 lines.add(syncDataLine + 1, "  " + key + ": " + defaultValue);
             }
             return true;
         } else {
             appends.append("\nsync-data:\n");
             for (String key : missing) {
-                boolean defaultValue = key.equals("maps");
+                boolean defaultValue = false;
                 appends.append("  ").append(key).append(": ").append(defaultValue).append("\n");
             }
             return true;
