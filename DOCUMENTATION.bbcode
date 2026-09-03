@@ -30,8 +30,8 @@ Below is a detailed explanation of the [I]config.yml[/I] settings. This file is 
 
 [SIZE=4][B]3. Synchronization Control[/B][/SIZE]
 [LIST]
-[*][B]sync-data.maps:[/B] Toggle cross-server map item & canvas pixel synchronization on or off. Set to [CODE]false[/CODE] to disable map sync completely (useful if using third-party map sync plugins).
-[*][B]maps.lock-global-maps:[/B] When true (default), forces global map views and item metadata to locked (`locked = 1`), preventing target servers from re-scanning terrain or applying Fog of War over synchronized maps.
+[*][B]sync-data.maps:[/B] Toggle cross-server map item & canvas pixel synchronization on or off (default: [CODE]false[/CODE], vanilla style map handling). Set to [CODE]true[/CODE] to enable global cross-server map synchronization.
+[*][B]maps.lock-global-maps:[/B] Controls map locking enforcement on synchronized maps (default: [CODE]false[/CODE]). When [CODE]false[/CODE] (default), maps remain unlocked so Paper/Spigot re-scans local terrain and updates map pixels based on the current server's Fog of War area. When [CODE]true[/CODE], forces maps to locked (`locked = 1`), preventing target servers from re-scanning terrain or overwriting custom artwork.
 [*][B]sync-blacklist.servers:[/B] List of [I]server-id[/I]s where data should never be loaded or saved.
 [*][B]sync-blacklist.worlds:[/B] List of world names where synchronization is temporarily suspended for the player.
 [/LIST]

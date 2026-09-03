@@ -47,7 +47,7 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
   - **Persistent Data Container (PDC)** (Custom metadata from other plugins)
   - **Flight & GameMode** status
   - **Companions & Pets** (Tamed wolves, cats, parrots, etc., with NBT properties and sitting status)
-  - **Map Items & Canvas Sync** (Cross-server map canvas sync via `sync-data.maps: true` with configurable map locking via `maps.lock-global-maps`)
+  - **Map Items & Canvas Sync** (Cross-server map canvas sync via `sync-data.maps: true` with optional map locking via `maps.lock-global-maps: true`. Defaults: `sync-data.maps: false` and `maps.lock-global-maps: false` for vanilla Fog of War map tracking)
   - **Separate Gamemode Inventories** (Opt-in separate profiles for Survival, Creative, Adventure, Spectator)
 - **Resilient Connection Pooling:** Uses HikariCP with optimized settings to ensure that the database connection is resilient to network issues and database restarts.
 - **Prometheus Metrics Exporter:** Built-in lightweight HTTP server exposing live synchronization performance metrics (sync latency, cache metrics, HikariCP pool status) for Grafana dashboards.
@@ -255,15 +255,15 @@ sync-data:
   pdc: true
   flight-gamemode: true
   companions: false
-  maps: true
+  maps: false
   separate-gamemode-inventories: false
 
 # Map Synchronization Settings
-# To disable map synchronization entirely (e.g. if using a third-party map sync plugin),
-# set 'sync-data.maps: false'.
+# Set 'sync-data.maps: true' above to enable cross-server map synchronization.
+# Set 'maps.lock-global-maps: false' (default) to keep maps unlocked (vanilla behavior: map engine updates pixels based on nearby terrain/Fog of War on current server).
+# Set 'maps.lock-global-maps: true' to enforce map locking (locked = 1), preventing destination servers from overwriting artwork or applying Fog of War.
 maps:
-  # Force map locking (locked = 1) on global maps to prevent local terrain overwrites / Fog of War
-  lock-global-maps: true
+  lock-global-maps: false
 
 # Companion/pet sync settings. Requires sync-data.companions: true.
 companions:

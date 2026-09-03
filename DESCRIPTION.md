@@ -44,7 +44,7 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
   - **Persistent Data Container (PDC)** (Custom metadata)
   - **Flight & GameMode** status
   - **Companions & Pets** (Tamed wolves, cats, parrots, etc.)
-  - **Map Items & Canvas Sync** (Cross-server map canvas sync via `sync-data.maps: true` with configurable map locking via `maps.lock-global-maps`)
+  - **Map Items & Canvas Sync** (Cross-server map canvas sync via `sync-data.maps: true` with optional map locking via `maps.lock-global-maps: true`. Defaults: `sync-data.maps: false` and `maps.lock-global-maps: false` for vanilla Fog of War map tracking)
   - **Separate Gamemode Inventories** (Opt-in separate profiles for Survival, Creative, Adventure, Spectator)
 - **Resilient Connection Pooling:** Uses HikariCP with optimized settings for resilience against network jitter.
 - **Flexible Storage:** Support for **MySQL/MariaDB** or local **SQLite** databases.
@@ -133,12 +133,15 @@ sync-data:
   pdc: true
   flight-gamemode: true
   companions: true
-  maps: true
+  maps: false
   separate-gamemode-inventories: false
 
 # Map Synchronization Settings
+# Set 'sync-data.maps: true' to enable map sync across servers.
+# Set 'maps.lock-global-maps: false' (default) for vanilla unlocked maps (Paper re-scans terrain for current area).
+# Set 'maps.lock-global-maps: true' to force locked maps (locked = 1) preventing local terrain overwrites / Fog of War.
 maps:
-  lock-global-maps: true
+  lock-global-maps: false
 
 # Security & Identity
 security:

@@ -10,6 +10,9 @@ Version 2.2.1 is a release streamlining map synchronization architecture, introd
 
 ### 🗺️ Map Sync Architecture Simplification (#36, #39)
 
+> [!NOTE]
+> **Developer Note:** _"I couldn't think of a single valid use case for return mode with held map items. It seemed like a good idea at first, but having a broken, unusable map item on another server would likely never be the server admin's intention."_
+
 - **Streamlined Map Synchronization Model:** Removed legacy `maps.mode` (`return`/`untracked` per-server stashing). Map synchronization is now toggled cleanly via `sync-data.maps: false` (default, vanilla style handling) or `sync-data.maps: true` (global map sync).
 - **Configurable Map Locking (`maps.lock-global-maps`):** Added `maps.lock-global-maps: false` (default). When set to `true`, enforces map locking (`locked = 1`) on cross-server maps to prevent target servers from re-scanning terrain or applying Fog of War over custom artwork.
 - **Automatic Legacy Config Migration:** Existing `v2.2.0` configuration files are automatically upgraded on startup:

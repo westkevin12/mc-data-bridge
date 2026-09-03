@@ -8,6 +8,9 @@
 [SIZE=5][B]Key Changes[/B][/SIZE]
 
 [SIZE=4][B]🗺️ Map Sync Architecture Simplification (#36, #39)[/B][/SIZE]
+
+[QUOTE][B]Developer Note:[/B] [I]"I couldn't think of a single valid use case for return mode with held map items. It seemed like a good idea at first, but having a broken, unusable map item on another server would likely never be the server admin's intention."[/I][/QUOTE]
+
 [LIST]
 [*][B]Streamlined Map Synchronization Model:[/B] Removed legacy [CODE]maps.mode[/CODE] ([CODE]return[/CODE]/[CODE]untracked[/CODE] per-server stashing). Map synchronization is now toggled cleanly via [CODE]sync-data.maps: false[/CODE] (default, vanilla style handling) or [CODE]sync-data.maps: true[/CODE] (global map sync).
 [*][B]Configurable Map Locking ([CODE]maps.lock-global-maps[/CODE]):[/B] Added [CODE]maps.lock-global-maps: false[/CODE] (default). When set to [CODE]true[/CODE], enforces map locking ([CODE]locked = 1[/CODE]) on cross-server maps to prevent target servers from re-scanning terrain or applying Fog of War over custom artwork.
