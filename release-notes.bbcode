@@ -1,36 +1,25 @@
-[SIZE=6][B]MC Data Bridge - Release Notes (v2.2.0)[/B][/SIZE]
+[SIZE=6][B]MC Data Bridge - Release Notes (v2.2.1)[/B][/SIZE]
 
 [SIZE=5][B]Overview[/B][/SIZE]
-[SIZE=4]Version 2.2.0 introduces [B]Map Sync Between Servers[/B] and [B]Separate Gamemode Inventories[/B], allowing players and staff members to maintain isolated inventory profiles per gamemode and stash maps per-server across proxy networks without data conflicts, alongside core dependency updates.[/SIZE]
+[SIZE=4]Version 2.2.1 is a release streamlining map synchronization architecture, introducing configurable map locking enforcement, fixing map canvas color palette rendering issues, and adding automatic config migration from v2.2.0.[/SIZE]
 
 [CENTER]----------------------------------------------------------------[/CENTER]
 
 [SIZE=5][B]Key Changes[/B][/SIZE]
 
-[SIZE=4][B]🗺️ Map Sync Between Servers (#36)[/B][/SIZE]
+[SIZE=4][B]🗺️ Map Sync Architecture Simplification (#36, #39)[/B][/SIZE]
 [LIST]
-[*][B]Server-Isolated Map Stashing ([CODE]mode: return[/CODE]):[/B] Filled map items created on Server A are tagged with origin metadata ([CODE]databridge:origin_server[/CODE] and [CODE]databridge:original_map_id[/CODE]). When transferring to Server B, foreign maps are safely stashed in the database ([CODE]databridge_maps[/CODE]) and automatically restored to their inventory slots when returning to Server A.
-[*][B]Configurable Map Synchronization Modes:[/B] Added a new [CODE]maps:[/CODE] config section supporting three modes:
-[LIST]
-[*][CODE]return[/CODE] (default): Stashes and restores server-specific map items per server.
-[*][CODE]global[/CODE]: Synchronizes map canvas pixel data across all network servers.
-[*][CODE]untracked[/CODE]: Legacy vanilla map handling.
-[/LIST]
-[*][B]Component Database Storage:[/B] Added [CODE]{table-prefix}databridge_maps[/CODE] table in MySQL and SQLite for atomic map persistence and cross-server UUID data migration.
-[/LIST]
-
-[SIZE=4][B]🎒 Separate Gamemode Inventories (#33)[/B][/SIZE]
-[LIST]
-[*][B]Opt-In Gamemode Inventory Separation ([CODE]sync-data.separate-gamemode-inventories[/CODE]):[/B] Staff members and players can maintain separate inventory, armor, and Ender Chest profiles for Survival, Creative, Adventure, and Spectator modes.
-[*][B]Live Gamemode Swapping Hook:[/B] Automatically snapshots and restores gamemode-specific inventory profiles when switching gamemodes on the fly ([CODE]PlayerGameModeChangeEvent[/CODE]).
-[*][B]Isolated Component Table:[/B] Stores gamemode inventory profiles in [CODE]{table-prefix}databridge_gamemode_inventories[/CODE] using [CODE](uuid, gamemode)[/CODE] composite key.
-[/LIST]
-
-[SIZE=4][B]📦 Dependency Updates[/B][/SIZE]
-[LIST]
-[*][B]MySQL Connector/J:[/B] Updated [CODE]com.mysql:mysql-connector-j[/CODE] from [CODE]9.7.0[/CODE] to [CODE]26.7.0[/CODE].
-[*][B]Item NBT API:[/B] Updated [CODE]de.tr7zw:item-nbt-api[/CODE] from [CODE]2.15.7[/CODE] to [CODE]2.16.0[/CODE].
-[*][B]JUnit Jupiter:[/B] Updated [CODE]org.junit.jupiter:junit-jupiter[/CODE] from [CODE]6.1.0[/CODE] to [CODE]6.1.3[/CODE].
+[*][B]Streamlined Map Synchronization Model:[/B] Removed legacy [CODE]maps.mode[/CODE] ([CODE]return[/CODE]/[CODE]untracked[/CODE] per-server stashing). Map synchronization is now toggled cleanly via [CODE]sync-data.maps: false[/CODE] (default, vanilla style handling) or [CODE]sync-data.maps: true[/CODE] (global map sync).
+[*][B]Configurable Map Locking ([CODE]maps.lock-global-maps[/CODE]):[/B] Added [CODE]maps.lock-global-maps: false[/CODE] (default). When set to [CODE]true[/CODE], enforces map locking ([CODE]locked = 1[/CODE]) on cross-server maps to prevent target servers from re-scanning terrain or applying Fog of War over custom artwork.
+[*][B]Automatic Legacy Config Migration:[/B] Existing [CODE]v2.2.0[/CODE] configuration files are automatically upgraded on startup:
+  [LIST]
+  [*]Legacy [CODE]maps.mode: global[/CODE] -> Migrated to [CODE]sync-data.maps: true[/CODE], [CODE]maps.lock-global-maps: true[/CODE].
+  [*]Legacy [CODE]maps.mode: return[/CODE] / [CODE]untracked[/CODE] / [CODE]off[/CODE] -> Migrated to [CODE]sync-data.maps: false[/CODE], [CODE]maps.lock-global-maps: false[/CODE].
+  [*]Obsolete [CODE]maps.mode[/CODE] config entries are automatically removed.
+  [/LIST]
+[*][B]Fixed [CODE]maps_nbt[/CODE] Persistence:[/B] Corrected snapshot extraction and database merge logic to ensure map snapshots and canvas pixels are saved non-null to the [CODE]{table-prefix}databridge_maps[/CODE] table.
+[*][B]Locked Map Resolution Support:[/B] Improved map ID resolution logic ([CODE]resolveMapId[/CODE]) to resolve map IDs from item components and PDC ([CODE]databridge:original_map_id[/CODE]), preventing locked maps created in Cartography Tables from being skipped during saves.
+[*][B]Canvas Palette & Renderer Fix:[/B] Resolved canvas rendering issues where maps rendered as solid brown blocks. Default background world renderers are now cleared ([CODE]view.getRenderers().clear()[/CODE]) before applying custom raw canvas palette byte renderers.
 [/LIST]
 
 [CENTER]----------------------------------------------------------------[/CENTER]

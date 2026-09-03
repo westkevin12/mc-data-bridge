@@ -22,8 +22,6 @@ import java.security.NoSuchAlgorithmException;
 
 public class PlayerData {
 
-    private static final String MODE_RETURN = "return";
-
     public static class ItemDeserializationException extends RuntimeException {
         public ItemDeserializationException(String message, Throwable cause) {
             super(message, cause);
@@ -60,9 +58,10 @@ public class PlayerData {
     private float pitch;
 
     // Companion / Pet sync (default disabled)
+    private static final String MODE_RETURN = "return";
     private String companionsNBT;
 
-    // Map sync (default mode: return)
+    // Map sync
     private String mapsNBT;
 
 
@@ -278,16 +277,11 @@ public class PlayerData {
 
     private void snapshotMaps(Player player, MCDataBridge plugin) {
         if (!plugin.isSyncEnabledNewFeature("maps")) return;
-        String mode = MODE_RETURN;
-        try {
-            mode = plugin.getConfig().getString("maps.mode", MODE_RETURN).toLowerCase();
-        } catch (Exception _) { /* default to return */ }
-        if (mode.equals("untracked") || mode.equals("off")) return;
 
         List<MapSnapshot> snapshots = new ArrayList<>();
-        tagAndStashMapsInInventory(player, player.getInventory().getContents(), "MAIN", snapshots, plugin, mode);
+        tagAndStashMapsInInventory(player, player.getInventory().getContents(), "MAIN", snapshots, plugin);
         if (plugin.isSyncEnabledNewFeature("ender-chest")) {
-            tagAndStashMapsInInventory(player, player.getEnderChest().getContents(), "ENDERCHEST", snapshots, plugin, mode);
+            tagAndStashMapsInInventory(player, player.getEnderChest().getContents(), "ENDERCHEST", snapshots, plugin);
         }
 
         if (!snapshots.isEmpty()) {
@@ -296,32 +290,144 @@ public class PlayerData {
     }
 
     @SuppressWarnings("null")
-    private void tagAndStashMapsInInventory(Player player, ItemStack[] contents, String invType, List<MapSnapshot> snapshots, MCDataBridge plugin, String mode) {
+    private void tagAndStashMapsInInventory(Player player, ItemStack[] contents, String invType, List<MapSnapshot> snapshots, MCDataBridge plugin) {
         if (contents == null) return;
         org.bukkit.NamespacedKey serverKey = createNamespacedKey(plugin, "origin_server");
         org.bukkit.NamespacedKey mapIdKey = createNamespacedKey(plugin, "original_map_id");
 
         for (int i = 0; i < contents.length; i++) {
-            processSingleMapSlot(contents, i, invType, snapshots, plugin, mode, serverKey, mapIdKey);
+            processSingleMapSlot(contents, i, invType, snapshots, plugin, serverKey, mapIdKey);
         }
     }
 
     @SuppressWarnings("null")
-    private void processSingleMapSlot(ItemStack[] contents, int index, String invType, List<MapSnapshot> snapshots, MCDataBridge plugin, String mode, org.bukkit.NamespacedKey serverKey, org.bukkit.NamespacedKey mapIdKey) {
+    private void processSingleMapSlot(ItemStack[] contents, int index, String invType, List<MapSnapshot> snapshots, MCDataBridge plugin, org.bukkit.NamespacedKey serverKey, org.bukkit.NamespacedKey mapIdKey) {
         ItemStack item = contents[index];
         if (item == null || item.getType() != Material.FILLED_MAP || !(item.getItemMeta() instanceof org.bukkit.inventory.meta.MapMeta meta)) {
             return;
         }
 
-        int originalMapId = meta.hasMapId() ? meta.getMapId() : -1;
+        int originalMapId = resolveMapId(meta, mapIdKey);
         String originServer = processMapPdc(meta, item, serverKey, mapIdKey, originalMapId, plugin);
 
-        if (mode.equals(MODE_RETURN) && originServer != null && !originServer.equalsIgnoreCase(plugin.getServerId())) {
-            snapshots.add(new MapSnapshot(originServer, originalMapId, index, invType, serializeItemStack(item)));
-            contents[index] = null; // Stash item away from local foreign inventory
+        MapSnapshot snap = new MapSnapshot(originServer, originalMapId, index, invType, serializeItemStack(item));
+        byte[] pixels = extractMapCanvasPixels(meta);
+        if (pixels.length > 0) {
+            snap.setCanvasPixels(pixels);
         }
+        snapshots.add(snap);
     }
 
+    @SuppressWarnings("null")
+    private int resolveMapId(org.bukkit.inventory.meta.MapMeta meta, org.bukkit.NamespacedKey mapIdKey) {
+        try {
+            if (meta.hasMapId()) {
+                return meta.getMapId();
+            }
+            var pdc = meta.getPersistentDataContainer();
+            if (pdc.has(mapIdKey, org.bukkit.persistence.PersistentDataType.INTEGER)) {
+                Integer savedId = pdc.get(mapIdKey, org.bukkit.persistence.PersistentDataType.INTEGER);
+                if (savedId != null) return savedId;
+            }
+        } catch (Exception _) {
+            // Fallback for mock environments
+        }
+        return -1;
+    }
+
+    private byte[] extractMapCanvasPixels(org.bukkit.inventory.meta.MapMeta meta) {
+        try {
+            org.bukkit.map.MapView view = meta.hasMapView() ? meta.getMapView() : null;
+            if (view == null && meta.hasMapId()) {
+                view = org.bukkit.Bukkit.getMap(meta.getMapId());
+            }
+            if (view != null) {
+                byte[] nmsPixels = extractNmsCanvasPixels(view);
+                if (nmsPixels.length > 0) {
+                    return nmsPixels;
+                }
+                return extractRendererCanvasPixels(view);
+            }
+        } catch (Exception _) {
+            // Safe fallback when MapView cannot be instantiated during save
+        }
+        return new byte[0];
+    }
+
+    private byte[] extractNmsCanvasPixels(org.bukkit.map.MapView view) {
+        try {
+            Object targetMap = findNmsWorldMapObject(view);
+            if (targetMap == null) return new byte[0];
+            Class<?> targetClass = targetMap.getClass();
+            while (targetClass != null && targetClass != Object.class) {
+                for (java.lang.reflect.Field field : targetClass.getDeclaredFields()) {
+                    field.setAccessible(true);
+                    if (field.getType() == byte[].class) {
+                        byte[] rawColors = (byte[]) field.get(targetMap);
+                        if (rawColors != null && rawColors.length >= 16384) {
+                            byte[] pixels = new byte[16384];
+                            System.arraycopy(rawColors, 0, pixels, 0, 16384);
+                            return pixels;
+                        }
+                    }
+                }
+                targetClass = targetClass.getSuperclass();
+            }
+        } catch (Exception _) {
+            // Fallback to MapRenderer evaluation below
+        }
+        return new byte[0];
+    }
+
+    private Object findNmsWorldMapObject(Object target) {
+        Class<?> currentClass = target.getClass();
+        while (currentClass != null && currentClass != Object.class) {
+            for (java.lang.reflect.Field field : currentClass.getDeclaredFields()) {
+                field.setAccessible(true);
+                try {
+                    Object val = field.get(target);
+                    if (val != null && (val.getClass().getName().contains("WorldMap")
+                            || val.getClass().getName().contains("MapItemSavedData")
+                            || val.getClass().getName().contains("MapData")
+                            || val.getClass().getName().contains("SavedData"))) {
+                        return val;
+                    }
+                } catch (Exception _) {
+                    // Ignore field access exceptions
+                }
+            }
+            currentClass = currentClass.getSuperclass();
+        }
+        return null;
+    }
+
+    private byte[] extractRendererCanvasPixels(org.bukkit.map.MapView view) {
+        byte[] pixels = new byte[128 * 128];
+        boolean drawn = false;
+        for (org.bukkit.map.MapRenderer renderer : view.getRenderers()) {
+            if (renderer != null && tryExtractRendererBuffer(renderer, pixels)) {
+                drawn = true;
+            }
+        }
+        return drawn ? pixels : new byte[0];
+    }
+
+    private boolean tryExtractRendererBuffer(org.bukkit.map.MapRenderer renderer, byte[] pixels) {
+        try {
+            java.lang.reflect.Field bufferField = renderer.getClass().getDeclaredField("pixelBuffer");
+            bufferField.setAccessible(true);
+            byte[] buf = (byte[]) bufferField.get(renderer);
+            if (buf != null && buf.length >= 16384) {
+                System.arraycopy(buf, 0, pixels, 0, 16384);
+                return true;
+            }
+        } catch (Exception _) {
+            // Ignore missing custom renderer pixel buffer fields
+        }
+        return false;
+    }
+
+    @SuppressWarnings("null")
     private String processMapPdc(org.bukkit.inventory.meta.MapMeta meta, ItemStack item, org.bukkit.NamespacedKey serverKey, org.bukkit.NamespacedKey mapIdKey, int originalMapId, MCDataBridge plugin) {
         try {
             var pdc = meta.getPersistentDataContainer();
@@ -365,7 +471,7 @@ public class PlayerData {
                     && tame.getOwner() != null
                     && tame.getOwner().getUniqueId().equals(player.getUniqueId())) {
                 CompanionSnapshot snap = new CompanionSnapshot(entity);
-                if (mode.equals(MODE_RETURN)) {
+                if (MODE_RETURN.equals(mode)) {
                     snap.setSourceServerId(plugin.getServerId());
                 }
                 snapshots.add(snap);
@@ -381,7 +487,7 @@ public class PlayerData {
             if (leftShoulder != null) {
                 CompanionSnapshot snap = new CompanionSnapshot(leftShoulder);
                 snap.setIsOnShoulderLeft(true);
-                if (mode.equals(MODE_RETURN)) {
+                if (MODE_RETURN.equals(mode)) {
                     snap.setSourceServerId(plugin.getServerId());
                 }
                 snapshots.add(snap);
@@ -400,7 +506,7 @@ public class PlayerData {
             if (rightShoulder != null) {
                 CompanionSnapshot snap = new CompanionSnapshot(rightShoulder);
                 snap.setIsOnShoulderRight(true);
-                if (mode.equals(MODE_RETURN)) {
+                if (MODE_RETURN.equals(mode)) {
                     snap.setSourceServerId(plugin.getServerId());
                 }
                 snapshots.add(snap);

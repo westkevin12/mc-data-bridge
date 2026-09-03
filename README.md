@@ -47,7 +47,7 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
   - **Persistent Data Container (PDC)** (Custom metadata from other plugins)
   - **Flight & GameMode** status
   - **Companions & Pets** (Tamed wolves, cats, parrots, etc., with NBT properties and sitting status)
-  - **Map Items & Canvas Sync** (Cross-server map stashing via `mode: return` or canvas sync via `global`)
+  - **Map Items & Canvas Sync** (Cross-server map canvas sync via `sync-data.maps: true` with configurable map locking via `maps.lock-global-maps`)
   - **Separate Gamemode Inventories** (Opt-in separate profiles for Survival, Creative, Adventure, Spectator)
 - **Resilient Connection Pooling:** Uses HikariCP with optimized settings to ensure that the database connection is resilient to network issues and database restarts.
 - **Prometheus Metrics Exporter:** Built-in lightweight HTTP server exposing live synchronization performance metrics (sync latency, cache metrics, HikariCP pool status) for Grafana dashboards.
@@ -259,9 +259,11 @@ sync-data:
   separate-gamemode-inventories: false
 
 # Map Synchronization Settings
+# To disable map synchronization entirely (e.g. if using a third-party map sync plugin),
+# set 'sync-data.maps: false'.
 maps:
-  # Synchronization mode: return (default), global, untracked
-  mode: "return"
+  # Force map locking (locked = 1) on global maps to prevent local terrain overwrites / Fog of War
+  lock-global-maps: true
 
 # Companion/pet sync settings. Requires sync-data.companions: true.
 companions:

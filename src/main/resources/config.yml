@@ -112,19 +112,20 @@ sync-data:
   pdc: false
   flight-gamemode: false
   companions: false
-  maps: true
+  maps: false
   separate-gamemode-inventories: false
 
 # Map Synchronization Settings
+# To enable cross-server map synchronization, set 'sync-data.maps: true' above.
 maps:
-  # Map synchronization mode across servers:
-  # - return (default): Map items belong to the server where they were created. When moving to another server,
-  #   foreign maps are stashed safely in the database and restored when returning to their origin server.
-  # - global: Map canvas pixel data is synchronized via database. Maps are re-rendered on target
-  #   servers so artwork and explored maps appear identical across all network servers.
-  # - untracked: Legacy vanilla behavior (no map PDC tagging or stashing).
-  # Default: return
-  mode: "return"
+  # Force Map Locking on Synced Maps
+  # - true: Forces globally synchronized map views to be locked (locked = 1).
+  #   This prevents destination servers (e.g. Resource) from re-scanning local terrain and overwriting custom artwork
+  #   or applying a Fog of War exploration grid over synchronized maps.
+  # - false (default - vanilla style): Preserves vanilla unlocked map behavior where Paper's map engine
+  #   re-scans and overwrites map pixels based on nearby terrain on the current server.
+  # Default: false
+  lock-global-maps: false
 
 # Server/World Blacklist
 # Data synchronization will be disabled for players on these servers or in these worlds.

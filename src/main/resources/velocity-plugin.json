@@ -1,7 +1,7 @@
 {
   "id": "mc-data-bridge",
   "name": "mc-data-bridge",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "A data bridge for Minecraft servers.",
   "authors": [
     "DigitalServerHost"

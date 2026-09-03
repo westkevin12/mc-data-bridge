@@ -1,33 +1,24 @@
-# MC Data Bridge - Release Notes (v2.2.0)
+# MC Data Bridge - Release Notes (v2.2.1)
 
 ## Overview
 
-Version 2.2.0 introduces **Map Sync Between Servers** and **Separate Gamemode Inventories**, allowing players and staff members to maintain isolated inventory profiles per gamemode and stash maps per-server across proxy networks without data conflicts, alongside core dependency updates.
+Version 2.2.1 is a release streamlining map synchronization architecture, introducing configurable map locking enforcement, fixing map canvas color palette rendering issues, and adding automatic config migration from v2.2.0.
 
 ---
 
 ## Key Changes
 
-### 🗺️ Map Sync Between Servers (#36)
+### 🗺️ Map Sync Architecture Simplification (#36, #39)
 
-- **Server-Isolated Map Stashing (`mode: return`):** Filled map items created on Server A are tagged with origin metadata (`databridge:origin_server` and `databridge:original_map_id`). When transferring to Server B, foreign maps are safely stashed in the database (`databridge_maps`) and automatically restored to their inventory slots when returning to Server A.
-- **Configurable Map Synchronization Modes:** Added a new `maps:` config section supporting three modes:
-  - `return` (default): Stashes and restores server-specific map items per server.
-  - `global`: Synchronizes map canvas pixel data across all network servers.
-  - `untracked`: Legacy vanilla map handling.
-- **Component Database Storage:** Added `{table-prefix}databridge_maps` table in MySQL and SQLite for atomic map persistence and cross-server UUID data migration.
-
-### 🎒 Separate Gamemode Inventories (#33)
-
-- **Opt-In Gamemode Inventory Separation (`sync-data.separate-gamemode-inventories`):** Staff members and players can maintain separate inventory, armor, and Ender Chest profiles for Survival, Creative, Adventure, and Spectator modes.
-- **Live Gamemode Swapping Hook:** Automatically snapshots and restores gamemode-specific inventory profiles when switching gamemodes on the fly (`PlayerGameModeChangeEvent`).
-- **Isolated Component Table:** Stores gamemode inventory profiles in `{table-prefix}databridge_gamemode_inventories` using `(uuid, gamemode)` composite key.
-
-### 📦 Dependency Updates
-
-- **MySQL Connector/J:** Updated `com.mysql:mysql-connector-j` from `9.7.0` to `26.7.0`.
-- **Item NBT API:** Updated `de.tr7zw:item-nbt-api` from `2.15.7` to `2.16.0`.
-- **JUnit Jupiter:** Updated `org.junit.jupiter:junit-jupiter` from `6.1.0` to `6.1.3`.
+- **Streamlined Map Synchronization Model:** Removed legacy `maps.mode` (`return`/`untracked` per-server stashing). Map synchronization is now toggled cleanly via `sync-data.maps: false` (default, vanilla style handling) or `sync-data.maps: true` (global map sync).
+- **Configurable Map Locking (`maps.lock-global-maps`):** Added `maps.lock-global-maps: false` (default). When set to `true`, enforces map locking (`locked = 1`) on cross-server maps to prevent target servers from re-scanning terrain or applying Fog of War over custom artwork.
+- **Automatic Legacy Config Migration:** Existing `v2.2.0` configuration files are automatically upgraded on startup:
+  - Legacy `maps.mode: global` -> Migrated to `sync-data.maps: true`, `maps.lock-global-maps: true`.
+  - Legacy `maps.mode: return` / `untracked` / `off` -> Migrated to `sync-data.maps: false`, `maps.lock-global-maps: false`.
+  - Obsolete `maps.mode` config entries are automatically removed.
+- **Fixed `maps_nbt` Persistence:** Corrected snapshot extraction and database merge logic to ensure map snapshots and canvas pixels are saved non-null to the `{table-prefix}databridge_maps` table.
+- **Locked Map Resolution Support:** Improved map ID resolution logic (`resolveMapId`) to resolve map IDs from item components and PDC (`databridge:original_map_id`), preventing locked maps created in Cartography Tables from being skipped during saves.
+- **Canvas Palette & Renderer Fix:** Resolved canvas rendering issues where maps rendered as solid brown blocks. Default background world renderers are now cleared (`view.getRenderers().clear()`) before applying custom raw canvas palette byte renderers.
 
 ---
 
