@@ -1020,25 +1020,6 @@ public class DatabaseManager {
         boolean loadedAny = false;
 
         try (Connection connection = getConnection()) {
-            String sqlMeta = "SELECT lock_version, snapshot_checksum FROM " + tableName + WHERE_UUID_SQL;
-            try (PreparedStatement stmt = connection.prepareStatement(sqlMeta)) {
-                stmt.setString(1, uuid.toString());
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (rs.next()) {
-                        data.setLockVersion(rs.getLong("lock_version"));
-                        String storedChecksum = rs.getString("snapshot_checksum");
-                        if (storedChecksum != null && plugin.getConfig().getBoolean("security.verify-data-integrity", true)) {
-                            String computed = data.calculateSnapshotChecksum(plugin.getSecuritySeed());
-                            if (!storedChecksum.equalsIgnoreCase(computed)) {
-                                LOGGER.log(java.util.logging.Level.SEVERE, "CRITICAL: Normalized snapshot checksum mismatch for {0}!", uuid);
-                            }
-                        }
-                    }
-                }
-            } catch (SQLException _) {
-                // Column missing fallback for legacy databases before auto-migration
-            }
-
             loadedAny |= loadStatisticsComponent(connection, data, uuid);
             if (targetGameMode != null) {
                 data.setGameMode(targetGameMode);
@@ -1054,6 +1035,25 @@ public class DatabaseManager {
             }
             if (plugin.isSyncEnabledNewFeature("maps")) {
                 loadedAny |= loadMapComponent(connection, plugin, data, uuid);
+            }
+
+            String sqlMeta = "SELECT lock_version, snapshot_checksum FROM " + tableName + WHERE_UUID_SQL;
+            try (PreparedStatement stmt = connection.prepareStatement(sqlMeta)) {
+                stmt.setString(1, uuid.toString());
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        data.setLockVersion(rs.getLong("lock_version"));
+                        String storedChecksum = rs.getString("snapshot_checksum");
+                        if (storedChecksum != null && loadedAny && plugin.getConfig().getBoolean("security.verify-data-integrity", true)) {
+                            String computed = data.calculateSnapshotChecksum(plugin.getSecuritySeed());
+                            if (!storedChecksum.equalsIgnoreCase(computed)) {
+                                LOGGER.log(java.util.logging.Level.SEVERE, "CRITICAL: Normalized snapshot checksum mismatch for {0}!", uuid);
+                            }
+                        }
+                    }
+                }
+            } catch (SQLException _) {
+                // Column missing fallback for legacy databases before auto-migration
             }
         }
 

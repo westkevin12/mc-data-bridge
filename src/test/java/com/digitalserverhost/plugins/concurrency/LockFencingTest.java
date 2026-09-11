@@ -44,8 +44,6 @@ class LockFencingTest {
         lenient().when(mockStatement.executeQuery()).thenReturn(mockResultSet);
     }
 
-
-
     @Test
     void testFencingToken_StaleServerSaveRejected() throws SQLException {
         // Server A acquired lockVersion = 1, Server B stole lock and incremented to lockVersion = 2.
@@ -82,4 +80,28 @@ class LockFencingTest {
         verify(mockConnection).commit(); // Transaction committed successfully
     }
 
+    @Test
+    void testStaleSaveAfterExpiration_EndToEndSimulation() throws SQLException {
+        // Step 1: Server A holds lock (token = 41)
+        PlayerData serverAData = new PlayerData();
+        serverAData.setLockVersion(41L);
+
+        // Step 2: Server A freezes (GC pause). Server B acquires lock (token = 42).
+        // Server B completes save and releases lock with token = 42.
+        PlayerData serverBData = new PlayerData();
+        serverBData.setLockVersion(42L);
+        when(mockStatement.executeUpdate()).thenReturn(1);
+
+        boolean serverBSave = databaseManager.saveAndReleaseLockComponents(
+                mockPlugin, serverBData, "TestPlayer", uuid, "server-B", "secret-seed");
+        assertTrue(serverBSave, "Server B with token 42 should commit successfully");
+
+        // Step 3: Server A unfreezes and attempts stale save with token = 41.
+        // DB returns 0 affected rows because lock_version in DB is now 42.
+        when(mockStatement.executeUpdate()).thenReturn(0);
+
+        boolean serverASave = databaseManager.saveAndReleaseLockComponents(
+                mockPlugin, serverAData, "TestPlayer", uuid, "server-A", "secret-seed");
+        assertFalse(serverASave, "Stale Server A with token 41 must fail to save after Server B epoch 42");
+    }
 }
