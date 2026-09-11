@@ -10,5 +10,14 @@ target/
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs & Crash Dumps
 *.log
+hs_err_pid*
+replay_pid*
+
+# Local Databases & Scratch Output
+*.db
+test_output.txt
+test_run.log
+test.java
+
