@@ -40,7 +40,7 @@ MC Data Bridge is a high-performance hybrid plugin for **PaperMC** (and forks li
 
 ### 1. The Secure Handshake (Happy Path)
 
-The Proxy (Velocity/Bungee) orchestrates the transfer. It ensures the Source Server has committed data and released its lock before the Destination Server loads player state.
+The Proxy (Velocity/Bungee) orchestrates server transfers. The Source Server saves data atomically and dispatches an instant `LockReleased` message through the proxy to wake the Destination Server's pre-login thread immediately (~50ms latency), falling back to SQL polling if network messages are dropped.
 
 ```mermaid
 sequenceDiagram
@@ -58,27 +58,29 @@ sequenceDiagram
     end
 
     rect rgb(35, 35, 35)
-        Note over S1, DB: Async Save Process
-        S1->>DB: UPDATE data... (Save)
-        S1->>DB: UPDATE is_locked=0 (Release)
+        Note over S1, DB: Single-Transaction Atomic Save
+        S1->>DB: UPDATE component tables + is_locked=0 (Commit)
+        S1->>P: Plugin Message: "LockReleased"
     end
 
-    rect rgb(45, 20, 20)
-        Note over S2, DB: Pre-Login Guard
-        loop Polling Lock (Max 10s)
-            S2->>DB: Attempt Acquire Lock (UPDATE ...)
-            alt Lock Acquired
-                DB-->>S2: Success
-                Note over S2: Break Loop
-            else Locked by S1
-                DB-->>S2: Fail (Rows = 0)
-                S2-->>S2: Sleep 500ms
+    rect rgb(20, 45, 20)
+        Note over S2: Event-Driven Pre-Login Wakeup (~50ms)
+        P->>S2: Relay "LockReleased" Signal
+        S2->>S2: Wake Pre-Login Thread (notifyAll)
+        S2->>DB: acquireLock (UPDATE ... lock_version = epoch + 1)
+        DB-->>S2: Lock Granted
+    end
+
+    alt Fallback Mechanism (Missed Signal)
+        rect rgb(45, 20, 20)
+            loop Database Polling (Every 500ms, Max 10s)
+                S2->>DB: Retry acquireLock
             end
         end
     end
 
-    S2->>DB: SELECT data (Load)
-    DB-->>S2: Return Player Data
+    S2->>DB: SELECT data (Load Normalized Components)
+    DB-->>S2: Return Player State
     S2-->>User: Join Successful
 ```
 
