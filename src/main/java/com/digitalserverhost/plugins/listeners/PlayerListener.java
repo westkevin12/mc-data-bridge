@@ -37,8 +37,10 @@ public class PlayerListener implements Listener, PluginMessageListener {
     private final Map<UUID, Boolean> switchingPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> editedPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> applyingDataPlayers = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> lockVersions = new ConcurrentHashMap<>();
 
     public PlayerListener(DatabaseManager databaseManager, MCDataBridge plugin) {
+
         this.databaseManager = databaseManager;
         this.plugin = plugin;
     }
@@ -181,6 +183,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
 
         while (attempts < MAX_ATTEMPTS) {
             if (databaseManager.acquireLock(uuid, serverId)) {
+                long version = databaseManager.acquireLockVersion(uuid, serverId);
+                lockVersions.put(uuid, version > 0 ? version : 1L);
                 return true;
             }
 
@@ -195,6 +199,8 @@ public class PlayerListener implements Listener, PluginMessageListener {
         }
         return isLockOwner(uuid, serverId);
     }
+
+
 
     private void handleIdentityCollision(UUID uuid, String name) {
         UUID nameOwnerUuid = databaseManager.getUuidByName(name);
@@ -353,11 +359,21 @@ public class PlayerListener implements Listener, PluginMessageListener {
         com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin,
                 () -> databaseManager.updateLastKnownName(uuid, player.getName(), plugin.getSecuritySeed()));
 
+        Long cachedVersion = lockVersions.get(uuid);
+        long versionVal = (cachedVersion != null && cachedVersion > 0) ? cachedVersion : (data != null ? data.getLockVersion() : 0L);
+
         long heartbeatTicks = plugin.getLockHeartbeatSeconds() * 20L;
-        com.digitalserverhost.plugins.utils.SchedulerUtils.getScheduler().startHeartbeat(
-                plugin, player, uuid, serverId, heartbeatTicks,
-                targetUuid -> databaseManager.updateLock(targetUuid, serverId));
+        if (versionVal > 0) {
+            com.digitalserverhost.plugins.utils.SchedulerUtils.getScheduler().startHeartbeat(
+                    plugin, player, uuid, serverId, heartbeatTicks,
+                    targetUuid -> databaseManager.updateLock(targetUuid, serverId, versionVal));
+        } else {
+            com.digitalserverhost.plugins.utils.SchedulerUtils.getScheduler().startHeartbeat(
+                    plugin, player, uuid, serverId, heartbeatTicks,
+                    targetUuid -> databaseManager.updateLock(targetUuid, serverId));
+        }
     }
+
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerKick(PlayerKickEvent event) {
@@ -387,6 +403,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
         final UUID uuid = player.getUniqueId();
         final String name = player.getName();
         final String serverId = plugin.getServerId();
+        final Long versionToken = lockVersions.remove(uuid);
 
         cancelHeartbeat(uuid);
 
@@ -401,6 +418,9 @@ public class PlayerListener implements Listener, PluginMessageListener {
         try {
             safelyCloseInventory(player);
             finalData = new PlayerData(player, plugin);
+            if (versionToken != null && versionToken > 0) {
+                finalData.setLockVersion(versionToken);
+            }
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE,
                     "Failed to create final data snapshot for {0}. Data will not be saved. Error: {1}",
@@ -409,6 +429,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
             savingPlayers.remove(uuid);
             return;
         }
+
 
         if (plugin.isDebugMode()) {
             plugin.getLogger().log(Level.INFO, "Got data snapshot for {0}. Scheduling save and lock release.", name);
@@ -444,17 +465,22 @@ public class PlayerListener implements Listener, PluginMessageListener {
         final UUID uuid = player.getUniqueId();
         final String name = player.getName();
         final String serverId = plugin.getServerId();
+        final Long versionToken = lockVersions.remove(uuid);
 
         cancelHeartbeat(uuid);
 
         try {
             PlayerData finalData = new PlayerData(player, plugin);
+            if (versionToken != null && versionToken > 0) {
+                finalData.setLockVersion(versionToken);
+            }
             String seed = plugin.getSecuritySeed();
             databaseManager.saveAndReleaseLockComponents(plugin, finalData, name, uuid, serverId, seed);
             if (plugin.isDebugMode()) {
                 plugin.getLogger().log(Level.INFO, "Synchronously saved data for {0}.", name);
             }
         } catch (Exception e) {
+
             plugin.getLogger().severe("Failed to sync save data for " + name + ": " + e.getMessage());
             databaseManager.releaseLock(uuid, serverId);
         } finally {

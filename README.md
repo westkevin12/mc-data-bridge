@@ -17,6 +17,9 @@ This plugin is a hybrid build and the same JAR file works on all supported platf
 
 ## Features
 
+- **Distributed Lock Fencing Tokens (`lock_version`):** Employs monotonic generation counters to fence off stale server writes, preventing delayed servers (e.g. post-GC pauses) from overwriting newer player sessions.
+- **Normalized Data Checksums (`snapshot_checksum`):** Calculates canonical SHA-256 integrity hashes across normalized player snapshot components (inventories, stats, PDC, companions) using a secure server seed.
+- **Single-Transaction Atomic Saves:** Saves all normalized components and releases locks within a single database connection and transaction (`setAutoCommit(false)` ... `commit()`).
 - **Item Duplication Exploit Protection:** Automatically closes open inventory views during server transfer and cancels container clicks, drags, item drops, pickups, and interactions while transfer locks are held.
 - **Interactive Inventory & Ender Chest Inspector (`invsee` / `endersee`):** Inspect offline or cross-server player inventories and ender chests.
   - **Overview GUI Controls:** **Left-Click** inventory or ender chest icons to view in Safe Read-Only Mode; **Right-Click** icons to open in Interactive Edit Mode (gated by permission).
@@ -355,4 +358,4 @@ MC Data Bridge uses a consolidated command hub for all administrative tasks.
 - **Security Best Practice:** For production MySQL servers, use a dedicated user with limited permissions (`SELECT`, `INSERT`, `UPDATE`, `CREATE`, `ALTER`).
 - **Backups:** Use the provided configuration documentation to implement true offsite backups.
 - **Connectivity & Firewalls:** Ensure your Minecraft servers and proxy can open a network connection to your database's `host` and `port`.
-- **Automatic Schema:** The plugin will automatically create and update the `player_data` table. The schema includes `uuid`, `data`, `is_locked`, `locking_server`, `lock_timestamp`, `last_known_name`, `identity_hash`, `name_last_updated`, `data_checksum`, and `last_updated`.
+- **Automatic Schema:** The plugin will automatically create and update the `player_data` table. The schema includes `uuid`, `data`, `is_locked`, `locking_server`, `lock_timestamp`, `lock_version`, `snapshot_checksum`, `last_known_name`, `identity_hash`, `name_last_updated`, `data_checksum`, and `last_updated`.

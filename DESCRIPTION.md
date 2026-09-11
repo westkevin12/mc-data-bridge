@@ -198,6 +198,8 @@ In addition to the primary tracking table (`player_data`), MC Data Bridge uses c
 | `is_locked`         | BOOLEAN      | Prevents concurrent writes from multiple servers.      |
 | `locking_server`    | VARCHAR(255) | The ID of the server holding the lock.                 |
 | `lock_timestamp`    | BIGINT       | Heartbeat to detect and recover from crashes.          |
+| `lock_version`      | BIGINT       | Monotonic fencing token counter for stale write prevention. |
+| `snapshot_checksum` | VARCHAR(64)  | SHA-256 integrity hash of the normalized snapshot.     |
 | `last_known_name`   | VARCHAR(16)  | Used for identity tracking and migration.              |
 | `identity_hash`     | VARCHAR(64)  | Salted hash of Name+UUID+Seed for verification.        |
 | `name_last_updated` | BIGINT       | Timestamp of when the player's name was last updated.  |

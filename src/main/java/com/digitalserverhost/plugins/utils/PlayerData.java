@@ -64,6 +64,9 @@ public class PlayerData {
     // Map sync
     private String mapsNBT;
 
+    // Distributed lock fencing token (epoch version)
+    private long lockVersion = 0;
+
 
     public PlayerData() {}
 
@@ -694,6 +697,25 @@ public class PlayerData {
     public void setZ(double z) { this.z = z; }
     public void setYaw(float yaw) { this.yaw = yaw; }
     public void setPitch(float pitch) { this.pitch = pitch; }
+    public long getLockVersion() { return lockVersion; }
+    public void setLockVersion(long lockVersion) { this.lockVersion = lockVersion; }
+
+    /**
+     * Computes a canonical SHA-256 snapshot checksum across normalized PlayerData fields.
+     */
+    public String calculateSnapshotChecksum(String seed) {
+        StringBuilder canonical = new StringBuilder();
+        canonical.append("hp:").append(health).append(";");
+        canonical.append("food:").append(foodLevel).append(",").append(saturation).append(",").append(exhaustion).append(";");
+        canonical.append("xp:").append(totalExperience).append(",").append(exp).append(",").append(level).append(";");
+        canonical.append("inv:").append(inventoryContentsNBT != null ? inventoryContentsNBT.hashCode() : 0).append(";");
+        canonical.append("arm:").append(armorContentsNBT != null ? armorContentsNBT.hashCode() : 0).append(";");
+        canonical.append("ec:").append(enderChestContentsNBT != null ? enderChestContentsNBT.hashCode() : 0).append(";");
+        canonical.append("pdc:").append(pdcNBT != null ? pdcNBT : "").append(";");
+        canonical.append("gm:").append(gameMode != null ? gameMode : "").append(";");
+        return calculateChecksum(canonical.toString(), seed);
+    }
+
 
     private SerializablePotionEffect[] convertPotionEffectArrayToSerializable(PotionEffect[] effects) {
         if (effects == null) {

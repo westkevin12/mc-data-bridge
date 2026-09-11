@@ -49,12 +49,15 @@ public class MCDataBridge extends JavaPlugin {
             "is_locked", java.util.Map.entry("BOOLEAN DEFAULT 0", INTEGER_DEFAULT_0),
             "locking_server", java.util.Map.entry("VARCHAR(255) DEFAULT NULL", TEXT_DEFAULT_NULL),
             "lock_timestamp", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
+            "lock_version", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
+            "snapshot_checksum", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
             "last_known_name", java.util.Map.entry("VARCHAR(16) DEFAULT NULL", TEXT_DEFAULT_NULL),
             "data_checksum", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
             "identity_hash", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
             "name_last_updated", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
             "last_updated", java.util.Map.entry("TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
                     "DATETIME DEFAULT CURRENT_TIMESTAMP"));
+
 
     private void startSpigot() {
         saveDefaultConfig();
@@ -185,8 +188,13 @@ public class MCDataBridge extends JavaPlugin {
                     "VARCHAR(255) DEFAULT NULL", TEXT_DEFAULT_NULL);
             ensureColumnExists(connection, statement, escapedTableName, dbType, "lock_timestamp", BIGINT_DEFAULT_0,
                     INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "lock_version", BIGINT_DEFAULT_0,
+                    INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "snapshot_checksum", VARCHAR64_DEFAULT_NULL,
+                    TEXT_DEFAULT_NULL);
             ensureColumnExists(connection, statement, escapedTableName, dbType, "last_known_name",
                     "VARCHAR(16) DEFAULT NULL", TEXT_DEFAULT_NULL);
+
             ensureColumnExists(connection, statement, escapedTableName, dbType, "data_checksum", VARCHAR64_DEFAULT_NULL,
                     TEXT_DEFAULT_NULL);
             ensureColumnExists(connection, statement, escapedTableName, dbType, "identity_hash", VARCHAR64_DEFAULT_NULL,
@@ -310,6 +318,8 @@ public class MCDataBridge extends JavaPlugin {
                     "is_locked INTEGER DEFAULT 0, " +
                     "locking_server TEXT DEFAULT NULL, " +
                     "lock_timestamp INTEGER DEFAULT 0, " +
+                    "lock_version INTEGER DEFAULT 0, " +
+                    "snapshot_checksum TEXT DEFAULT NULL, " +
                     "last_known_name TEXT DEFAULT NULL, " +
                     "data_checksum TEXT DEFAULT NULL, " +
                     "identity_hash TEXT DEFAULT NULL, " +
@@ -322,6 +332,8 @@ public class MCDataBridge extends JavaPlugin {
                     "is_locked BOOLEAN DEFAULT 0, " +
                     "locking_server VARCHAR(255) DEFAULT NULL, " +
                     "lock_timestamp BIGINT DEFAULT 0, " +
+                    "lock_version BIGINT DEFAULT 0, " +
+                    "snapshot_checksum VARCHAR(64) DEFAULT NULL, " +
                     "last_known_name VARCHAR(16) DEFAULT NULL, " +
                     "data_checksum VARCHAR(64) DEFAULT NULL, " +
                     "identity_hash VARCHAR(64) DEFAULT NULL, " +
@@ -330,6 +342,7 @@ public class MCDataBridge extends JavaPlugin {
                     "PRIMARY KEY (uuid)) ENGINE=InnoDB;";
         }
     }
+
 
     private void migrateFromLegacyTable(Connection connection, Statement statement, String escapedTableName)
             throws SQLException {
