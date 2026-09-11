@@ -249,6 +249,9 @@ public class DatabaseManager {
                         .append(tableName)
                         .append(" SET data = NULL, data_checksum = NULL, snapshot_checksum = ?, last_known_name = ?, identity_hash = ?, name_last_updated = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?");
 
+                // ARCHITECTURAL INVARIANT: lock_version is a monotonic fencing token, not merely a version number.
+                // Once ownership advances to a newer token (epoch), all database operations carrying an older token
+                // MUST be permanently rejected (0 rows updated) to prevent stale server post-GC writes from corrupting state.
                 if (lockVersion > 0) {
                     sqlBuilder.append(" AND lock_version = ?");
                 }
@@ -1047,7 +1050,9 @@ public class DatabaseManager {
                         if (storedChecksum != null && loadedAny && plugin.getConfig().getBoolean("security.verify-data-integrity", true)) {
                             String computed = data.calculateSnapshotChecksum(plugin.getSecuritySeed());
                             if (!storedChecksum.equalsIgnoreCase(computed)) {
-                                LOGGER.log(java.util.logging.Level.SEVERE, "CRITICAL: Normalized snapshot checksum mismatch for {0}!", uuid);
+                                LOGGER.log(java.util.logging.Level.SEVERE,
+                                        "CRITICAL: Normalized snapshot integrity verification failed for player {0}! lock_version={1}, expected={2}, computed={3}",
+                                        new Object[]{uuid, data.getLockVersion(), storedChecksum, computed});
                             }
                         }
                     }
