@@ -104,4 +104,30 @@ class LockFencingTest {
                 mockPlugin, serverAData, "TestPlayer", uuid, "server-A", "secret-seed");
         assertFalse(serverASave, "Stale Server A with token 41 must fail to save after Server B epoch 42");
     }
+
+    @Test
+    void testCompetingServerCannotStealActiveLock() throws SQLException {
+        // Server A holds active lock (token = 41).
+        // Server B attempts acquireLock while lock is still active and un-expired.
+        // DB update returns 0 affected rows.
+        when(mockStatement.executeUpdate()).thenReturn(0);
+
+        boolean acquireResult = databaseManager.acquireLock(uuid, "server-B");
+        assertFalse(acquireResult, "Server B should be denied lock acquisition while Server A lock is active");
+    }
+
+    @Test
+    void testStaleHeartbeatAndReleaseRejected() throws SQLException {
+        // Server A holds token 41, but Server B has stolen lock and incremented to token 42.
+        // Server A attempts updateLock (heartbeat) or releaseLock with token 41.
+        when(mockStatement.executeUpdate()).thenReturn(0);
+
+        // Attempt heartbeat with stale token 41
+        databaseManager.updateLock(uuid, "server-A", 41L);
+        verify(mockStatement).setLong(3, 41L);
+
+        // Attempt release lock with stale token 41
+        databaseManager.releaseLock(uuid, "server-A", 41L);
+        verify(mockStatement, times(2)).setLong(3, 41L);
+    }
 }

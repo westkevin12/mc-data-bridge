@@ -310,6 +310,29 @@ public class DatabaseManager {
         return saveAndReleaseLock(json, null, null, uuid, serverId);
     }
 
+    public void releaseLock(UUID uuid, String serverId, long lockVersion) {
+        if (serverId == null || serverId.isEmpty()) {
+            LOGGER.log(java.util.logging.Level.SEVERE, "CRITICAL: releaseLock was called with a null or empty serverId for UUID: {0}", uuid);
+            return;
+        }
+        if (lockVersion <= 0) {
+            releaseLock(uuid, serverId);
+            return;
+        }
+
+        String sql = UPDATE_SQL_PREFIX + tableName
+                + " SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ? AND lock_version = ?";
+        try (Connection connection = getConnection();
+                PreparedStatement releaseStatement = connection.prepareStatement(sql)) {
+            releaseStatement.setString(1, uuid.toString());
+            releaseStatement.setString(2, serverId);
+            releaseStatement.setLong(3, lockVersion);
+            releaseStatement.executeUpdate();
+        } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed to release lock for {0} on server {1} (version {2}): {3}", new Object[]{uuid, serverId, lockVersion, e.getMessage()});
+        }
+    }
+
     public void releaseLock(UUID uuid, String serverId) {
         if (serverId == null || serverId.isEmpty()) {
             LOGGER.log(java.util.logging.Level.SEVERE, "CRITICAL: releaseLock was called with a null or empty serverId for UUID: {0}", uuid);
