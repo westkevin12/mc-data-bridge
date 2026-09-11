@@ -38,6 +38,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
     private final Map<UUID, Boolean> editedPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> applyingDataPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lockVersions = new ConcurrentHashMap<>();
+    private final Map<UUID, Object> lockMonitors = new ConcurrentHashMap<>();
 
     public PlayerListener(DatabaseManager databaseManager, MCDataBridge plugin) {
 
@@ -58,6 +59,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
             case "SaveAndRelease" -> handleSaveAndReleaseMessage(in);
             case "ForceUnlock" -> handleForceUnlockMessage(in);
             case "LiveInventorySync" -> handleLiveInventorySyncMessage(in);
+            case "LockReleased" -> handleLockReleasedMessage(in);
             default -> {
                 /* ignore unrecognized subchannels */ }
         }
@@ -176,26 +178,45 @@ public class PlayerListener implements Listener, PluginMessageListener {
         }
     }
 
+    private void handleLockReleasedMessage(ByteArrayDataInput in) {
+        String uuidStr = in.readUTF();
+        UUID uuid = UUID.fromString(uuidStr);
+        Object monitor = lockMonitors.get(uuid);
+        if (monitor != null) {
+            synchronized (monitor) {
+                monitor.notifyAll();
+            }
+        }
+    }
+
     private boolean waitForLock(UUID uuid, String name, String serverId) throws InterruptedException, SQLException {
         int attempts = 0;
         final int MAX_ATTEMPTS = 20;
         final long WAIT_TIME_MS = 500;
+        Object monitor = lockMonitors.computeIfAbsent(uuid, k -> new Object());
 
-        while (attempts < MAX_ATTEMPTS) {
-            if (databaseManager.acquireLock(uuid, serverId)) {
-                long version = databaseManager.acquireLockVersion(uuid, serverId);
-                lockVersions.put(uuid, version > 0 ? version : 1L);
-                return true;
+        try {
+            while (attempts < MAX_ATTEMPTS) {
+                if (databaseManager.acquireLock(uuid, serverId)) {
+                    long version = databaseManager.acquireLockVersion(uuid, serverId);
+                    lockVersions.put(uuid, version > 0 ? version : 1L);
+                    return true;
+                }
+
+                MetricsManager.getInstance().incrementLockContentionRetries();
+
+                if (plugin.isDebugMode()) {
+                    plugin.getLogger().log(Level.INFO, "{0}{1}''s data is locked. Waiting for event or poll... (Attempt {2})",
+                            new Object[] { PLAYER_PREFIX, name, attempts + 1 });
+                }
+
+                synchronized (monitor) {
+                    monitor.wait(WAIT_TIME_MS);
+                }
+                attempts++;
             }
-
-            MetricsManager.getInstance().incrementLockContentionRetries();
-
-            if (plugin.isDebugMode()) {
-                plugin.getLogger().log(Level.INFO, "{0}{1}''s data is locked. Waiting... (Attempt {2})",
-                        new Object[] { PLAYER_PREFIX, name, attempts + 1 });
-            }
-            Thread.sleep(WAIT_TIME_MS);
-            attempts++;
+        } finally {
+            lockMonitors.remove(uuid);
         }
         return isLockOwner(uuid, serverId);
     }
@@ -442,6 +463,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
                         seed);
 
                 if (success) {
+                    dispatchLockReleasedMessage(uuid);
                     if (plugin.isDebugMode()) {
                         plugin.getLogger().log(Level.INFO, "Successfully saved data and released lock for {0}.", name);
                     }
@@ -475,7 +497,9 @@ public class PlayerListener implements Listener, PluginMessageListener {
                 finalData.setLockVersion(versionToken);
             }
             String seed = plugin.getSecuritySeed();
-            databaseManager.saveAndReleaseLockComponents(plugin, finalData, name, uuid, serverId, seed);
+            if (databaseManager.saveAndReleaseLockComponents(plugin, finalData, name, uuid, serverId, seed)) {
+                dispatchLockReleasedMessage(uuid);
+            }
             if (plugin.isDebugMode()) {
                 plugin.getLogger().log(Level.INFO, "Synchronously saved data for {0}.", name);
             }
@@ -485,6 +509,23 @@ public class PlayerListener implements Listener, PluginMessageListener {
             databaseManager.releaseLock(uuid, serverId);
         } finally {
             savingPlayers.remove(uuid);
+        }
+    }
+
+    private void dispatchLockReleasedMessage(UUID uuid) {
+        if (uuid == null) return;
+        try {
+            org.bukkit.entity.Player sender = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
+            if (sender != null) {
+                com.google.common.io.ByteArrayDataOutput out = com.google.common.io.ByteStreams.newDataOutput();
+                out.writeUTF("LockReleased");
+                out.writeUTF(uuid.toString());
+                sender.sendPluginMessage(plugin, "mc-data-bridge:main", out.toByteArray());
+            }
+        } catch (Exception e) {
+            if (plugin.isDebugMode()) {
+                plugin.getLogger().log(Level.WARNING, "Failed to dispatch LockReleased plugin message: {0}", e.getMessage());
+            }
         }
     }
 
