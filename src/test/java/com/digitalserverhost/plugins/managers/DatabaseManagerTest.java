@@ -234,4 +234,19 @@ class DatabaseManagerTest {
         java.util.List<String> result2 = databaseManager.deserializeListFromBlob(jsonBlob);
         assertEquals(list, result2);
     }
+
+    @Test
+    void testAcquireLockVersion_FetchesVersionForAlreadyAcquiredLock() throws SQLException {
+        // Mock query returning lock_version = 42 for active lock owned by serverId
+        when(mockStatement.executeQuery()).thenReturn(mockResultSet);
+        when(mockResultSet.next()).thenReturn(true);
+        when(mockResultSet.getLong("lock_version")).thenReturn(42L);
+
+        long version = databaseManager.acquireLockVersion(uuid, serverId);
+
+        assertEquals(42L, version, "acquireLockVersion must return active lock version from database without trying to re-acquire lock");
+        verify(mockConnection).prepareStatement(contains("SELECT lock_version FROM `player_data` WHERE uuid = ? AND locking_server = ? AND is_locked = 1"));
+        verify(mockStatement).setString(1, uuid.toString());
+        verify(mockStatement).setString(2, serverId);
+    }
 }

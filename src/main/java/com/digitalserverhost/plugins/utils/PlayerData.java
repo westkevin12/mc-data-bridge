@@ -705,9 +705,13 @@ public class PlayerData {
      */
     public String calculateSnapshotChecksum(String seed) {
         StringBuilder canonical = new StringBuilder();
-        canonical.append("hp:").append(health).append(";");
-        canonical.append("food:").append(foodLevel).append(",").append(saturation).append(",").append(exhaustion).append(";");
-        canonical.append("xp:").append(totalExperience).append(",").append(exp).append(",").append(level).append(";");
+        canonical.append("hp:").append(String.format(Locale.ROOT, "%.2f", health)).append(";");
+        canonical.append("food:").append(foodLevel).append(",")
+                 .append(String.format(Locale.ROOT, "%.2f", saturation)).append(",")
+                 .append(String.format(Locale.ROOT, "%.2f", exhaustion)).append(";");
+        canonical.append("xp:").append(totalExperience).append(",")
+                 .append(String.format(Locale.ROOT, "%.4f", exp)).append(",")
+                 .append(level).append(";");
         canonical.append("inv:").append(inventoryContentsNBT != null ? inventoryContentsNBT.hashCode() : 0).append(";");
         canonical.append("arm:").append(armorContentsNBT != null ? armorContentsNBT.hashCode() : 0).append(";");
         canonical.append("ec:").append(enderChestContentsNBT != null ? enderChestContentsNBT.hashCode() : 0).append(";");

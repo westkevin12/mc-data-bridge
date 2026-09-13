@@ -171,12 +171,9 @@ public class DatabaseManager {
     }
 
     public long acquireLockVersion(UUID uuid, String serverId) throws SQLException {
-        if (acquireLock(uuid, serverId)) {
-            try (Connection connection = getConnection()) {
-                return fetchLockVersion(connection, uuid, serverId);
-            }
+        try (Connection connection = getConnection()) {
+            return fetchLockVersion(connection, uuid, serverId);
         }
-        return 0L;
     }
 
     private boolean acquireLockInternal(UUID uuid, String serverId) throws SQLException {
