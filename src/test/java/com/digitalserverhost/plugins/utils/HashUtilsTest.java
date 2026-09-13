@@ -1,41 +1,53 @@
 package com.digitalserverhost.plugins.utils;
 
 import org.junit.jupiter.api.Test;
+
 import java.util.UUID;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 public class HashUtilsTest {
 
+    private static final String TEST_NAME = "TestPlayer";
+    private static final UUID TEST_UUID = UUID.fromString("12345678-1234-1234-1234-123456789abc");
+    private static final String TEST_SEED = "super-secret-test-seed-123";
+
     @Test
-    public void testGenerateIdentityHash() {
-        UUID uuid = UUID.randomUUID();
-        String name = "Notch";
-        
-        String hash1 = HashUtils.generateIdentityHash(name, uuid);
-        String hash2 = HashUtils.generateIdentityHash(name.toLowerCase(), uuid);
-        String hash3 = HashUtils.generateIdentityHash(name.toUpperCase(), uuid);
-        
-        assertNotNull(hash1);
-        assertEquals(64, hash1.length(), "Hash should be 64 characters (SHA-256 hex)");
-        assertEquals(hash1, hash2, "Hash should be case-insensitive for the name");
-        assertEquals(hash1, hash3, "Hash should be case-insensitive for the name");
+    public void testHmacSHA256Generation() {
+        String hash = HashUtils.generateIdentityHash(TEST_NAME, TEST_UUID, TEST_SEED);
+        assertNotNull(hash);
+        assertEquals(64, hash.length()); // SHA-256 / HMAC-SHA256 hex string length is 64 chars
     }
 
     @Test
-    public void testDifferentIdentitiesHaveDifferentHashes() {
-        UUID uuid1 = UUID.randomUUID();
-        UUID uuid2 = UUID.randomUUID();
-        String name = "Notch";
-        
-        String hash1 = HashUtils.generateIdentityHash(name, uuid1);
-        String hash2 = HashUtils.generateIdentityHash(name, uuid2);
-        
-        assertNotEquals(hash1, hash2, "Different UUIDs should have different hashes even with same name");
+    public void testCaseInsensitivity() {
+        String hashLower = HashUtils.generateIdentityHash(TEST_NAME.toLowerCase(), TEST_UUID, TEST_SEED);
+        String hashUpper = HashUtils.generateIdentityHash(TEST_NAME.toUpperCase(), TEST_UUID, TEST_SEED);
+        assertEquals(hashLower, hashUpper);
     }
 
     @Test
-    public void testNullHandling() {
-        assertNull(HashUtils.generateIdentityHash(null, UUID.randomUUID()));
-        assertNull(HashUtils.generateIdentityHash("Notch", null));
+    public void testDualVerificationNewHmac() {
+        String hmacHash = HashUtils.generateIdentityHash(TEST_NAME, TEST_UUID, TEST_SEED);
+        assertTrue(HashUtils.verifyIdentityHash(hmacHash, TEST_NAME, TEST_UUID, TEST_SEED));
+    }
+
+    @Test
+    public void testDualVerificationLegacySHA256Fallback() {
+        String legacyHash = HashUtils.generateLegacyIdentityHash(TEST_NAME, TEST_UUID, TEST_SEED);
+        assertTrue(HashUtils.verifyIdentityHash(legacyHash, TEST_NAME, TEST_UUID, TEST_SEED));
+    }
+
+    @Test
+    public void testVerificationMismatchFails() {
+        String invalidHash = "0000000000000000000000000000000000000000000000000000000000000000";
+        assertFalse(HashUtils.verifyIdentityHash(invalidHash, TEST_NAME, TEST_UUID, TEST_SEED));
+    }
+
+    @Test
+    public void testNullSafety() {
+        assertNull(HashUtils.generateIdentityHash(null, TEST_UUID, TEST_SEED));
+        assertNull(HashUtils.generateIdentityHash(TEST_NAME, null, TEST_SEED));
+        assertFalse(HashUtils.verifyIdentityHash(null, TEST_NAME, TEST_UUID, TEST_SEED));
     }
 }

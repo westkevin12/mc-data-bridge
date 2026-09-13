@@ -37,8 +37,11 @@ public class PlayerListener implements Listener, PluginMessageListener {
     private final Map<UUID, Boolean> switchingPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> editedPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> applyingDataPlayers = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> lockVersions = new ConcurrentHashMap<>();
+    private final Map<UUID, Object> lockMonitors = new ConcurrentHashMap<>();
 
     public PlayerListener(DatabaseManager databaseManager, MCDataBridge plugin) {
+
         this.databaseManager = databaseManager;
         this.plugin = plugin;
     }
@@ -56,6 +59,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
             case "SaveAndRelease" -> handleSaveAndReleaseMessage(in);
             case "ForceUnlock" -> handleForceUnlockMessage(in);
             case "LiveInventorySync" -> handleLiveInventorySyncMessage(in);
+            case "LockReleased" -> handleLockReleasedMessage(in);
             default -> {
                 /* ignore unrecognized subchannels */ }
         }
@@ -174,27 +178,50 @@ public class PlayerListener implements Listener, PluginMessageListener {
         }
     }
 
+    private void handleLockReleasedMessage(ByteArrayDataInput in) {
+        String uuidStr = in.readUTF();
+        UUID uuid = UUID.fromString(uuidStr);
+        Object monitor = lockMonitors.get(uuid);
+        if (monitor != null) {
+            synchronized (monitor) {
+                monitor.notifyAll();
+            }
+        }
+    }
+
     private boolean waitForLock(UUID uuid, String name, String serverId) throws InterruptedException, SQLException {
         int attempts = 0;
         final int MAX_ATTEMPTS = 20;
         final long WAIT_TIME_MS = 500;
+        Object monitor = lockMonitors.computeIfAbsent(uuid, k -> new Object());
 
-        while (attempts < MAX_ATTEMPTS) {
-            if (databaseManager.acquireLock(uuid, serverId)) {
-                return true;
+        try {
+            while (attempts < MAX_ATTEMPTS) {
+                if (databaseManager.acquireLock(uuid, serverId)) {
+                    long version = databaseManager.acquireLockVersion(uuid, serverId);
+                    lockVersions.put(uuid, version > 0 ? version : 1L);
+                    return true;
+                }
+
+                MetricsManager.getInstance().incrementLockContentionRetries();
+
+                if (plugin.isDebugMode()) {
+                    plugin.getLogger().log(Level.INFO, "{0}{1}''s data is locked. Waiting for event or poll... (Attempt {2})",
+                            new Object[] { PLAYER_PREFIX, name, attempts + 1 });
+                }
+
+                synchronized (monitor) {
+                    monitor.wait(WAIT_TIME_MS);
+                }
+                attempts++;
             }
-
-            MetricsManager.getInstance().incrementLockContentionRetries();
-
-            if (plugin.isDebugMode()) {
-                plugin.getLogger().log(Level.INFO, "{0}{1}''s data is locked. Waiting... (Attempt {2})",
-                        new Object[] { PLAYER_PREFIX, name, attempts + 1 });
-            }
-            Thread.sleep(WAIT_TIME_MS);
-            attempts++;
+        } finally {
+            lockMonitors.remove(uuid);
         }
         return isLockOwner(uuid, serverId);
     }
+
+
 
     private void handleIdentityCollision(UUID uuid, String name) {
         UUID nameOwnerUuid = databaseManager.getUuidByName(name);
@@ -353,11 +380,21 @@ public class PlayerListener implements Listener, PluginMessageListener {
         com.digitalserverhost.plugins.utils.SchedulerUtils.runAsync(plugin,
                 () -> databaseManager.updateLastKnownName(uuid, player.getName(), plugin.getSecuritySeed()));
 
+        Long cachedVersion = lockVersions.get(uuid);
+        long versionVal = (cachedVersion != null && cachedVersion > 0) ? cachedVersion : (data != null ? data.getLockVersion() : 0L);
+
         long heartbeatTicks = plugin.getLockHeartbeatSeconds() * 20L;
-        com.digitalserverhost.plugins.utils.SchedulerUtils.getScheduler().startHeartbeat(
-                plugin, player, uuid, serverId, heartbeatTicks,
-                targetUuid -> databaseManager.updateLock(targetUuid, serverId));
+        if (versionVal > 0) {
+            com.digitalserverhost.plugins.utils.SchedulerUtils.getScheduler().startHeartbeat(
+                    plugin, player, uuid, serverId, heartbeatTicks,
+                    targetUuid -> databaseManager.updateLock(targetUuid, serverId, versionVal));
+        } else {
+            com.digitalserverhost.plugins.utils.SchedulerUtils.getScheduler().startHeartbeat(
+                    plugin, player, uuid, serverId, heartbeatTicks,
+                    targetUuid -> databaseManager.updateLock(targetUuid, serverId));
+        }
     }
+
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerKick(PlayerKickEvent event) {
@@ -387,6 +424,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
         final UUID uuid = player.getUniqueId();
         final String name = player.getName();
         final String serverId = plugin.getServerId();
+        final Long versionToken = lockVersions.remove(uuid);
 
         cancelHeartbeat(uuid);
 
@@ -401,6 +439,9 @@ public class PlayerListener implements Listener, PluginMessageListener {
         try {
             safelyCloseInventory(player);
             finalData = new PlayerData(player, plugin);
+            if (versionToken != null && versionToken > 0) {
+                finalData.setLockVersion(versionToken);
+            }
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE,
                     "Failed to create final data snapshot for {0}. Data will not be saved. Error: {1}",
@@ -409,6 +450,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
             savingPlayers.remove(uuid);
             return;
         }
+
 
         if (plugin.isDebugMode()) {
             plugin.getLogger().log(Level.INFO, "Got data snapshot for {0}. Scheduling save and lock release.", name);
@@ -421,6 +463,7 @@ public class PlayerListener implements Listener, PluginMessageListener {
                         seed);
 
                 if (success) {
+                    dispatchLockReleasedMessage(uuid);
                     if (plugin.isDebugMode()) {
                         plugin.getLogger().log(Level.INFO, "Successfully saved data and released lock for {0}.", name);
                     }
@@ -444,21 +487,45 @@ public class PlayerListener implements Listener, PluginMessageListener {
         final UUID uuid = player.getUniqueId();
         final String name = player.getName();
         final String serverId = plugin.getServerId();
+        final Long versionToken = lockVersions.remove(uuid);
 
         cancelHeartbeat(uuid);
 
         try {
             PlayerData finalData = new PlayerData(player, plugin);
+            if (versionToken != null && versionToken > 0) {
+                finalData.setLockVersion(versionToken);
+            }
             String seed = plugin.getSecuritySeed();
-            databaseManager.saveAndReleaseLockComponents(plugin, finalData, name, uuid, serverId, seed);
+            if (databaseManager.saveAndReleaseLockComponents(plugin, finalData, name, uuid, serverId, seed)) {
+                dispatchLockReleasedMessage(uuid);
+            }
             if (plugin.isDebugMode()) {
                 plugin.getLogger().log(Level.INFO, "Synchronously saved data for {0}.", name);
             }
         } catch (Exception e) {
+
             plugin.getLogger().severe("Failed to sync save data for " + name + ": " + e.getMessage());
             databaseManager.releaseLock(uuid, serverId);
         } finally {
             savingPlayers.remove(uuid);
+        }
+    }
+
+    private void dispatchLockReleasedMessage(UUID uuid) {
+        if (uuid == null) return;
+        try {
+            org.bukkit.entity.Player sender = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
+            if (sender != null) {
+                com.google.common.io.ByteArrayDataOutput out = com.google.common.io.ByteStreams.newDataOutput();
+                out.writeUTF("LockReleased");
+                out.writeUTF(uuid.toString());
+                sender.sendPluginMessage(plugin, "mc-data-bridge:main", out.toByteArray());
+            }
+        } catch (Exception e) {
+            if (plugin.isDebugMode()) {
+                plugin.getLogger().log(Level.WARNING, "Failed to dispatch LockReleased plugin message: {0}", e.getMessage());
+            }
         }
     }
 

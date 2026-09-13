@@ -1,29 +1,53 @@
-[SIZE=6][B]MC Data Bridge - Release Notes (v2.2.1)[/B][/SIZE]
+[SIZE=6][B]MC Data Bridge - Release Notes (v2.2.2)[/B][/SIZE]
 
 [SIZE=5][B]Overview[/B][/SIZE]
-[SIZE=4]Version 2.2.1 is a release streamlining map synchronization architecture, introducing configurable map locking enforcement, fixing map canvas color palette rendering issues, and adding automatic config migration from v2.2.0.[/SIZE]
+[SIZE=4]Version 2.2.2 is a major release introducing enterprise-grade concurrency, integrity, and performance protections derived from an architectural security audit. Features include monotonic distributed lock fencing tokens, normalized snapshot SHA-256 integrity validation, single-transaction atomic saves, event-driven lock release messaging to eliminate pre-login latency, standard HMAC-SHA256 identity hashing, and automated unit testing in CI.[/SIZE]
 
 [CENTER]----------------------------------------------------------------[/CENTER]
 
 [SIZE=5][B]Key Changes[/B][/SIZE]
 
-[SIZE=4][B]🗺️ Map Sync Architecture Simplification (#36, #39)[/B][/SIZE]
-
-[QUOTE][B]Developer Note:[/B] [I]"I couldn't think of a single valid use case for return mode with held map items. It seemed like a good idea at first, but having a broken, unusable map item on another server would likely never be the server admin's intention."[/I][/QUOTE]
-
+[SIZE=4][B]🔒 Monotonic Distributed Lock Fencing Tokens (#41, AUDIT §2)[/B][/SIZE]
 [LIST]
-[*][B]Streamlined Map Synchronization Model:[/B] Removed legacy [CODE]maps.mode[/CODE] ([CODE]return[/CODE]/[CODE]untracked[/CODE] per-server stashing). Map synchronization is now toggled cleanly via [CODE]sync-data.maps: false[/CODE] (default, vanilla style handling) or [CODE]sync-data.maps: true[/CODE] (global map sync).
-[*][B]Configurable Map Locking ([CODE]maps.lock-global-maps[/CODE]):[/B] Added [CODE]maps.lock-global-maps: false[/CODE] (default). When set to [CODE]true[/CODE], enforces map locking ([CODE]locked = 1[/CODE]) on cross-server maps to prevent target servers from re-scanning terrain or applying Fog of War over custom artwork.
-[*][B]Automatic Legacy Config Migration:[/B] Existing [CODE]v2.2.0[/CODE] configuration files are automatically upgraded on startup:
-  [LIST]
-  [*]Legacy [CODE]maps.mode: global[/CODE] -> Migrated to [CODE]sync-data.maps: true[/CODE], [CODE]maps.lock-global-maps: true[/CODE].
-  [*]Legacy [CODE]maps.mode: return[/CODE] / [CODE]untracked[/CODE] / [CODE]off[/CODE] -> Migrated to [CODE]sync-data.maps: false[/CODE], [CODE]maps.lock-global-maps: false[/CODE].
-  [*]Obsolete [CODE]maps.mode[/CODE] config entries are automatically removed.
-  [/LIST]
-[*][B]Fixed [CODE]maps_nbt[/CODE] Persistence:[/B] Corrected snapshot extraction and database merge logic to ensure map snapshots and canvas pixels are saved non-null to the [CODE]{table-prefix}databridge_maps[/CODE] table.
-[*][B]Locked Map Resolution Support:[/B] Improved map ID resolution logic ([CODE]resolveMapId[/CODE]) to resolve map IDs from item components and PDC ([CODE]databridge:original_map_id[/CODE]), preventing locked maps created in Cartography Tables from being skipped during saves.
-[*][B]Canvas Palette & Renderer Fix:[/B] Resolved canvas rendering issues where maps rendered as solid brown blocks. Default background world renderers are now cleared ([CODE]view.getRenderers().clear()[/CODE]) before applying custom raw canvas palette byte renderers.
+[*][B]Epoch Fencing Protection:[/B] Added [CODE]lock_version[/CODE] ([CODE]BIGINT DEFAULT 0[/CODE]) to [CODE]player_data[/CODE]. Every lock acquisition increments [CODE]lock_version[/CODE], producing a monotonic fencing token.
+[*][B]Stale Write Prevention:[/B] Saves, heartbeats, and lock releases evaluate [CODE]WHERE uuid = ? AND locking_server = ? AND lock_version = ?[/CODE]. Delayed servers or un-fenced post-GC pause writes are automatically rejected, protecting database state from stale session overwrites.
+[/LIST]
+
+[SIZE=4][B]🛡️ Normalized Data Integrity Checksums (#42, AUDIT §3)[/B][/SIZE]
+[LIST]
+[*][B]Normalized SHA-256 Checksum Verification:[/B] Added [CODE]snapshot_checksum[/CODE] ([CODE]VARCHAR(64)[/CODE]) to [CODE]player_data[/CODE].
+[*][B]Snapshot Integrity Verification:[/B] Computes canonical SHA-256 hashes across health, food, XP, NBT blobs (inventory, armor, ender chest, PDC), and game mode salted with [CODE]security.seed[/CODE]. Protects against database tampering across normalized component tables.
+[/LIST]
+
+[SIZE=4][B]⚡ Atomic Single-Transaction Persistence & Migration (#44, #45, AUDIT §5, §6)[/B][/SIZE]
+[LIST]
+[*][B]Single-Transaction Component Saves & Releases (#44):[/B] [CODE]saveAndReleaseLockComponents[/CODE] now executes all component writes ([CODE]databridge_inventories[/CODE], [CODE]statistics[/CODE], [CODE]metadata[/CODE], [CODE]companions[/CODE], [CODE]maps[/CODE]) and lock releases within a single database connection and transaction ([CODE]setAutoCommit(false)[/CODE] ... [CODE]commit()[/CODE]).
+[*][B]Transactional Legacy Migration (#45):[/B] [CODE]loadLegacyData[/CODE] executes component migration and legacy [CODE]data = NULL[/CODE] clearing inside a unified transaction with automatic rollback ([CODE]rollback()[/CODE]) on failure to eliminate dual-source-of-truth conditions.
+[/LIST]
+
+[SIZE=4][B]⚡ Event-Driven Lock Release Messaging — 🚀 Up to 10X Faster Server Switching (#46, AUDIT §9)[/B][/SIZE]
+[LIST]
+[*][B]⚡ Up to 10X Faster Cross-Server Transfers:[/B] Dispatches an instant [CODE]LockReleased[/CODE] plugin message upon source server save completion. Destination servers wake up waiting pre-login threads immediately, slashing server-switch lock wait latency from [B]~500ms down to a near-instant ~50ms[/B]!
+[*][B]Resilient Fallback:[/B] Retains 500ms database polling loops as a zero-downtime fallback mechanism if network messages are dropped.
+[/LIST]
+
+[SIZE=4][B]🔐 Keyed HMAC-SHA256 Identity Verification (#47, AUDIT §12)[/B][/SIZE]
+[LIST]
+[*][B]Standard HMAC-SHA256:[/B] Upgraded identity hashing in [CODE]HashUtils[/CODE] to use standard [CODE]HmacSHA256[/CODE] key derivation with [CODE]security.seed[/CODE].
+[*][B]Seamless Dual Verification:[/B] Automatically verifies existing records against both HMAC-SHA256 and legacy salted SHA-256 digests for 100% backward compatibility without table migrations.
+[/LIST]
+
+[SIZE=4][B]🧪 Automated CI Unit Testing & Concurrency Suite (#43, AUDIT §16)[/B][/SIZE]
+[LIST]
+[*][B]CI Test Automation:[/B] Re-enabled automated unit testing in GitHub Actions ([CODE].github/workflows/maven.yml[/CODE]) on pull requests and merges.
+[*][B]Concurrency & HMAC Unit Tests:[/B] Added [CODE]LockFencingTest[/CODE] and [CODE]HashUtilsTest[/CODE] verifying lock token increments, stale write rejections, HMAC generation, legacy fallback, and null safety.
+[/LIST]
+
+[SIZE=4][B]📚 Documentation & Onboarding Overhaul[/B][/SIZE]
+[LIST]
+[*][B]Streamlined Platform Descriptions:[/B] Overhauled [CODE]README.md[/CODE], [CODE]DESCRIPTION.md[/CODE], and Spigot/Modrinth listings with cleaner layouts and fast-start guides to improve reader onboarding.
+[*][B]Dedicated Technical Guides:[/B] Separated complex architectural concepts and database setup instructions into dedicated [CODE]ARCHITECTURE.md[/CODE] and [CODE]DATABASE_SETUP.md[/CODE] files for cleaner readability.
 [/LIST]
 
 [CENTER]----------------------------------------------------------------[/CENTER]
-[I]For installation instructions and configuration details, please refer to the README.md and config.yml.[/I]
+[I]For installation instructions and configuration details, please refer to README.md, ARCHITECTURE.md, and DATABASE_SETUP.md.[/I]

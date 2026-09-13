@@ -5,76 +5,42 @@
 ![Proxy](https://img.shields.io/badge/Proxy-Velocity%20%7C%20Bungee%20%7C%20Waterfall-blue?style=for-the-badge)
 ![Backend](https://img.shields.io/badge/Backend-Paper%20%7C%20Folia%20%7C%20Purpur%20%7C%20Spigot%20%7C%20Bukkit-brightgreen?style=for-the-badge)<br>
 
-MC Data Bridge is a robust, high-performance hybrid plugin for **PaperMC** (and forks like **Purpur**), **Folia**, **Spigot**, **Bukkit**, **BungeeCord** (and forks like **Waterfall**), and **Velocity**. It is designed to seamlessly synchronize player data across multiple Minecraft servers, ensuring that players have a consistent experience by retaining their health, hunger, experience, inventory, and more as they move between linked servers.
+MC Data Bridge is a high-performance hybrid plugin for **PaperMC** (and forks like **Purpur**), **Folia**, **Spigot**, **Bukkit**, **BungeeCord** (and forks like **Waterfall**), and **Velocity**. It seamlessly synchronizes player data across linked Minecraft servers with enterprise-grade distributed locks, single-transaction atomic persistence, and instant event-driven messaging.
 
-## Compatibility
+## Quick Start
 
-- **Minecraft Version:** `1.21.x` `26.2.x`
-- **Server Platforms:** PaperMC, Purpur, Spigot, Bukkit, **Folia**
-- **Proxy Platforms:** BungeeCord, Waterfall, Velocity
-
-This plugin is a hybrid build and the same JAR file works on all supported platforms.
-
-## Features
-
-- **Item Duplication Exploit Protection:** Automatically closes open inventory views during server transfer and cancels container clicks, drags, item drops, pickups, and interactions while transfer locks are held.
-- **Interactive Inventory & Ender Chest Inspector (`invsee` / `endersee`):** Inspect offline or cross-server player inventories and ender chests.
-  - **Overview GUI Controls:** **Left-Click** inventory or ender chest icons to view in Safe Read-Only Mode; **Right-Click** icons to open in Interactive Edit Mode (gated by permission).
-  - **Safe View-Only Mode (Default):** Opens in read-only mode to prevent accidental item modifications.
-  - **Interactive Edit Mode (`--edit` flag or Right-Click):** Admins with `databridge.inspect.edit` permission can edit offline/cross-server player items directly in the GUI with automatic database persistence upon closing.
-- **Full Command Tab Completion:** Comprehensive auto-completion for subcommands, player names, view options, and flags.
-- **Auto-Schema Maintenance:** Toggle `auto-update-schema` (default `true`) for automated table maintenance and column upgrades (`LONGTEXT` support for large stats and metadata).
-- **Hybrid Plugin:** A single JAR file works on your PaperMC/Purpur/Spigot/Folia servers and your BungeeCord/Waterfall/Velocity proxy, automatically activating the correct functionality for each platform.
-- **Identity History Tracking:** Automatically tracks `last_known_name` and a secure `identity_hash` (SHA-256) to enable secure UUID change detection and prevent identity hijacking in hybrid (Cracked/Premium) environments.
-- **Identity Modes (PREMIUM/HYBRID):** Toggle between strict UUID enforcement for premium servers or flexible identity shifts for hybrid/cracked networks.
-- **FastLogin & AuthMe Auto-Migration:** Automatically migrates player data from offline to premium UUIDs when a player is verified by FastLogin (PreLogin) or AuthMe (Login).
-- **TOTP Support:** Compatible with AuthMe's native TOTP/2FA system; auto-migration triggers only after full multi-factor authentication is completed.
-- **Folia Support:** Built-in compatibility for Folia's regionalized threading model, ensuring safe operation on high-performance multi-threaded servers.
-- **Database Flexibility:** Supports **MySQL**, **MariaDB**, and **SQLite**. Choose the backend that best fits your network size.
-- **Proxy-Initiated Saves:** The proxy (BungeeCord/Velocity) orchestrates the data saving process, ensuring that a player's data is saved from their source server _before_ they connect to the destination server. This eliminates race conditions and ensures data is never lost during a server switch.
-- **Fully Asynchronous:** All database operations are performed on a separate thread, ensuring that your server's main thread is never blocked. This means no lag, even if your database is slow to respond.
-- **Robust Locking Mechanism:** A database-level locking mechanism with an automatic timeout prevents data corruption and ensures that only one server can write a player's data at a time.
-- **Version-Independent Item Serialization:** Player inventories are serialized using Minecraft's built-in Base64 methods, which is highly robust and prevents data loss when you update your Minecraft server to a new version.
-- **Cross-Server Player Data Sync:** Synchronizes core player data including:
-  - Health
-  - Food Level, Saturation & Exhaustion
-  - Experience (Total XP, current XP, and Level)
-  - Inventory & Armor Contents
-  - Active Potion Effects
-  - Ender Chest Contents
-  - Advancements & Recipes
-  - **Player Statistics** (Vanilla stats)
-  - **Persistent Data Container (PDC)** (Custom metadata from other plugins)
-  - **Flight & GameMode** status
-  - **Companions & Pets** (Tamed wolves, cats, parrots, etc., with NBT properties and sitting status)
-  - **Map Items & Canvas Sync** (Cross-server map canvas sync via `sync-data.maps: true` with optional map locking via `maps.lock-global-maps: true`. Defaults: `sync-data.maps: false` and `maps.lock-global-maps: false` for vanilla Fog of War map tracking)
-  - **Separate Gamemode Inventories** (Opt-in separate profiles for Survival, Creative, Adventure, Spectator)
-- **Resilient Connection Pooling:** Uses HikariCP with optimized settings to ensure that the database connection is resilient to network issues and database restarts.
-- **Prometheus Metrics Exporter:** Built-in lightweight HTTP server exposing live synchronization performance metrics (sync latency, cache metrics, HikariCP pool status) for Grafana dashboards.
-- **Granular Sync Control**: Enable or disable synchronization for any specific data type via `config.yml`.
-- **Server/World Blacklist**: Prevent synchronization on specific servers or worlds.
-- **Configurable Table Names**: Set a custom prefix for database tables to avoid conflicts.
-
-## Installation
-
-1.  **Build the Plugin:**
-    - Navigate to the plugin's root directory in your terminal.
-    - Run `mvn clean package` to build the plugin.
-    - The compiled JAR file (`mc-data-bridge-*.jar`) will be located in the `target/` directory.
-    - **Note**: Development builds will end in `-SNAPSHOT`. Release builds (from the `main` branch tags) will just be the version number.
-2.  **Deploy to Servers:**
-    - Copy the single `mc-data-bridge-*.jar` file into the `plugins/` folder of **each Minecraft server** (Paper, Spigot, or Folia) you wish to synchronize.
-    - Copy the **same JAR file** into the `plugins/` folder of your **BungeeCord or Velocity proxy server**.
+1. **Deploy Plugin**: Place the single `mc-data-bridge-*.jar` file into the `plugins/` folder of each Minecraft server (Paper/Folia/Spigot) and your proxy (Velocity/Bungee).
+2. **Configure Backend**: Edit `plugins/mc-data-bridge/config.yml` on each backend server:
+   - Set a unique `server-id` (e.g. `server-id: "survival-1"`).
+   - Configure **MySQL** or **MariaDB** credentials (**Required** for multi-server networks. Need help setting up a database? See [**DATABASE_SETUP.md**](DATABASE_SETUP.md)).
+   - Set `security.seed` to a secret random string.
+3. **Restart Servers**: Restart your proxy and backend servers. Data synchronization runs automatically.
 
 ---
 
-## 🛠 Technical Deep Dive
+## Features
 
-MC Data Bridge is built with a **Security-First** approach to player state. It utilizes SHA-256 data checksums to prevent manual database tampering, a Proxy-orchestrated handshake to eliminate data loss, and **Server-Side Salting** (via a configurable `security.seed`) to protect against rainbow table and pre-computation attacks on player identities.
+- **Comprehensive Cross-Server Data Synchronization**: Synchronizes health, food level, saturation, exhaustion, experience, inventory, armor, potion effects, ender chests, advancements, recipes, vanilla statistics, persistent data container (PDC) metadata, flight and gamemode status, companion pets, cross-server maps, and separate gamemode inventory profiles.
+- **Item Duplication Exploit Protection**: Automatically closes open inventory views during server transfer and cancels container clicks, drags, item drops, pickups, and interactions while transfer locks are held.
+- **Interactive Inventory & Ender Chest Inspector (`invsee` / `endersee`)**: Inspect offline or cross-server player inventories and ender chests in real time. Features safe view-only mode by default and interactive edit mode (`--edit` flag or Right-Click) for admins with automatic database persistence upon GUI close.
+- **Hybrid Single-JAR Architecture**: A single JAR file operates on your PaperMC, Folia, Spigot, BungeeCord, and Velocity servers, automatically executing the appropriate platform handlers.
+- **Identity Modes & Authentication Auto-Migration**: Toggle between strict `PREMIUM` UUID enforcement or flexible `HYBRID` identity shifts. Automatically migrates player data from offline to premium UUIDs upon verification by FastLogin (PreLogin) or AuthMe (Login, including AuthMe native TOTP/2FA).
+- **Identity History & Security Tracking**: Tracks `last_known_name` and a secure `identity_hash` (Keyed HMAC-SHA256) to detect identity hijacking, UUID collisions, and manual database tampering.
+- **Distributed Lock Fencing Tokens (`lock_version`)**: Employs monotonic generation counters to fence off stale server writes, ensuring delayed servers (e.g., post-GC pauses or network hiccups) can never overwrite active player sessions.
+- **Event-Driven Lock Release Messaging**: Source servers dispatch an instant `LockReleased` signal upon saving player state, waking destination pre-login threads immediately and reducing server-switch lock wait latency to ~50ms (with automatic fallback to database polling).
+- **Single-Transaction Atomic Persistence**: Combines normalized component updates (`inventories`, `statistics`, `metadata`, `companions`, `maps`) and lock releases into a single database connection and transaction (`setAutoCommit(false)` ... `commit()`).
+- **Normalized Data Integrity Checksums**: Computes canonical SHA-256 integrity hashes across normalized player state components salted with `security.seed` to verify data integrity before loading.
+- **Folia Multi-Threading Compatibility**: Uses regionalized schedulers (`GlobalRegionScheduler`, `EntityScheduler`) to guarantee thread safety across Folia's regionalized threading model.
+- **Prometheus Metrics Exporter**: Built-in HTTP server exposing real-time synchronization performance metrics (sync latency, cache hit ratios, HikariCP pool status) for Grafana dashboards.
+- **Granular Sync & Blacklist Control**: Enable or disable synchronization for any specific data type or exclude specific servers and worlds via `config.yml`.
+
+---
+
+## Technical Deep Dive & Concurrency Workflows
 
 ### 1. The Secure Handshake (Happy Path)
 
-The Proxy (Bungee/Velocity) acts as the coordinator. It ensures the Source Server has successfully committed data to the database and released its lock before the Destination Server is even allowed to request it.
+The Proxy (Velocity/Bungee) orchestrates server transfers. The Source Server saves data atomically and dispatches an instant `LockReleased` message through the proxy to wake the Destination Server's pre-login thread immediately (~50ms latency), falling back to SQL polling if network messages are dropped.
 
 ```mermaid
 sequenceDiagram
@@ -92,88 +58,60 @@ sequenceDiagram
     end
 
     rect rgb(35, 35, 35)
-        Note over S1, DB: Async Save Process
-        S1->>DB: UPDATE data... (Save)
-        S1->>DB: UPDATE is_locked=0 (Release)
+        Note over S1, DB: Single-Transaction Atomic Save
+        S1->>DB: UPDATE component tables + is_locked=0 (Commit)
+        S1->>P: Plugin Message: "LockReleased"
     end
 
-    rect rgb(45, 20, 20)
-        Note over S2, DB: Pre-Login Guard
-        loop Polling Lock (Max 10s)
-            S2->>DB: Attempt Acquire Lock (UPDATE ...)
-            alt Lock Acquired
-                DB-->>S2: Success
-                Note over S2: Break Loop
-            else Locked by S1
-                DB-->>S2: Fail (Rows = 0)
-                S2-->>S2: Sleep 500ms
+    rect rgb(20, 45, 20)
+        Note over S2: Event-Driven Pre-Login Wakeup (~50ms)
+        P->>S2: Relay "LockReleased" Signal
+        S2->>S2: Wake Pre-Login Thread (notifyAll)
+        S2->>DB: acquireLock (UPDATE ... lock_version = epoch + 1)
+        DB-->>S2: Lock Granted
+    end
+
+    alt Fallback Mechanism (Missed Signal)
+        rect rgb(45, 20, 20)
+            loop Database Polling (Every 500ms, Max 10s)
+                S2->>DB: Retry acquireLock
             end
         end
     end
 
-    S2->>DB: SELECT data (Load)
-    DB-->>S2: Return Player Data
+    S2->>DB: SELECT data (Load Normalized Components)
+    DB-->>S2: Return Player State
     S2-->>User: Join Successful
 ```
 
-### 2. Anti-Duplication & Race Condition Protection
+### 2. Distributed Lock Fencing & Stale Write Rejection
 
-By using a **Database-Level Locking Mechanism**, we prevent the "Double-Login" exploit. If a player somehow exists on two servers simultaneously, the second server will be denied access to the data until the first server safely disconnects.
-
-```mermaid
-sequenceDiagram
-    participant S1 as Server 1 (Survival)
-    participant DB as Database (SQL)
-    participant S2 as Server 2 (Creative)
-
-    Note over S1: Active Session
-    S1->>DB: Heartbeat (Every 30s)
-
-    Note over S2: Malicious/Accidental Join
-    S2->>DB: Acquire Lock (UUID)
-    DB-->>S2: FAIL (Locked by 'Survival')
-    S2-->>S2: Kick Player: "Data still syncing..."
-```
-
-### 3. Crash Resilience & Auto-Recovery
-
-If a backend server crashes, the player's data lock might remain "Stuck." MC Data Bridge handles this gracefully via a configurable `lock-timeout` (Default: 60s). This ensures players aren't permanently locked out of the network while maintaining a safe window for the database to settle.
+To protect against delayed writes (e.g., long GC pauses, scheduler stalls, or network partitioning), MC Data Bridge assigns a monotonic generation token (`lock_version`) on lock acquisition. Any save attempt with an outdated `lock_version` is automatically rejected by SQL.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant P as Player
-    participant S1 as Old Server (Crashed)
+    participant S1 as Server 1 (GC Paused)
     participant DB as Database (SQL)
-    participant S2 as New Server
+    participant S2 as Server 2 (New Session)
 
-    Note over S1, DB: Active Lock (Timestamp: T0)
-    S1-xDB: Heartbeat Stops (Crash)
+    Note over S1: Holds Lock (Version = 41)
+    S1-xDB: GC Pause / Network Stall (Heartbeat Stops)
 
-    Note over P, S2: Player Reconnects after 60s
-    P->>S2: Join Attempt
-    S2->>DB: Check Lock (Timestamp < T - 60s)
-    DB-->>S2: Lock Expired
+    Note over S2: Lock Expired after 60s
+    S2->>DB: acquireLock (UPDATE ... lock_version = 42)
+    DB-->>S2: Lock Granted (Version = 42)
+    S2->>S2: Active Player Session
 
-    rect rgb(35, 35, 35)
-        Note over S2, DB: Auto-Recovery
-        S2->>DB: Override & Acquire Lock (Steal Lock)
-        S2->>DB: SELECT data (Load Data)
-        DB-->>S2: Return Data Snapshot
-    end
-
-    S2-->>P: Join Successful
+    Note over S1: Server 1 Resumes from GC Pause
+    S1->>DB: saveAndRelease (WHERE lock_version = 41)
+    DB-->>S1: REJECTED (0 Rows Updated)
+    Note over S1: Data save aborted! Server 2 state remains untouched.
 ```
 
-## Configuration
+---
 
-A `config.yml` file will be generated in the `plugins/mc-data-bridge/` folder on your backend servers after the first run. You must update this file with your database credentials and a unique server ID.
-
-### Database Settings
-
-You can choose between `mysql` (for MySQL/MariaDB) or `sqlite`.
-
-#### Option A: MySQL / MariaDB (Recommended for Networks)
+## Configuration (`config.yml`)
 
 ```yaml
 # MySQL Database Configuration
@@ -184,9 +122,10 @@ database:
   database: minecraft
   username: user
   password: password
+  sqlite-file: "player_data.db"
+  serialization-format: "json" # "json" or "binary"
 
-  # A list of JDBC properties to apply.
-  # This is where you would enable SSL (e.g., useSSL: true)
+  # JDBC properties (e.g., useSSL: true)
   properties:
     useSSL: false
     allowPublicKeyRetrieval: true
@@ -199,47 +138,20 @@ database:
     connection-timeout: 5000 # 5 seconds
     idle-timeout: 600000 # 10 minutes
 
-  # MySQL JDBC Optimizations
-  optimizations:
-    cache-prep-stmts: true
-    prep-stmt-cache-size: 250
-    prep-stmt-cache-sql-limit: 2048
-    use-server-prep-stmts: true
-    use-local-session-state: true
-    rewrite-batched-statements: true
-    cache-result-set-metadata: true
-    cache-server-configuration: true
-    elide-set-auto-commits: true
-    maintain-time-stats: false
-```
-
-#### Option B: SQLite (Recommended for Testing/Single-Machine)
-
-```yaml
-database:
-  type: sqlite
-  sqlite-file: "player_data.db"
-```
-
-### Advanced Settings
-
-```yaml
-# Set to true to enable verbose debugging messages.
-debug: false
-
-# A unique name for this server. This is CRITICAL for data locking.
-# Each server connected to the same database MUST have a unique name.
-# Example: "survival-1", "creative", "lobby"
+# A unique name for this server. CRITICAL for data locking!
 server-id: "default-server"
 
-# Set to prefix the player_data table.
+# Prefix for database tables
 table-prefix: ""
 
-# Time in ms before a lock is considered expired (if a server crashes).
+# Time in ms before a lock is considered expired (if server crashes)
 lock-timeout: 60000
 
-# Heartbeat interval for lock updates (seconds).
+# Heartbeat interval for lock updates (seconds)
 lock-heartbeat-seconds: 30
+
+# Automatically migrate database schema on startup
+auto-update-schema: true
 
 # Toggle specific data to sync
 sync-data:
@@ -259,41 +171,24 @@ sync-data:
   separate-gamemode-inventories: false
 
 # Map Synchronization Settings
-# Set 'sync-data.maps: true' above to enable cross-server map synchronization.
-# Set 'maps.lock-global-maps: false' (default) to keep maps unlocked (vanilla behavior: map engine updates pixels based on nearby terrain/Fog of War on current server).
-# Set 'maps.lock-global-maps: true' to enforce map locking (locked = 1), preventing destination servers from overwriting artwork or applying Fog of War.
 maps:
   lock-global-maps: false
 
-# Companion/pet sync settings. Requires sync-data.companions: true.
+# Companion / Pet Sync Settings
 companions:
   scan-radius: 32
-  # Synchronization mode: follow, return, untracked
-  mode: "follow"
+  mode: "follow" # "follow", "return", or "untracked"
 
 # Security Settings
 security:
-  # A secret seed used to salt all cryptographic hashes.
-  # CHANGE THIS to a long, random string to secure your network.
   seed: "change-me-to-a-long-random-string"
-  # Log identity collisions (name-UUID mismatches) to the console.
   log-uuid-mismatches: true
-  # Verify data integrity checksums before loading.
   verify-data-integrity: true
 
 # Identity & Migration Settings
 identity:
-  # PREMIUM: UUID for a name should NEVER change. Collisions require manual /migrate.
-  # HYBRID: Allows flexible identity shifts (useful for Cracked -> Premium transitions).
-  mode: PREMIUM
-
-  # If true, and FastLogin is installed, the plugin will attempt to
-  # auto-migrate data if FastLogin confirms the player is a verified premium user.
+  mode: PREMIUM # PREMIUM or HYBRID
   auto-migrate-fastlogin: false
-
-  # If true, and AuthMe is installed, the plugin will attempt to
-  # auto-migrate data once the player successfully logs in via AuthMe.
-  # This supports AuthMe's native TOTP/2FA as well.
   auto-migrate-authme: false
 
 # Prometheus Metrics Settings
@@ -310,49 +205,25 @@ sync-blacklist:
     - "example_nether"
 ```
 
-- **`database.*`**: Standard configuration for your MySQL database connection.
-- **`debug`**: Set to `true` to enable verbose debugging messages in the server console. Set to `false` for normal operation.
-- **`server-id` (Required):** You **must** set a unique name for each of your PaperMC/Spigot/Folia servers. This is critical for the data locking system to work correctly. The proxy server does not need this configuration.
-- **`lock-timeout`**: The time in milliseconds after which a data lock is considered expired. This prevents a player from being permanently locked if a server crashes while saving their data.
-- **`sync-data`**: Toggle specific features on/off. Features like `ender-chest`, `advancements`, `statistics`, and `pdc` (metadata) can be customized here.
-- **`sync-blacklist`**: Define servers or worlds where synchronization should be skipped.
-- **`database.backups`**: Configure the optional local redundancy (JSON export) system.
+---
 
-## Commands
+## Commands & Permissions
 
-MC Data Bridge uses a consolidated command hub for all administrative tasks.
+| Command | Description | Required Permission |
+| :--- | :--- | :--- |
+| `/databridge inspect <player> [inv\|ender] [--edit]` | Open GUI to view or edit saved player data | `databridge.inspect` (`.edit` for `--edit`) |
+| `/databridge invsee <player> [--edit]` | Directly open player inventory view or edit GUI | `databridge.inspect` (`.edit` for `--edit`) |
+| `/databridge endersee <player> [--edit]` | Directly open player ender chest view or edit GUI | `databridge.inspect` (`.edit` for `--edit`) |
+| `/databridge unlock <player>` | Release a stuck data lock (Works on Spigot, Folia, Bungee, Velocity) | `databridge.admin` |
+| `/databridge forceunlock <player>` | Proxy command: force immediate lock drop signal | `databridge.admin` |
+| `/databridge migrate <source> <target>` | Move player data between UUIDs or names | `databridge.admin` |
+| `/databridge reload` | Reload configuration and reconnect DB pool | `databridge.admin` |
 
-- `/databridge inspect <player> [inventory|enderchest] [--edit]` - Open a visual GUI to inspect or edit a player's saved data and inventory.
-- `/databridge invsee <player> [--edit]` - Directly open a player's saved inventory view or edit GUI.
-- `/databridge endersee <player> [--edit]` - Directly open a player's saved ender chest view or edit GUI.
-- `/databridge unlock <player>` - Manually release a stuck data lock. Works on Spigot, Folia, Bungee, and Velocity.
-- `/databridge migrate <source> <target>` - Securely migrate data from one player (UUID or Name) to another. Useful for account recoveries or identity changes.
-- `/databridge reload` - Reload plugin configuration and database connection pool.
+---
 
-**Proxy Commands:**
+## Documentation References
 
-- `/databridge unlock <player>` - Network-wide data lock release.
-- `/databridge forceunlock <player>` - Relays immediate lock drop signal to backend server.
-
-**Aliases:** `/db`  
-**Permissions:**
-
-- `databridge.inspect` - Permission to view player data, inventories, and ender chests in safe read-only mode.
-- `databridge.inspect.edit` - Elevated permission required to interactively edit inventories/ender chests via `--edit`.
-- `databridge.admin` - Full administrative access (includes unlock, migrate, reload, forceunlock, inspect, edit).
-
-## Usage
-
-1.  **Add the JAR:** Place the single `mc-data-bridge-*.jar` file into the `plugins/` folder of all your PaperMC/Folia/Spigot servers AND your BungeeCord/Velocity proxy.
-2.  **Configure:** Edit the `config.yml` in each PaperMC/Folia/Spigot server's `plugins/mc-data-bridge/` folder. **Set a unique `server-id` for each server.**
-3.  **Restart Servers:** Restart your proxy and all backend Minecraft servers.
-4.  **Enjoy!** Players can now seamlessly switch between your linked servers, and their data will be synchronized automatically and safely.
-
-## Important Notes
-
-- **Folia Compatibility:** This plugin is fully compatible with Folia. It uses the `GlobalRegionScheduler` and `EntityScheduler` to ensure thread safety across regions.
-- **Platform Parity:** Whether you are running a single Spigot server, a massive Folia cluster, or even a mix of server types on different machines behind a Velocity or Waterfall proxy, MC Data Bridge provides identical features and reliability.
-- **Security Best Practice:** For production MySQL servers, use a dedicated user with limited permissions (`SELECT`, `INSERT`, `UPDATE`, `CREATE`, `ALTER`).
-- **Backups:** Use the provided configuration documentation to implement true offsite backups.
-- **Connectivity & Firewalls:** Ensure your Minecraft servers and proxy can open a network connection to your database's `host` and `port`.
-- **Automatic Schema:** The plugin will automatically create and update the `player_data` table. The schema includes `uuid`, `data`, `is_locked`, `locking_server`, `lock_timestamp`, `last_known_name`, `identity_hash`, `name_last_updated`, `data_checksum`, and `last_updated`.
+For full technical diagrams, relational database schemas, and SpigotMC wiki pages:
+- [**DATABASE_SETUP.md**](DATABASE_SETUP.md) — MySQL & MariaDB Installation Guide (Docker, Linux Host, Firewall & Security Best Practices).
+- [**ARCHITECTURE.md**](ARCHITECTURE.md) — Architectural Deep Dive, Complete Sequence Diagrams, and Database Schemas.
+- [**DOCUMENTATION.bbcode**](DOCUMENTATION.bbcode) — BBCode Wiki Documentation.

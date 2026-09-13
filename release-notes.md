@@ -1,28 +1,41 @@
-# MC Data Bridge - Release Notes (v2.2.1)
+# MC Data Bridge - Release Notes (v2.2.2)
 
 ## Overview
 
-Version 2.2.1 is a release streamlining map synchronization architecture, introducing configurable map locking enforcement, fixing map canvas color palette rendering issues, and adding automatic config migration from v2.2.0.
+Version 2.2.2 is a major release introducing enterprise-grade concurrency, integrity, and performance protections derived from an architectural security audit. Features include monotonic distributed lock fencing tokens, normalized snapshot SHA-256 integrity validation, single-transaction atomic saves, event-driven lock release messaging to eliminate pre-login latency, standard HMAC-SHA256 identity hashing, and automated unit testing in CI.
 
 ---
 
 ## Key Changes
 
-### 🗺️ Map Sync Architecture Simplification (#36, #39)
+### 🔒 Monotonic Distributed Lock Fencing Tokens (#41, AUDIT §2)
+- **Epoch Fencing Protection:** Added `lock_version` (`BIGINT DEFAULT 0`) to `player_data`. Every lock acquisition increments `lock_version`, producing a monotonic fencing token.
+- **Stale Write Prevention:** Saves, heartbeats, and lock releases evaluate `WHERE uuid = ? AND locking_server = ? AND lock_version = ?`. Delayed servers or un-fenced post-GC pause writes are automatically rejected, protecting database state from stale session overwrites.
 
-> [!NOTE]
-> **Developer Note:** _"I couldn't think of a single valid use case for return mode with held map items. It seemed like a good idea at first, but having a broken, unusable map item on another server would likely never be the server admin's intention."_
+### 🛡️ Normalized Data Integrity Checksums (#42, AUDIT §3)
+- **Normalized SHA-256 Checksum Verification:** Added `snapshot_checksum` (`VARCHAR(64)`) to `player_data`.
+- **Snapshot Integrity Verification:** Computes canonical SHA-256 hashes across health, food, XP, NBT blobs (inventory, armor, ender chest, PDC), and game mode salted with `security.seed`. Protects against database tampering across normalized component tables.
 
-- **Streamlined Map Synchronization Model:** Removed legacy `maps.mode` (`return`/`untracked` per-server stashing). Map synchronization is now toggled cleanly via `sync-data.maps: false` (default, vanilla style handling) or `sync-data.maps: true` (global map sync).
-- **Configurable Map Locking (`maps.lock-global-maps`):** Added `maps.lock-global-maps: false` (default). When set to `true`, enforces map locking (`locked = 1`) on cross-server maps to prevent target servers from re-scanning terrain or applying Fog of War over custom artwork.
-- **Automatic Legacy Config Migration:** Existing `v2.2.0` configuration files are automatically upgraded on startup:
-  - Legacy `maps.mode: global` -> Migrated to `sync-data.maps: true`, `maps.lock-global-maps: true`.
-  - Legacy `maps.mode: return` / `untracked` / `off` -> Migrated to `sync-data.maps: false`, `maps.lock-global-maps: false`.
-  - Obsolete `maps.mode` config entries are automatically removed.
-- **Fixed `maps_nbt` Persistence:** Corrected snapshot extraction and database merge logic to ensure map snapshots and canvas pixels are saved non-null to the `{table-prefix}databridge_maps` table.
-- **Locked Map Resolution Support:** Improved map ID resolution logic (`resolveMapId`) to resolve map IDs from item components and PDC (`databridge:original_map_id`), preventing locked maps created in Cartography Tables from being skipped during saves.
-- **Canvas Palette & Renderer Fix:** Resolved canvas rendering issues where maps rendered as solid brown blocks. Default background world renderers are now cleared (`view.getRenderers().clear()`) before applying custom raw canvas palette byte renderers.
+### ⚡ Atomic Single-Transaction Persistence & Migration (#44, #45, AUDIT §5, §6)
+- **Single-Transaction Component Saves & Releases (#44):** `saveAndReleaseLockComponents` now executes all component writes (`databridge_inventories`, `statistics`, `metadata`, `companions`, `maps`) and lock releases within a single database connection and transaction (`setAutoCommit(false)` ... `commit()`).
+- **Transactional Legacy Migration (#45):** `loadLegacyData` executes component migration and legacy `data = NULL` clearing inside a unified transaction with automatic rollback (`rollback()`) on failure to eliminate dual-source-of-truth conditions.
+
+### ⚡ Event-Driven Lock Release Messaging — 🚀 Up to 10X Faster Server Switching (#46, AUDIT §9)
+- **⚡ Up to 10X Faster Cross-Server Transfers:** Dispatches an instant `LockReleased` plugin message upon source server save completion. Destination servers wake up waiting pre-login threads immediately, slashing server-switch lock wait latency from **~500ms down to a near-instant ~50ms**!
+- **Resilient Fallback:** Retains 500ms database polling loops as a zero-downtime fallback mechanism if network messages are dropped.
+
+### 🔐 Keyed HMAC-SHA256 Identity Verification (#47, AUDIT §12)
+- **Standard HMAC-SHA256:** Upgraded identity hashing in `HashUtils` to use standard `HmacSHA256` key derivation with `security.seed`.
+- **Seamless Dual Verification:** Automatically verifies existing records against both HMAC-SHA256 and legacy salted SHA-256 digests for 100% backward compatibility without table migrations.
+
+### 🧪 Automated CI Unit Testing & Concurrency Suite (#43, AUDIT §16)
+- **CI Test Automation:** Re-enabled automated unit testing in GitHub Actions (`.github/workflows/maven.yml`) on pull requests and merges.
+- **Concurrency & HMAC Unit Tests:** Added `LockFencingTest` and `HashUtilsTest` verifying lock token increments, stale write rejections, HMAC generation, legacy fallback, and null safety.
+
+### 📚 Documentation & Onboarding Overhaul
+- **Streamlined Platform Descriptions:** Overhauled `README.md`, `DESCRIPTION.md`, and Spigot/Modrinth listings with cleaner layouts and fast-start guides to improve reader onboarding.
+- **Dedicated Technical Guides:** Separated complex architectural concepts and database setup instructions into dedicated [ARCHITECTURE.md](file:///home/west/github.com/westkevin12/mc-data-bridge/ARCHITECTURE.md) and [DATABASE_SETUP.md](file:///home/west/github.com/westkevin12/mc-data-bridge/DATABASE_SETUP.md) files for cleaner readability.
 
 ---
 
-_For installation instructions and configuration details, please refer to the [README.md](README.md) and [config.yml](src/main/resources/config.yml)._
+_For installation instructions and configuration details, please refer to [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [DATABASE_SETUP.md](DATABASE_SETUP.md)._

@@ -1,27 +1,61 @@
 package com.digitalserverhost.plugins.utils;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
 
 public class HashUtils {
 
+    private static final String HMAC_ALGORITHM = "HmacSHA256";
+
     /**
-     * Generates a SHA-256 hash of a name and UUID combination.
-     * The name is normalized to lowercase to ensure consistency across case changes.
+     * Generates a keyed identity hash. Uses HmacSHA256 when a secret seed is provided,
+     * or legacy salted SHA-256 if seed is empty or null.
      *
      * @param name The player's name.
      * @param uuid The player's UUID.
-     * @return A hexadecimal representation of the SHA-256 hash.
+     * @param seed Secret server seed.
+     * @return Hexadecimal string representation of the hash.
      */
     public static String generateIdentityHash(String name, UUID uuid, String seed) {
         if (name == null || uuid == null) {
             return null;
         }
 
-        // Salt the input with the server seed
-        String input = name.toLowerCase() + ":" + uuid.toString() + (seed != null ? ":" + seed : "");
+        String normalizedName = name.toLowerCase();
+
+        if (seed != null && !seed.isEmpty()) {
+            try {
+                String message = normalizedName + ":" + uuid.toString();
+                SecretKeySpec keySpec = new SecretKeySpec(seed.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM);
+                Mac mac = Mac.getInstance(HMAC_ALGORITHM);
+                mac.init(keySpec);
+                byte[] rawHmac = mac.doFinal(message.getBytes(StandardCharsets.UTF_8));
+                return bytesToHex(rawHmac);
+            } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+                // Fallback to SHA-256 on unexpected HMAC initialization failure
+            }
+        }
+
+        return generateLegacyIdentityHash(normalizedName, uuid, seed);
+    }
+
+    public static String generateIdentityHash(String name, UUID uuid) {
+        return generateIdentityHash(name, uuid, null);
+    }
+
+    /**
+     * Legacy concatenated SHA-256 identity hash computation for backward compatibility.
+     */
+    public static String generateLegacyIdentityHash(String normalizedName, UUID uuid, String seed) {
+        if (normalizedName == null || uuid == null) {
+            return null;
+        }
+        String input = normalizedName.toLowerCase() + ":" + uuid.toString() + (seed != null ? ":" + seed : "");
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] encodedHash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
@@ -31,8 +65,19 @@ public class HashUtils {
         }
     }
 
-    public static String generateIdentityHash(String name, UUID uuid) {
-        return generateIdentityHash(name, uuid, null);
+    /**
+     * Verifies stored identity hash against current HmacSHA256 and legacy SHA-256 formats.
+     */
+    public static boolean verifyIdentityHash(String storedHash, String name, UUID uuid, String seed) {
+        if (storedHash == null || name == null || uuid == null) {
+            return false;
+        }
+        String currentHmac = generateIdentityHash(name, uuid, seed);
+        if (storedHash.equalsIgnoreCase(currentHmac)) {
+            return true;
+        }
+        String legacyHash = generateLegacyIdentityHash(name.toLowerCase(), uuid, seed);
+        return storedHash.equalsIgnoreCase(legacyHash);
     }
 
     private static String bytesToHex(byte[] hash) {

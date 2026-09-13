@@ -117,6 +117,8 @@ For administrators managing the database directly, the plugin maintains the foll
 [*][B]is_locked[/B] (BOOLEAN): Prevents concurrent writes from multiple servers.
 [*][B]locking_server[/B] (VARCHAR(255)): The ID of the server currently holding the lock.
 [*][B]lock_timestamp[/B] (BIGINT): Heartbeat timestamp to detect orphaned locks.
+[*][B]lock_version[/B] (BIGINT): Monotonic fencing token counter for stale write prevention.
+[*][B]snapshot_checksum[/B] (VARCHAR(64)): SHA-256 integrity hash of the normalized snapshot.
 [*][B]last_known_name[/B] (VARCHAR(16)): Used for identity tracking and /migrate.
 [*][B]identity_hash[/B] (VARCHAR(64)): Salted hash of the Name+UUID+Seed combination for secure identity verification.
 [*][B]name_last_updated[/B] (BIGINT): Timestamp of when the player's name was last updated.

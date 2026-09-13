@@ -49,12 +49,15 @@ public class MCDataBridge extends JavaPlugin {
             "is_locked", java.util.Map.entry("BOOLEAN DEFAULT 0", INTEGER_DEFAULT_0),
             "locking_server", java.util.Map.entry("VARCHAR(255) DEFAULT NULL", TEXT_DEFAULT_NULL),
             "lock_timestamp", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
+            "lock_version", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
+            "snapshot_checksum", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
             "last_known_name", java.util.Map.entry("VARCHAR(16) DEFAULT NULL", TEXT_DEFAULT_NULL),
             "data_checksum", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
             "identity_hash", java.util.Map.entry(VARCHAR64_DEFAULT_NULL, TEXT_DEFAULT_NULL),
             "name_last_updated", java.util.Map.entry(BIGINT_DEFAULT_0, INTEGER_DEFAULT_0),
             "last_updated", java.util.Map.entry("TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
                     "DATETIME DEFAULT CURRENT_TIMESTAMP"));
+
 
     private void startSpigot() {
         saveDefaultConfig();
@@ -80,6 +83,12 @@ public class MCDataBridge extends JavaPlugin {
         }
 
         this.securitySeed = getConfig().getString("security.seed", DEFAULT_SEED);
+        if (this.securitySeed == null || this.securitySeed.isEmpty() || this.securitySeed.equals(DEFAULT_SEED)) {
+            String legacySeed = getConfig().getString("identity.seed", null);
+            if (legacySeed != null && !legacySeed.isEmpty() && !legacySeed.equals(DEFAULT_SEED)) {
+                this.securitySeed = legacySeed;
+            }
+        }
         if (this.securitySeed == null || this.securitySeed.isEmpty() || this.securitySeed.equals(DEFAULT_SEED)) {
             String envSeed = System.getenv("DATABRIDGE_SEED");
             if (envSeed != null && !envSeed.isEmpty() && !envSeed.equals(DEFAULT_SEED)) {
@@ -185,8 +194,13 @@ public class MCDataBridge extends JavaPlugin {
                     "VARCHAR(255) DEFAULT NULL", TEXT_DEFAULT_NULL);
             ensureColumnExists(connection, statement, escapedTableName, dbType, "lock_timestamp", BIGINT_DEFAULT_0,
                     INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "lock_version", BIGINT_DEFAULT_0,
+                    INTEGER_DEFAULT_0);
+            ensureColumnExists(connection, statement, escapedTableName, dbType, "snapshot_checksum", VARCHAR64_DEFAULT_NULL,
+                    TEXT_DEFAULT_NULL);
             ensureColumnExists(connection, statement, escapedTableName, dbType, "last_known_name",
                     "VARCHAR(16) DEFAULT NULL", TEXT_DEFAULT_NULL);
+
             ensureColumnExists(connection, statement, escapedTableName, dbType, "data_checksum", VARCHAR64_DEFAULT_NULL,
                     TEXT_DEFAULT_NULL);
             ensureColumnExists(connection, statement, escapedTableName, dbType, "identity_hash", VARCHAR64_DEFAULT_NULL,
@@ -310,6 +324,8 @@ public class MCDataBridge extends JavaPlugin {
                     "is_locked INTEGER DEFAULT 0, " +
                     "locking_server TEXT DEFAULT NULL, " +
                     "lock_timestamp INTEGER DEFAULT 0, " +
+                    "lock_version INTEGER DEFAULT 0, " +
+                    "snapshot_checksum TEXT DEFAULT NULL, " +
                     "last_known_name TEXT DEFAULT NULL, " +
                     "data_checksum TEXT DEFAULT NULL, " +
                     "identity_hash TEXT DEFAULT NULL, " +
@@ -322,6 +338,8 @@ public class MCDataBridge extends JavaPlugin {
                     "is_locked BOOLEAN DEFAULT 0, " +
                     "locking_server VARCHAR(255) DEFAULT NULL, " +
                     "lock_timestamp BIGINT DEFAULT 0, " +
+                    "lock_version BIGINT DEFAULT 0, " +
+                    "snapshot_checksum VARCHAR(64) DEFAULT NULL, " +
                     "last_known_name VARCHAR(16) DEFAULT NULL, " +
                     "data_checksum VARCHAR(64) DEFAULT NULL, " +
                     "identity_hash VARCHAR(64) DEFAULT NULL, " +
@@ -330,6 +348,7 @@ public class MCDataBridge extends JavaPlugin {
                     "PRIMARY KEY (uuid)) ENGINE=InnoDB;";
         }
     }
+
 
     private void migrateFromLegacyTable(Connection connection, Statement statement, String escapedTableName)
             throws SQLException {
@@ -515,201 +534,291 @@ public class MCDataBridge extends JavaPlugin {
 
     private void updateConfig() {
         java.io.File configFile = new java.io.File(getDataFolder(), "config.yml");
-        if (!configFile.exists())
+        if (!configFile.exists()) {
+            saveDefaultConfig();
             return;
+        }
 
         org.bukkit.configuration.file.YamlConfiguration fileConfig = org.bukkit.configuration.file.YamlConfiguration
                 .loadConfiguration(configFile);
-        java.util.List<String> lines;
+
+        java.util.List<String> cleanLines = reconstructCleanConfig(fileConfig);
         try {
-            lines = java.nio.file.Files.readAllLines(configFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+            java.nio.file.Files.write(configFile.toPath(), cleanLines, java.nio.charset.StandardCharsets.UTF_8);
+            getLogger().info("Successfully restructured and updated config.yml.");
+            reloadConfig();
         } catch (java.io.IOException e) {
-            getLogger().severe("Failed to read config.yml for update: " + e.getMessage());
-            return;
-        }
-
-        StringBuilder topLevelAppends = new StringBuilder();
-        boolean updated = migrateLegacyMapConfig(fileConfig, lines);
-        updated = checkSyncKeys(fileConfig, lines, topLevelAppends) || updated;
-        updated = checkTopLevelKeys(fileConfig, topLevelAppends) || updated;
-
-        if (updated) {
-            saveUpdatedConfig(configFile, lines, topLevelAppends);
+            getLogger().severe("Failed to save updated config.yml: " + e.getMessage());
         }
     }
 
-    private boolean migrateLegacyMapConfig(org.bukkit.configuration.file.YamlConfiguration fileConfig, java.util.List<String> lines) {
-        boolean updated = false;
-        if (fileConfig.contains("maps.mode")) {
-            String legacyMode = fileConfig.getString("maps.mode", "return").toLowerCase();
-            boolean mapSyncValue;
-            boolean mapLockValue;
+    private java.util.List<String> reconstructCleanConfig(org.bukkit.configuration.file.YamlConfiguration fileConfig) {
+        java.util.List<String> lines = new java.util.ArrayList<>();
 
-            if (legacyMode.equals("global")) {
+        // 1. Database Configuration
+        lines.add("# Database Configuration");
+        lines.add("database:");
+        lines.add("  # Connection type: \"mysql\" (for MySQL/MariaDB) or \"sqlite\" (local file)");
+        lines.add("  type: " + fileConfig.getString("database.type", "mysql"));
+        lines.add("  host: " + fileConfig.getString("database.host", "localhost"));
+        lines.add("  port: " + fileConfig.getInt("database.port", 3306));
+        lines.add("  database: " + fileConfig.getString("database.database", "minecraft"));
+        lines.add("  username: " + fileConfig.getString("database.username", "user"));
+        lines.add("  password: " + fileConfig.getString("database.password", "password"));
+        lines.add("");
+        lines.add("  # If type is \"sqlite\", specify the filename here.");
+        lines.add("  sqlite-file: \"" + fileConfig.getString("database.sqlite-file", "player_data.db") + "\"");
+        lines.add("");
+        lines.add("  # Data serialization format: \"json\" or \"binary\"");
+        lines.add("  # - json: Human-readable Base64-encoded NBT JSON (default, compatible with older versions)");
+        lines.add("  # - binary: Compressed NBT byte array (native LONGBLOB/BLOB). Recommended for production");
+        lines.add("  #           to reduce database size and serialization time.");
+        lines.add("  serialization-format: \"" + fileConfig.getString("database.serialization-format", "json") + "\"");
+        lines.add("");
+
+        boolean backupsEnabled = fileConfig.getBoolean("backups.enabled", fileConfig.getBoolean("database.backups.enabled", false));
+        int backupsInterval = fileConfig.getInt("backups.interval-hours", fileConfig.getInt("database.backups.interval-hours", 24));
+        int backupsMax = fileConfig.getInt("backups.max-backups", fileConfig.getInt("database.backups.max-backups", 7));
+        String backupsPath = fileConfig.getString("backups.path", fileConfig.getString("database.backups.path", "backups/"));
+
+        lines.add("  # Redundancy System (JSON Exports)");
+        lines.add("  # WARNING: This simply copies database contents to the local filesystem.");
+        lines.add("  # This is NOT a true backup if stored on the same machine/container.");
+        lines.add("  # It is disabled by default to avoid misleading administrators.");
+        lines.add("  backups:");
+        lines.add("    enabled: " + backupsEnabled);
+        lines.add("    interval-hours: " + backupsInterval);
+        lines.add("    max-backups: " + backupsMax);
+        lines.add("    path: \"" + backupsPath + "\"");
+        lines.add("");
+        lines.add("  # =========================================================================");
+        lines.add("  # TRUE OFFSITE BACKUPS (RECOMMENDED)");
+        lines.add("  # =========================================================================");
+        lines.add("  # For production servers, we STRONGLY recommend using external database");
+        lines.add("  # management tools rather than the internal redundancy system above.");
+        lines.add("  #");
+        lines.add("  # Example (Linux/MySQL):");
+        lines.add("  #   mysqldump -u [user] -p[password] [database] [table] > backup.sql");
+        lines.add("  #");
+        lines.add("  # Best Practices:");
+        lines.add("  # 1. Automate: Use a cron job to run backups daily.");
+        lines.add("  # 2. Offsite: Use 'rclone' or 'aws s3 cp' to move the .sql file to cloud storage.");
+        lines.add("  # 3. Isolation: NEVER store true backups in the Minecraft server directory.");
+        lines.add("  # 4. Managed: Consider using AWS RDS, Google CloudSQL, or DigitalOcean Managed");
+        lines.add("  #    Databases for automatic point-in-time recovery.");
+        lines.add("  # =========================================================================");
+        lines.add("");
+        lines.add("  # A list of JDBC properties to apply.");
+        lines.add("  # These are recommended, but you can change/add/remove as needed.");
+        lines.add("  properties:");
+        lines.add("    useSSL: " + fileConfig.getBoolean("database.properties.useSSL", false));
+        lines.add("    allowPublicKeyRetrieval: " + fileConfig.getBoolean("database.properties.allowPublicKeyRetrieval", true));
+        lines.add("");
+        lines.add("  # HikariCP Connection Pool Settings");
+        lines.add("  # These settings are optimized for resilience and performance.");
+        lines.add("  # It is recommended to leave these at their default values unless you are an experienced administrator.");
+        lines.add("  pool-settings:");
+        lines.add("    maximum-pool-size: " + fileConfig.getInt("database.pool-settings.maximum-pool-size", 10));
+        lines.add("    minimum-idle: " + fileConfig.getInt("database.pool-settings.minimum-idle", 10));
+        lines.add("    max-lifetime: " + fileConfig.getInt("database.pool-settings.max-lifetime", 1800000));
+        lines.add("    connection-timeout: " + fileConfig.getInt("database.pool-settings.connection-timeout", 5000));
+        lines.add("    idle-timeout: " + fileConfig.getInt("database.pool-settings.idle-timeout", 600000));
+        lines.add("");
+        lines.add("  # MySQL JDBC Optimizations");
+        lines.add("  # These are advanced settings for the MySQL driver.");
+        lines.add("  # Do not change these unless you know what you are doing.");
+        lines.add("  optimizations:");
+        lines.add("    cache-prep-stmts: " + fileConfig.getBoolean("database.optimizations.cache-prep-stmts", true));
+        lines.add("    prep-stmt-cache-size: " + fileConfig.getInt("database.optimizations.prep-stmt-cache-size", 250));
+        lines.add("    prep-stmt-cache-sql-limit: " + fileConfig.getInt("database.optimizations.prep-stmt-cache-sql-limit", 2048));
+        lines.add("    use-server-prep-stmts: " + fileConfig.getBoolean("database.optimizations.use-server-prep-stmts", true));
+        lines.add("    use-local-session-state: " + fileConfig.getBoolean("database.optimizations.use-local-session-state", true));
+        lines.add("    rewrite-batched-statements: " + fileConfig.getBoolean("database.optimizations.rewrite-batched-statements", true));
+        lines.add("    cache-result-set-metadata: " + fileConfig.getBoolean("database.optimizations.cache-result-set-metadata", true));
+        lines.add("    cache-server-configuration: " + fileConfig.getBoolean("database.optimizations.cache-server-configuration", true));
+        lines.add("    elide-set-auto-commits: " + fileConfig.getBoolean("database.optimizations.elide-set-auto-commits", true));
+        lines.add("    maintain-time-stats: " + fileConfig.getBoolean("database.optimizations.maintain-time-stats", false));
+        lines.add("");
+
+        // 2. Root Primitives
+        lines.add("# Set to true to enable verbose debugging messages in the server console.");
+        lines.add("# This can be useful for diagnosing issues, but should be false for normal operation.");
+        lines.add("debug: " + fileConfig.getBoolean("debug", false));
+        lines.add("");
+        lines.add("# A unique name for this server. This is CRITICAL for data locking.");
+        lines.add("# Each server connected to the same database MUST have a unique name.");
+        lines.add("# Example: \"survival-1\", \"creative\", \"lobby\"");
+        lines.add("server-id: \"" + fileConfig.getString("server-id", "default-server") + "\"");
+        lines.add("");
+        lines.add("# Set to prefix the player_data table (e.g., 'mc_data_bridge_').");
+        lines.add("table-prefix: \"" + fileConfig.getString("table-prefix", "") + "\"");
+        lines.add("");
+        lines.add("# The duration in milliseconds after which a player data lock is considered expired.");
+        lines.add("# This prevents players from being permanently locked out if a server crashes.");
+        lines.add("# Default: 60000 (1 minute)");
+        lines.add("lock-timeout: " + fileConfig.getInt("lock-timeout", 60000));
+        lines.add("");
+        lines.add("# The interval in seconds between lock updates (heartbeats) while a player is online.");
+        lines.add("# Default: 30");
+        lines.add("lock-heartbeat-seconds: " + fileConfig.getInt("lock-heartbeat-seconds", 30));
+        lines.add("");
+        lines.add("# Automatically migrate 'data' column from LONGTEXT to MEDIUMBLOB for performance?");
+        lines.add("# WARNING: This causes an ALTER TABLE which might lock the table briefly.");
+        lines.add("auto-update-schema: " + fileConfig.getBoolean("auto-update-schema", true));
+        lines.add("");
+
+        // 3. Legacy Map Mode Migration
+        boolean mapSyncValue = fileConfig.getBoolean("sync-data.maps", false);
+        boolean mapLockValue = fileConfig.getBoolean("maps.lock-global-maps", false);
+        if (fileConfig.contains("maps.mode") && !fileConfig.contains("maps.lock-global-maps")) {
+            String legacyMode = fileConfig.getString("maps.mode", "vanilla");
+            if ("global".equalsIgnoreCase(legacyMode) || "locked".equalsIgnoreCase(legacyMode)) {
                 mapSyncValue = true;
                 mapLockValue = true;
+            } else if ("unlocked".equalsIgnoreCase(legacyMode) || "vanilla".equalsIgnoreCase(legacyMode)) {
+                mapSyncValue = true;
+                mapLockValue = false;
+            } else if ("disabled".equalsIgnoreCase(legacyMode) || "false".equalsIgnoreCase(legacyMode) || "none".equalsIgnoreCase(legacyMode)) {
+                mapSyncValue = false;
+                mapLockValue = true;
             } else {
-                // "return", "untracked", "off", or any other legacy value -> false, false
                 mapSyncValue = false;
                 mapLockValue = false;
             }
-
-            // Set migrated values in YamlConfiguration
-            fileConfig.set(SYNC_DATA_PREFIX + "maps", mapSyncValue);
-            fileConfig.set("maps.lock-global-maps", mapLockValue);
-
-            // Update or insert sync-data.maps in raw lines
-            boolean mapLineFound = false;
-            int syncDataSectionLine = -1;
-            for (int i = 0; i < lines.size(); i++) {
-                String line = lines.get(i);
-                if (line.trim().startsWith("sync-data:")) {
-                    syncDataSectionLine = i;
-                } else if (syncDataSectionLine != -1 && (line.startsWith("  maps:") || line.startsWith("\tmaps:"))) {
-                    lines.set(i, "  maps: " + mapSyncValue);
-                    mapLineFound = true;
-                    break;
-                } else if (syncDataSectionLine != -1 && !line.startsWith(" ") && !line.startsWith("\t") && !line.trim().isEmpty() && !line.trim().startsWith("#")) {
-                    break;
-                }
-            }
-            if (!mapLineFound) {
-                if (syncDataSectionLine != -1) {
-                    lines.add(syncDataSectionLine + 1, "  maps: " + mapSyncValue);
-                } else {
-                    lines.add("sync-data:");
-                    lines.add("  maps: " + mapSyncValue);
-                }
-            }
-
-            // Remove legacy mode: line under maps:
-            lines.removeIf(line -> line.trim().startsWith("mode:") && !line.contains("#"));
-
-            // Check if lock-global-maps: is already present under maps: or anywhere
-            boolean lockLineFound = false;
-            int topLevelMapsLine = -1;
-            for (int i = 0; i < lines.size(); i++) {
-                String line = lines.get(i);
-                if (line.trim().startsWith("maps:") && (i == 0 || !lines.get(i - 1).trim().startsWith("sync-data:"))) {
-                    topLevelMapsLine = i;
-                }
-                if (line.trim().startsWith("lock-global-maps:")) {
-                    lines.set(i, "  lock-global-maps: " + mapLockValue);
-                    lockLineFound = true;
-                    break;
-                }
-            }
-            if (!lockLineFound) {
-                if (topLevelMapsLine != -1) {
-                    lines.add(topLevelMapsLine + 1, "  # Force Map Locking on Synced Maps (true = locked, false = vanilla style)");
-                    lines.add(topLevelMapsLine + 2, "  lock-global-maps: " + mapLockValue);
-                } else {
-                    lines.add("\n# Map Synchronization Settings\nmaps:\n  # Force Map Locking on Synced Maps (true = locked, false = vanilla style)\n  lock-global-maps: " + mapLockValue + "\n");
-                }
-            }
-
-            getLogger().info("Migrated legacy 'maps.mode: " + legacyMode + "' to 'sync-data.maps: " + mapSyncValue + "' and 'maps.lock-global-maps: " + mapLockValue + "'.");
-            updated = true;
         }
-        return updated;
+
+        // 4. Sync Data Toggles
+        lines.add("# Granular Data Synchronization Toggles");
+        lines.add("# Enable or disable synchronization for specific data components.");
+        lines.add("sync-data:");
+        lines.add("  health: " + fileConfig.getBoolean("sync-data.health", true));
+        lines.add("  food-level: " + fileConfig.getBoolean("sync-data.food-level", true));
+        lines.add("  experience: " + fileConfig.getBoolean("sync-data.experience", true));
+        lines.add("  inventory: " + fileConfig.getBoolean("sync-data.inventory", true));
+        lines.add("  armor: " + fileConfig.getBoolean("sync-data.armor", true));
+        lines.add("  potion-effects: " + fileConfig.getBoolean("sync-data.potion-effects", true));
+        lines.add("  ender-chest: " + fileConfig.getBoolean("sync-data.ender-chest", false));
+        lines.add("  location: " + fileConfig.getBoolean("sync-data.location", false));
+        lines.add("  advancements: " + fileConfig.getBoolean("sync-data.advancements", false));
+        lines.add("  statistics: " + fileConfig.getBoolean("sync-data.statistics", false));
+        lines.add("  pdc: " + fileConfig.getBoolean("sync-data.pdc", false));
+        lines.add("  flight-gamemode: " + fileConfig.getBoolean("sync-data.flight-gamemode", false));
+        lines.add("  companions: " + fileConfig.getBoolean("sync-data.companions", false));
+        lines.add("  maps: " + mapSyncValue);
+        lines.add("  separate-gamemode-inventories: " + fileConfig.getBoolean("sync-data.separate-gamemode-inventories", false));
+        lines.add("");
+
+        // 5. Maps Settings
+        lines.add("# Map Synchronization Settings");
+        lines.add("# To enable cross-server map synchronization, set 'sync-data.maps: true' above.");
+        lines.add("maps:");
+        lines.add("  # Force Map Locking on Synced Maps");
+        lines.add("  # - true: Forces globally synchronized map views to be locked (locked = 1).");
+        lines.add("  #   This prevents destination servers (e.g. Resource) from re-scanning local terrain and overwriting custom artwork");
+        lines.add("  #   or applying a Fog of War exploration grid over synchronized maps.");
+        lines.add("  # - false (default - vanilla style): Preserves vanilla unlocked map behavior where Paper's map engine");
+        lines.add("  #   re-scans and overwrites map pixels based on nearby terrain on the current server.");
+        lines.add("  # Default: false");
+        lines.add("  lock-global-maps: " + mapLockValue);
+        lines.add("");
+
+        // 6. Server/World Blacklist
+        lines.add("# Server/World Blacklist");
+        lines.add("# Data synchronization will be disabled for players on these servers or in these worlds.");
+        lines.add("sync-blacklist:");
+        lines.add("  servers:");
+        java.util.List<String> servers = fileConfig.getStringList("sync-blacklist.servers");
+        if (servers.isEmpty()) servers = java.util.List.of("example-blacklisted-server");
+        for (String s : servers) {
+            lines.add("    - \"" + s + "\"");
+        }
+        lines.add("  worlds:");
+        java.util.List<String> worlds = fileConfig.getStringList("sync-blacklist.worlds");
+        if (worlds.isEmpty()) worlds = java.util.List.of("example_world_nether");
+        for (String w : worlds) {
+            lines.add("    - \"" + w + "\"");
+        }
+        lines.add("");
+
+        // 7. Security Settings
+        String seed = fileConfig.getString("security.seed", fileConfig.getString("identity.seed", DEFAULT_SEED));
+        lines.add("# Security Settings");
+        lines.add("security:");
+        lines.add("  # Log a warning if a player joins with a different UUID than previously recorded for that name.");
+        lines.add("  # This helps identify potential identity switches or \"cracked-to-premium\" transitions.");
+        lines.add("  log-uuid-mismatches: " + fileConfig.getBoolean("security.log-uuid-mismatches", true));
+        lines.add("  ");
+        lines.add("  # Verify SHA-256 checksums of player data before loading.");
+        lines.add("  # This prevents data manipulation or corruption from being synced.");
+        lines.add("  verify-data-integrity: " + fileConfig.getBoolean("security.verify-data-integrity", true));
+        lines.add("");
+        lines.add("  # A secret seed used to salt all cryptographic hashes (Identity Hash and Checksums).");
+        lines.add("  # CHANGE THIS to a long, random string to secure your network.");
+        lines.add("  # WARNING: If you change this later, existing identity hashes will be updated on next join,");
+        lines.add("  # but data integrity checks will fall back to legacy mode until the data is re-saved.");
+        lines.add("  seed: \"" + seed + "\"");
+        lines.add("");
+
+        // 8. Identity & Migration Settings
+        lines.add("# Identity & Migration Settings");
+        lines.add("identity:");
+        lines.add("  # PREMIUM: UUID for a name should NEVER change. Collisions require manual /migrate.");
+        lines.add("  # HYBRID: Allows flexible identity shifts (useful for Cracked -> Premium transitions).");
+        lines.add("  mode: " + fileConfig.getString("identity.mode", "PREMIUM"));
+        lines.add("");
+        lines.add("  # If true, and FastLogin is installed, the plugin will attempt to ");
+        lines.add("  # auto-migrate data if FastLogin confirms the player is a verified premium user.");
+        lines.add("  auto-migrate-fastlogin: " + fileConfig.getBoolean("identity.auto-migrate-fastlogin", false));
+        lines.add("");
+        lines.add("  # If true, and AuthMe is installed, the plugin will attempt to ");
+        lines.add("  # auto-migrate data once the player successfully logs in via AuthMe.");
+        lines.add("  auto-migrate-authme: " + fileConfig.getBoolean("identity.auto-migrate-authme", false));
+        lines.add("");
+
+        // 9. Companion / Pet Settings
+        lines.add("# Companion / Pet Settings");
+        lines.add("companions:");
+        lines.add("  # The search radius (blocks) around the player to locate tamed pets/companions for transfer.");
+        lines.add("  # Default: 32");
+        lines.add("  scan-radius: " + fileConfig.getInt("companions.scan-radius", 32));
+        lines.add("  # Companion synchronization mode:");
+        lines.add("  # - follow: Companions follow the player across different servers.");
+        lines.add("  # - return: Companions stay on the server they were left on and reappear when the player returns.");
+        lines.add("  # - untracked: Companions are not managed or synchronized by the plugin.");
+        lines.add("  # Default: follow");
+        String compMode = fileConfig.getString("companions.mode", "follow");
+        lines.add("  mode: \"" + compMode + "\"");
+        lines.add("");
+
+        // 10. Prometheus Metrics Exporter
+        lines.add("# Prometheus Metrics Exporter");
+        lines.add("metrics:");
+        lines.add("  # Enable or disable the Prometheus metrics exporter.");
+        lines.add("  # If enabled, an embedded HTTP server will start at the specified port and path.");
+        lines.add("  enabled: " + fileConfig.getBoolean("metrics.enabled", false));
+        lines.add("  ");
+        lines.add("  # The port on which the metrics server will listen.");
+        lines.add("  port: " + fileConfig.getInt("metrics.port", 8080));
+        lines.add("  ");
+        lines.add("  # The HTTP endpoint path for scraping metrics.");
+        lines.add("  path: \"" + fileConfig.getString("metrics.path", "/metrics") + "\"");
+        lines.add("");
+
+        // 11. Redundancy System (Backups)
+        lines.add("# Redundancy System (JSON Exports)");
+        lines.add("# This is NOT a true backup if stored on the same machine/container.");
+        lines.add("backups:");
+        lines.add("  enabled: " + backupsEnabled);
+        lines.add("  interval-hours: " + backupsInterval);
+        lines.add("  max-backups: " + backupsMax);
+        lines.add("  path: \"" + backupsPath + "\"");
+
+        return lines;
     }
 
-    private boolean checkTopLevelKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig,
-            StringBuilder appends) {
-        boolean updated = false;
-        if (!fileConfig.contains("debug")) {
-            appends.append("\n# Enable debug mode for verbose logging.\ndebug: false\n");
-            updated = true;
-        }
-        if (!fileConfig.contains("server-id")) {
-            appends.append("\n# Unique identifier for this server (Required).\nserver-id: \"default-server\"\n");
-            updated = true;
-        }
-        if (!fileConfig.contains(CONFIG_TABLE_PREFIX)) {
-            appends.append("\n# Set to prefix the player_data table (e.g., 'mc_data_bridge_').\ntable-prefix: \"\"\n");
-            updated = true;
-        }
-        if (!fileConfig.contains("lock-timeout")) {
-            appends.append("\n# Lock expiration in milliseconds.\nlock-timeout: 60000\n");
-            updated = true;
-        }
-        if (!fileConfig.contains("lock-heartbeat-seconds")) {
-            appends.append("\n# Interval between lock updates.\nlock-heartbeat-seconds: 30\n");
-            updated = true;
-        }
-        if (!fileConfig.contains(AUTO_UPDATE_SCHEMA)) {
-            appends.append("\n# Automatically migrate database schema.\n" + AUTO_UPDATE_SCHEMA + ": true\n");
-            updated = true;
-        }
-        if (!fileConfig.contains("security.seed")) {
-            appends.append("\n# A secret seed used to salt all cryptographic hashes.\nsecurity:\n  seed: \""
-                    + DEFAULT_SEED + "\"\n");
-            updated = true;
-        }
-        if (!fileConfig.contains("identity.mode")) {
-            appends.append(
-                    "\n# Identity and Migration Settings\nidentity:\n  mode: PREMIUM\n  auto-migrate-fastlogin: false\n");
-            updated = true;
-        }
-        if (!fileConfig.contains("companions.scan-radius")) {
-            appends.append(
-                    "\n# Companion/pet sync settings. Requires sync-data.companions: true.\ncompanions:\n  scan-radius: 32\n  mode: \"follow\"\n");
-            updated = true;
-        } else if (!fileConfig.contains("companions.mode")) {
-            appends.append("\ncompanions:\n  mode: \"follow\"\n");
-            updated = true;
-        }
-        if (!fileConfig.contains("maps.lock-global-maps")) {
-            appends.append("\n# Map Synchronization Settings\nmaps:\n  # Force Map Locking on Synced Maps (true = locked, false = vanilla style)\n  lock-global-maps: false\n");
-            updated = true;
-        }
-        return updated;
-    }
-
-    private boolean checkSyncKeys(org.bukkit.configuration.file.YamlConfiguration fileConfig,
-            java.util.List<String> lines, StringBuilder appends) {
-        String[] syncKeys = { "statistics", "pdc", "flight-gamemode", "companions", "maps", "separate-gamemode-inventories" };
-        java.util.List<String> missing = new java.util.ArrayList<>();
-        for (String key : syncKeys) {
-            if (!fileConfig.contains(SYNC_DATA_PREFIX + key)) {
-                missing.add(key);
-            }
-        }
-
-        if (missing.isEmpty())
-            return false;
-
-        int syncDataLine = -1;
-        for (int i = 0; i < lines.size(); i++) {
-            if (lines.get(i).trim().startsWith("sync-data:")) {
-                syncDataLine = i;
-                break;
-            }
-        }
-
-        if (syncDataLine != -1) {
-            for (String key : missing) {
-                boolean defaultValue = false; // Default false for all optional features including maps (vanilla style handling)
-                lines.add(syncDataLine + 1, "  " + key + ": " + defaultValue);
-            }
-            return true;
-        } else {
-            appends.append("\nsync-data:\n");
-            for (String key : missing) {
-                boolean defaultValue = false;
-                appends.append("  ").append(key).append(": ").append(defaultValue).append("\n");
-            }
-            return true;
-        }
-    }
-
-    private void saveUpdatedConfig(java.io.File configFile, java.util.List<String> lines, StringBuilder appends) {
+    private void saveUpdatedConfig(java.io.File configFile, java.util.List<String> lines) {
         try {
-            java.util.List<String> finalLines = new java.util.ArrayList<>(lines);
-            if (!appends.isEmpty()) {
-                finalLines.add(appends.toString());
-            }
-            java.nio.file.Files.write(configFile.toPath(), finalLines, java.nio.charset.StandardCharsets.UTF_8);
+            java.nio.file.Files.write(configFile.toPath(), lines, java.nio.charset.StandardCharsets.UTF_8);
             getLogger().info("Successfully updated config.yml with missing settings.");
             reloadConfig();
         } catch (java.io.IOException e) {

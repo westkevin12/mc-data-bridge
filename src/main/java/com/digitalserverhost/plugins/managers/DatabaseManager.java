@@ -170,34 +170,38 @@ public class DatabaseManager {
         }
     }
 
+    public long acquireLockVersion(UUID uuid, String serverId) throws SQLException {
+        try (Connection connection = getConnection()) {
+            return fetchLockVersion(connection, uuid, serverId);
+        }
+    }
+
     private boolean acquireLockInternal(UUID uuid, String serverId) throws SQLException {
         try (Connection connection = getConnection()) {
-            // Use database-side time to prevent race conditions caused by clock drift between servers
             String updateSql = UPDATE_SQL_PREFIX + tableName
                     + " SET is_locked = 1, locking_server = ?, lock_timestamp = " + currentTimeFunction
+                    + ", lock_version = lock_version + 1"
                     + " WHERE uuid = ? AND (is_locked = 0 OR is_locked IS NULL OR lock_timestamp < " + currentTimeFunction + " - ?)";
-            
+
             try (PreparedStatement updateStmt = connection.prepareStatement(updateSql)) {
                 updateStmt.setString(1, serverId);
                 updateStmt.setString(2, uuid.toString());
                 updateStmt.setLong(3, lockTimeout);
 
                 if (updateStmt.executeUpdate() > 0) {
-                    return true; // Lock acquired on existing row
+                    return true;
                 }
             }
 
             try {
                 String insertSql = INSERT_INTO_SQL + tableName
-                        + " (uuid, data, is_locked, locking_server, lock_timestamp) VALUES (?, NULL, 1, ?, " + currentTimeFunction + ")";
+                        + " (uuid, data, is_locked, locking_server, lock_timestamp, lock_version) VALUES (?, NULL, 1, ?, " + currentTimeFunction + ", 1)";
                 try (PreparedStatement insertStmt = connection.prepareStatement(insertSql)) {
                     insertStmt.setString(1, uuid.toString());
                     insertStmt.setString(2, serverId);
                     return insertStmt.executeUpdate() > 0;
                 }
             } catch (SQLException _) {
-                // Potential race condition: someone else inserted the row while we were trying.
-                // Re-attempting the update one last time.
                 try (PreparedStatement retryUpdateStmt = connection.prepareStatement(updateSql)) {
                     retryUpdateStmt.setString(1, serverId);
                     retryUpdateStmt.setString(2, uuid.toString());
@@ -208,19 +212,74 @@ public class DatabaseManager {
         }
     }
 
+
+    private long fetchLockVersion(Connection connection, UUID uuid, String serverId) {
+        String sql = "SELECT lock_version FROM " + tableName + " WHERE uuid = ? AND locking_server = ? AND is_locked = 1";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, uuid.toString());
+            stmt.setString(2, serverId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs != null && rs.next()) {
+                    long ver = rs.getLong("lock_version");
+                    return ver > 0 ? ver : 1L;
+                }
+            }
+        } catch (Exception _) {
+            // Fallback for mock environments
+        }
+        return 1L;
+    }
+
+
     public boolean saveAndReleaseLockComponents(com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, String name, UUID uuid, String serverId, String seed) throws SQLException {
-        savePlayerDataComponents(plugin, data, uuid);
-        
-        String sql = UPDATE_SQL_PREFIX + tableName
-                + " SET data = NULL, data_checksum = NULL, last_known_name = ?, identity_hash = ?, name_last_updated = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?";
-        try (Connection connection = getConnection();
-                PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, name);
-            statement.setString(2, HashUtils.generateIdentityHash(name, uuid, seed));
-            statement.setLong(3, System.currentTimeMillis());
-            statement.setString(4, uuid.toString());
-            statement.setString(5, serverId);
-            return statement.executeUpdate() > 0;
+        long lockVersion = (data != null) ? data.getLockVersion() : 0L;
+        String snapshotChecksum = (data != null) ? data.calculateSnapshotChecksum(seed) : null;
+
+        try (Connection connection = getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                if (data != null) {
+                    savePlayerDataComponentsInternal(connection, plugin, data, uuid);
+                }
+
+                StringBuilder sqlBuilder = new StringBuilder(UPDATE_SQL_PREFIX)
+                        .append(tableName)
+                        .append(" SET data = NULL, data_checksum = NULL, snapshot_checksum = ?, last_known_name = ?, identity_hash = ?, name_last_updated = ?, is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ?");
+
+                // ARCHITECTURAL INVARIANT: lock_version is a monotonic fencing token, not merely a version number.
+                // Once ownership advances to a newer token (epoch), all database operations carrying an older token
+                // MUST be permanently rejected (0 rows updated) to prevent stale server post-GC writes from corrupting state.
+                if (lockVersion > 0) {
+                    sqlBuilder.append(" AND lock_version = ?");
+                }
+
+                try (PreparedStatement statement = connection.prepareStatement(sqlBuilder.toString())) {
+                    statement.setString(1, snapshotChecksum);
+                    statement.setString(2, name);
+                    statement.setString(3, HashUtils.generateIdentityHash(name, uuid, seed));
+                    statement.setLong(4, System.currentTimeMillis());
+                    statement.setString(5, uuid.toString());
+                    statement.setString(6, serverId);
+                    if (lockVersion > 0) {
+                        statement.setLong(7, lockVersion);
+                    }
+
+                    int updated = statement.executeUpdate();
+                    if (updated > 0) {
+                        connection.commit();
+                        return true;
+                    } else {
+                        connection.rollback();
+                        LOGGER.log(java.util.logging.Level.WARNING, "Save/Release lock failed for {0}: lock version {1} stale or lock stolen by another server.", new Object[]{uuid, lockVersion});
+                        return false;
+                    }
+                }
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
         }
     }
 
@@ -248,6 +307,29 @@ public class DatabaseManager {
         return saveAndReleaseLock(json, null, null, uuid, serverId);
     }
 
+    public void releaseLock(UUID uuid, String serverId, long lockVersion) {
+        if (serverId == null || serverId.isEmpty()) {
+            LOGGER.log(java.util.logging.Level.SEVERE, "CRITICAL: releaseLock was called with a null or empty serverId for UUID: {0}", uuid);
+            return;
+        }
+        if (lockVersion <= 0) {
+            releaseLock(uuid, serverId);
+            return;
+        }
+
+        String sql = UPDATE_SQL_PREFIX + tableName
+                + " SET is_locked = 0, locking_server = NULL, lock_timestamp = 0 WHERE uuid = ? AND locking_server = ? AND lock_version = ?";
+        try (Connection connection = getConnection();
+                PreparedStatement releaseStatement = connection.prepareStatement(sql)) {
+            releaseStatement.setString(1, uuid.toString());
+            releaseStatement.setString(2, serverId);
+            releaseStatement.setLong(3, lockVersion);
+            releaseStatement.executeUpdate();
+        } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed to release lock for {0} on server {1} (version {2}): {3}", new Object[]{uuid, serverId, lockVersion, e.getMessage()});
+        }
+    }
+
     public void releaseLock(UUID uuid, String serverId) {
         if (serverId == null || serverId.isEmpty()) {
             LOGGER.log(java.util.logging.Level.SEVERE, "CRITICAL: releaseLock was called with a null or empty serverId for UUID: {0}", uuid);
@@ -265,6 +347,7 @@ public class DatabaseManager {
             LOGGER.log(java.util.logging.Level.SEVERE, "Failed to release lock for {0} on server {1}: {2}", new Object[]{uuid, serverId, e.getMessage()});
         }
     }
+
 
     /**
      * Forcefully releases the lock for a player, regardless of which server holds
@@ -301,6 +384,23 @@ public class DatabaseManager {
         return false;
     }
 
+    public void updateLock(UUID uuid, String serverId, long lockVersion) {
+        if (lockVersion <= 0) {
+            updateLock(uuid, serverId);
+            return;
+        }
+        String sql = UPDATE_SQL_PREFIX + tableName + " SET lock_timestamp = " + currentTimeFunction + " WHERE uuid = ? AND locking_server = ? AND lock_version = ?";
+        try (Connection connection = getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, uuid.toString());
+            statement.setString(2, serverId);
+            statement.setLong(3, lockVersion);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed to update lock for {0} (version {1}): {2}", new Object[]{uuid, lockVersion, e.getMessage()});
+        }
+    }
+
     public void updateLock(UUID uuid, String serverId) {
         String sql = UPDATE_SQL_PREFIX + tableName + " SET lock_timestamp = " + currentTimeFunction + " WHERE uuid = ? AND locking_server = ?";
         try (Connection connection = getConnection();
@@ -312,6 +412,7 @@ public class DatabaseManager {
             LOGGER.log(java.util.logging.Level.SEVERE, "Failed to update lock for {0}: {1}", new Object[]{uuid, e.getMessage()});
         }
     }
+
 
     public void updateLastKnownName(UUID uuid, String name, String seed) {
         String sql = UPDATE_SQL_PREFIX + tableName + " SET last_known_name = ?, identity_hash = ?, name_last_updated = ? WHERE uuid = ?";
@@ -497,11 +598,7 @@ public class DatabaseManager {
         try (Connection connection = getConnection()) {
             connection.setAutoCommit(false);
             try {
-                saveInventoryComponent(connection, plugin, data, uuid);
-                saveStatisticsComponent(connection, plugin, data, uuid);
-                saveMetadataComponent(connection, plugin, data, uuid);
-                saveCompanionComponent(connection, plugin, data, uuid);
-                saveMapComponent(connection, plugin, data, uuid);
+                savePlayerDataComponentsInternal(connection, plugin, data, uuid);
                 connection.commit();
                 return true;
             } catch (SQLException e) {
@@ -512,6 +609,15 @@ public class DatabaseManager {
             }
         }
     }
+
+    private void savePlayerDataComponentsInternal(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
+        saveInventoryComponent(connection, plugin, data, uuid);
+        saveStatisticsComponent(connection, plugin, data, uuid);
+        saveMetadataComponent(connection, plugin, data, uuid);
+        saveCompanionComponent(connection, plugin, data, uuid);
+        saveMapComponent(connection, plugin, data, uuid);
+    }
+
 
     public boolean saveInventoryComponent(com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
         try (Connection connection = getConnection()) {
@@ -953,6 +1059,27 @@ public class DatabaseManager {
             if (plugin.isSyncEnabledNewFeature("maps")) {
                 loadedAny |= loadMapComponent(connection, plugin, data, uuid);
             }
+
+            String sqlMeta = "SELECT lock_version, snapshot_checksum FROM " + tableName + WHERE_UUID_SQL;
+            try (PreparedStatement stmt = connection.prepareStatement(sqlMeta)) {
+                stmt.setString(1, uuid.toString());
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        data.setLockVersion(rs.getLong("lock_version"));
+                        String storedChecksum = rs.getString("snapshot_checksum");
+                        if (storedChecksum != null && loadedAny && plugin.getConfig().getBoolean("security.verify-data-integrity", true)) {
+                            String computed = data.calculateSnapshotChecksum(plugin.getSecuritySeed());
+                            if (!storedChecksum.equalsIgnoreCase(computed)) {
+                                LOGGER.log(java.util.logging.Level.SEVERE,
+                                        "CRITICAL: Normalized snapshot integrity verification failed for player {0}! lock_version={1}, expected={2}, computed={3}",
+                                        new Object[]{uuid, data.getLockVersion(), storedChecksum, computed});
+                            }
+                        }
+                    }
+                }
+            } catch (SQLException _) {
+                // Column missing fallback for legacy databases before auto-migration
+            }
         }
 
         return loadedAny ? data : null;
@@ -988,18 +1115,28 @@ public class DatabaseManager {
 
                 PlayerData data = GSON.fromJson(json, PlayerData.class);
                 if (data != null) {
-                    // Save to component tables and null out legacy column
-                    savePlayerDataComponents(plugin, data, uuid);
-                    String sqlClearLegacy = UPDATE_SQL_PREFIX + tableName + " SET data = NULL" + WHERE_UUID_SQL;
-                    try (PreparedStatement clearStmt = connection.prepareStatement(sqlClearLegacy)) {
-                        clearStmt.setString(1, uuid.toString());
-                        clearStmt.executeUpdate();
+                    // Save to component tables and null out legacy column inside a single transaction
+                    connection.setAutoCommit(false);
+                    try {
+                        savePlayerDataComponentsInternal(connection, plugin, data, uuid);
+                        String sqlClearLegacy = UPDATE_SQL_PREFIX + tableName + " SET data = NULL" + WHERE_UUID_SQL;
+                        try (PreparedStatement clearStmt = connection.prepareStatement(sqlClearLegacy)) {
+                            clearStmt.setString(1, uuid.toString());
+                            clearStmt.executeUpdate();
+                        }
+                        connection.commit();
+                    } catch (SQLException e) {
+                        connection.rollback();
+                        throw e;
+                    } finally {
+                        connection.setAutoCommit(true);
                     }
                 }
                 return data;
             }
         }
     }
+
 
     private boolean loadInventoryComponent(Connection connection, com.digitalserverhost.plugins.MCDataBridge plugin, PlayerData data, UUID uuid) throws SQLException {
         boolean separateGamemodes = plugin.isSyncEnabledNewFeature("separate-gamemode-inventories");
