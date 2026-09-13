@@ -9,44 +9,44 @@
 
 [SIZE=4][B]🔒 Monotonic Distributed Lock Fencing Tokens (#41, AUDIT §2)[/B][/SIZE]
 [LIST]
-[*][B]Epoch Fencing Protection:[/B] Added [CODE]lock_version[/CODE] ([CODE]BIGINT DEFAULT 0[/CODE]) to [CODE]player_data[/CODE]. Every lock acquisition increments [CODE]lock_version[/CODE], producing a monotonic fencing token.
-[*][B]Stale Write Prevention:[/B] Saves, heartbeats, and lock releases evaluate [CODE]WHERE uuid = ? AND locking_server = ? AND lock_version = ?[/CODE]. Delayed servers or un-fenced post-GC pause writes are automatically rejected, protecting database state from stale session overwrites.
+[*][B]Epoch Fencing Protection:[/B] Added [I]lock_version[/I] ([I]BIGINT DEFAULT 0[/I]) to [I]player_data[/I]. Every lock acquisition increments [I]lock_version[/I], producing a monotonic fencing token.
+[*][B]Stale Write Prevention:[/B] Saves, heartbeats, and lock releases evaluate [I]WHERE uuid = ? AND locking_server = ? AND lock_version = ?[/I]. Delayed servers or un-fenced post-GC pause writes are automatically rejected, protecting database state from stale session overwrites.
 [/LIST]
 
 [SIZE=4][B]🛡️ Normalized Data Integrity Checksums (#42, AUDIT §3)[/B][/SIZE]
 [LIST]
-[*][B]Normalized SHA-256 Checksum Verification:[/B] Added [CODE]snapshot_checksum[/CODE] ([CODE]VARCHAR(64)[/CODE]) to [CODE]player_data[/CODE].
-[*][B]Snapshot Integrity Verification:[/B] Computes canonical SHA-256 hashes across health, food, XP, NBT blobs (inventory, armor, ender chest, PDC), and game mode salted with [CODE]security.seed[/CODE]. Protects against database tampering across normalized component tables.
+[*][B]Normalized SHA-256 Checksum Verification:[/B] Added [I]snapshot_checksum[/I] ([I]VARCHAR(64)[/I]) to [I]player_data[/I].
+[*][B]Snapshot Integrity Verification:[/B] Computes canonical SHA-256 hashes across health, food, XP, NBT blobs (inventory, armor, ender chest, PDC), and game mode salted with [I]security.seed[/I]. Protects against database tampering across normalized component tables.
 [/LIST]
 
 [SIZE=4][B]⚡ Atomic Single-Transaction Persistence & Migration (#44, #45, AUDIT §5, §6)[/B][/SIZE]
 [LIST]
-[*][B]Single-Transaction Component Saves & Releases (#44):[/B] [CODE]saveAndReleaseLockComponents[/CODE] now executes all component writes ([CODE]databridge_inventories[/CODE], [CODE]statistics[/CODE], [CODE]metadata[/CODE], [CODE]companions[/CODE], [CODE]maps[/CODE]) and lock releases within a single database connection and transaction ([CODE]setAutoCommit(false)[/CODE] ... [CODE]commit()[/CODE]).
-[*][B]Transactional Legacy Migration (#45):[/B] [CODE]loadLegacyData[/CODE] executes component migration and legacy [CODE]data = NULL[/CODE] clearing inside a unified transaction with automatic rollback ([CODE]rollback()[/CODE]) on failure to eliminate dual-source-of-truth conditions.
+[*][B]Single-Transaction Component Saves & Releases (#44):[/B] [I]saveAndReleaseLockComponents[/I] now executes all component writes ([I]databridge_inventories[/I], [I]statistics[/I], [I]metadata[/I], [I]companions[/I], [I]maps[/I]) and lock releases within a single database connection and transaction ([I]setAutoCommit(false)[/I] ... [I]commit()[/I]).
+[*][B]Transactional Legacy Migration (#45):[/B] [I]loadLegacyData[/I] executes component migration and legacy [I]data = NULL[/I] clearing inside a unified transaction with automatic rollback ([I]rollback()[/I]) on failure to eliminate dual-source-of-truth conditions.
 [/LIST]
 
 [SIZE=4][B]⚡ Event-Driven Lock Release Messaging — 🚀 Up to 10X Faster Server Switching (#46, AUDIT §9)[/B][/SIZE]
 [LIST]
-[*][B]⚡ Up to 10X Faster Cross-Server Transfers:[/B] Dispatches an instant [CODE]LockReleased[/CODE] plugin message upon source server save completion. Destination servers wake up waiting pre-login threads immediately, slashing server-switch lock wait latency from [B]~500ms down to a near-instant ~50ms[/B]!
+[*][B]⚡ Up to 10X Faster Cross-Server Transfers:[/B] Dispatches an instant [I]LockReleased[/I] plugin message upon source server save completion. Destination servers wake up waiting pre-login threads immediately, slashing server-switch lock wait latency from [B]~500ms down to a near-instant ~50ms[/B]!
 [*][B]Resilient Fallback:[/B] Retains 500ms database polling loops as a zero-downtime fallback mechanism if network messages are dropped.
 [/LIST]
 
 [SIZE=4][B]🔐 Keyed HMAC-SHA256 Identity Verification (#47, AUDIT §12)[/B][/SIZE]
 [LIST]
-[*][B]Standard HMAC-SHA256:[/B] Upgraded identity hashing in [CODE]HashUtils[/CODE] to use standard [CODE]HmacSHA256[/CODE] key derivation with [CODE]security.seed[/CODE].
+[*][B]Standard HMAC-SHA256:[/B] Upgraded identity hashing in [I]HashUtils[/I] to use standard [I]HmacSHA256[/I] key derivation with [I]security.seed[/I].
 [*][B]Seamless Dual Verification:[/B] Automatically verifies existing records against both HMAC-SHA256 and legacy salted SHA-256 digests for 100% backward compatibility without table migrations.
 [/LIST]
 
 [SIZE=4][B]🧪 Automated CI Unit Testing & Concurrency Suite (#43, AUDIT §16)[/B][/SIZE]
 [LIST]
-[*][B]CI Test Automation:[/B] Re-enabled automated unit testing in GitHub Actions ([CODE].github/workflows/maven.yml[/CODE]) on pull requests and merges.
-[*][B]Concurrency & HMAC Unit Tests:[/B] Added [CODE]LockFencingTest[/CODE] and [CODE]HashUtilsTest[/CODE] verifying lock token increments, stale write rejections, HMAC generation, legacy fallback, and null safety.
+[*][B]CI Test Automation:[/B] Re-enabled automated unit testing in GitHub Actions ([I].github/workflows/maven.yml[/I]) on pull requests and merges.
+[*][B]Concurrency & HMAC Unit Tests:[/B] Added [I]LockFencingTest[/I] and [I]HashUtilsTest[/I] verifying lock token increments, stale write rejections, HMAC generation, legacy fallback, and null safety.
 [/LIST]
 
 [SIZE=4][B]📚 Documentation & Onboarding Overhaul[/B][/SIZE]
 [LIST]
-[*][B]Streamlined Platform Descriptions:[/B] Overhauled [CODE]README.md[/CODE], [CODE]DESCRIPTION.md[/CODE], and Spigot/Modrinth listings with cleaner layouts and fast-start guides to improve reader onboarding.
-[*][B]Dedicated Technical Guides:[/B] Separated complex architectural concepts and database setup instructions into dedicated [CODE]ARCHITECTURE.md[/CODE] and [CODE]DATABASE_SETUP.md[/CODE] files for cleaner readability.
+[*][B]Streamlined Platform Descriptions:[/B] Overhauled [I]README.md[/I], [I]DESCRIPTION.md[/I], and Spigot/Modrinth listings with cleaner layouts and fast-start guides to improve reader onboarding.
+[*][B]Dedicated Technical Guides:[/B] Separated complex architectural concepts and database setup instructions into dedicated [I]ARCHITECTURE.md[/I] and [I]DATABASE_SETUP.md[/I] files for cleaner readability.
 [/LIST]
 
 [CENTER]----------------------------------------------------------------[/CENTER]

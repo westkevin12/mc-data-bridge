@@ -6,8 +6,8 @@ MC Data Bridge is a high-performance hybrid synchronization suite for [B]Paper/S
 [SIZE=5]► Quick Start[/SIZE]
 
 [LIST=1]
-[*][B]Deploy Plugin:[/B] Place the single [CODE]mc-data-bridge-*.jar[/CODE] file into the [CODE]plugins/[/CODE] folder of each Minecraft server (Paper/Folia/Spigot) and your proxy (Velocity/Bungee).
-[*][B]Configure Backend:[/B] Edit [CODE]plugins/mc-data-bridge/config.yml[/CODE] on each backend server. Set a unique [CODE]server-id[/CODE] (e.g., "survival-1"), enter MySQL/MariaDB credentials, and set [CODE]security.seed[/CODE] to a secret random string.
+[*][B]Deploy Plugin:[/B] Place the single [I]mc-data-bridge-*.jar[/I] file into the [I]plugins/[/I] folder of each Minecraft server (Paper/Folia/Spigot) and your proxy (Velocity/Bungee).
+[*][B]Configure Backend:[/B] Edit [I]plugins/mc-data-bridge/config.yml[/I] on each backend server. Set a unique [I]server-id[/I] (e.g., "survival-1"), enter MySQL/MariaDB credentials, and set [I]security.seed[/I] to a secret random string.
 [*][B]Restart & Sync:[/B] Restart all components. Data synchronization runs automatically.
 [/LIST]
 
@@ -16,15 +16,15 @@ MC Data Bridge is a high-performance hybrid synchronization suite for [B]Paper/S
 [LIST]
 [*][B]Universal Single-JAR Hybrid:[/B] A single JAR file operates across Spigot, Paper, Folia, BungeeCord, and Velocity, automatically activating the correct platform handlers.
 [*][B]Comprehensive Cross-Server Sync:[/B] Synchronizes health, food level/saturation/exhaustion, experience, inventories, armor, potion effects, ender chests, advancements, recipes, vanilla statistics, PDC metadata, flight/gamemode states, companions/pets, maps, and separate gamemode profiles.
-[*][B]Event-Driven Lock Release Messaging:[/B] Source servers dispatch an instant [CODE]LockReleased[/CODE] signal upon saving player state, waking destination pre-login threads immediately and reducing server-switch lock wait latency to ~50ms.
-[*][B]Distributed Lock Fencing Tokens ([CODE]lock_version[/CODE]):[/B] Employs monotonic generation counters to fence off stale server writes, ensuring delayed servers (e.g. post-GC pauses) can never overwrite active player sessions.
-[*][B]Single-Transaction Atomic Persistence:[/B] Combines normalized component updates ([CODE]databridge_inventories[/CODE], [CODE]statistics[/CODE], [CODE]metadata[/CODE], [CODE]companions[/CODE], [CODE]maps[/CODE]) and lock releases into a single database transaction ([CODE]setAutoCommit(false)[/CODE] ... [CODE]commit()[/CODE]).
-[*][B]Keyed HMAC-SHA256 & Data Integrity Checksums:[/B] Standard [CODE]HmacSHA256[/CODE] key derivation with server salting protects player identities and detects database tampering across normalized component tables.
-[*][B]Identity Modes & Auto-Migration:[/B] Supports [CODE]PREMIUM[/CODE] or [CODE]HYBRID[/CODE] identity modes. Integrates with FastLogin (PreLogin) and AuthMe (Login, 2FA/TOTP) for automatic offline-to-online UUID data migration.
-[*][B]Interactive Inventory & Ender Chest Inspector ([CODE]invsee[/CODE] / [CODE]endersee[/CODE]):[/B] Inspect or interactively edit offline/cross-server player inventories in real time ([CODE]--edit[/CODE] flag or Right-Click) with automatic database persistence upon GUI close.
+[*][B]Event-Driven Lock Release Messaging:[/B] Source servers dispatch an instant [I]LockReleased[/I] signal upon saving player state, waking destination pre-login threads immediately and reducing server-switch lock wait latency to ~50ms.
+[*][B]Distributed Lock Fencing Tokens ([I]lock_version[/I]):[/B] Employs monotonic generation counters to fence off stale server writes, ensuring delayed servers (e.g. post-GC pauses) can never overwrite active player sessions.
+[*][B]Single-Transaction Atomic Persistence:[/B] Combines normalized component updates ([I]databridge_inventories[/I], [I]statistics[/I], [I]metadata[/I], [I]companions[/I], [I]maps[/I]) and lock releases into a single database transaction ([I]setAutoCommit(false)[/I] ... [I]commit()[/I]).
+[*][B]Keyed HMAC-SHA256 & Data Integrity Checksums:[/B] Standard [I]HmacSHA256[/I] key derivation with server salting protects player identities and detects database tampering across normalized component tables.
+[*][B]Identity Modes & Auto-Migration:[/B] Supports [I]PREMIUM[/I] or [I]HYBRID[/I] identity modes. Integrates with FastLogin (PreLogin) and AuthMe (Login, 2FA/TOTP) for automatic offline-to-online UUID data migration.
+[*][B]Interactive Inventory & Ender Chest Inspector ([I]invsee[/I] / [I]endersee[/I]):[/B] Inspect or interactively edit offline/cross-server player inventories in real time ([I]--edit[/I] flag or Right-Click) with automatic database persistence upon GUI close.
 [*][B]Regionalized Folia Support:[/B] Fully compatible with Folia's regionalized threading model, ensuring safe data handling on modern multi-threaded server clusters.
-[*][B]Embedded Prometheus Exporter:[/B] HTTP [CODE]/metrics[/CODE] endpoint to monitor HikariCP connection pools, transaction latencies, active queries, and cache efficiency.
-[*][B]Granular Sync & Blacklist Control:[/B] Per-component toggles and server/world blacklists in [CODE]config.yml[/CODE].
+[*][B]Embedded Prometheus Exporter:[/B] HTTP [I]/metrics[/I] endpoint to monitor HikariCP connection pools, transaction latencies, active queries, and cache efficiency.
+[*][B]Granular Sync & Blacklist Control:[/B] Per-component toggles and server/world blacklists in [I]config.yml[/I].
 [/LIST]
 
 [SIZE=5]► Commands & Permissions[/SIZE]
