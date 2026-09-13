@@ -32,6 +32,10 @@ Version 2.2.2 is a major release introducing enterprise-grade concurrency, integ
 - **CI Test Automation:** Re-enabled automated unit testing in GitHub Actions (`.github/workflows/maven.yml`) on pull requests and merges.
 - **Concurrency & HMAC Unit Tests:** Added `LockFencingTest` and `HashUtilsTest` verifying lock token increments, stale write rejections, HMAC generation, legacy fallback, and null safety.
 
+### 📚 Documentation & Onboarding Overhaul
+- **Streamlined Platform Descriptions:** Overhauled `README.md`, `DESCRIPTION.md`, and Spigot/Modrinth listings with cleaner layouts and fast-start guides to improve reader onboarding.
+- **Dedicated Technical Guides:** Separated complex architectural concepts and database setup instructions into dedicated [ARCHITECTURE.md](file:///home/west/github.com/westkevin12/mc-data-bridge/ARCHITECTURE.md) and [DATABASE_SETUP.md](file:///home/west/github.com/westkevin12/mc-data-bridge/DATABASE_SETUP.md) files for cleaner readability.
+
 ---
 
-_For installation instructions and configuration details, please refer to the [README.md](README.md) and [config.yml](src/main/resources/config.yml)._
+_For installation instructions and configuration details, please refer to [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [DATABASE_SETUP.md](DATABASE_SETUP.md)._

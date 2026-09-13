@@ -150,6 +150,9 @@ lock-timeout: 60000
 # Heartbeat interval for lock updates (seconds)
 lock-heartbeat-seconds: 30
 
+# Automatically migrate database schema on startup
+auto-update-schema: true
+
 # Toggle specific data to sync
 sync-data:
   health: true
