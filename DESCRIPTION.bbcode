@@ -1,7 +1,7 @@
 [CENTER][SIZE=6][B]MC Data Bridge[/B][/SIZE]
-[SIZE=4][I]High-Performance, Secure, and Universal Player Data Synchronization[/I][/SIZE][/CENTER]
+[SIZE=4][I]Enterprise-Grade Distributed State Synchronization Engine for Game Servers[/I][/SIZE][/CENTER]
 
-MC Data Bridge is a high-performance hybrid synchronization suite for [B]Paper/Spigot[/B], [B]Folia[/B], [B]BungeeCord[/B], and [B]Velocity[/B]. Designed for high-traffic production networks, it ensures a seamless cross-server experience by synchronizing health, hunger, experience, inventories, ender chests, advancements, recipes, vanilla statistics, companion pets, and PDC metadata with zero lag and industrial-grade security.
+MC Data Bridge is an enterprise-grade distributed state synchronization engine for Paper/Spigot, Folia, BungeeCord, and Velocity. Unlike conventional synchronization plugins that execute simplistic SQL queries, MC Data Bridge treats player data as a formal distributed systems problem—designed to prevent data loss caused by stale writers, partial saves, and concurrent session races through distributed lock fencing tokens (lock_version), single-transaction atomic persistence (BEGIN...COMMIT), event-driven low-latency handoffs (~50ms) with polling fallbacks, and fail-closed security invariants.
 
 [SIZE=5]► Quick Start[/SIZE]
 
