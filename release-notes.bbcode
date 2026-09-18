@@ -1,52 +1,16 @@
-[SIZE=6][B]MC Data Bridge - Release Notes (v2.2.2)[/B][/SIZE]
+[SIZE=6][B]MC Data Bridge - Release Notes (v2.2.3)[/B][/SIZE]
 
 [SIZE=5][B]Overview[/B][/SIZE]
-[SIZE=4]Version 2.2.2 is a major release introducing enterprise-grade concurrency, integrity, and performance protections derived from an architectural security audit. Features include monotonic distributed lock fencing tokens, normalized snapshot SHA-256 integrity validation, single-transaction atomic saves, event-driven lock release messaging to eliminate pre-login latency, standard HMAC-SHA256 identity hashing, and automated unit testing in CI.[/SIZE]
+[SIZE=4]Version 2.2.3 adds Minecraft 26.3 compatibility, updating core dependencies and Paper API target versions for seamless cross-server item stack synchronization on Minecraft 26.3+ servers.[/SIZE]
 
 [CENTER]----------------------------------------------------------------[/CENTER]
 
 [SIZE=5][B]Key Changes[/B][/SIZE]
 
-[SIZE=4][B]🔒 Monotonic Distributed Lock Fencing Tokens (#41, AUDIT §2)[/B][/SIZE]
+[SIZE=4][B]📦 Minecraft 26.3 Compatibility[/B][/SIZE]
 [LIST]
-[*][B]Epoch Fencing Protection:[/B] Added [I]lock_version[/I] ([I]BIGINT DEFAULT 0[/I]) to [I]player_data[/I]. Every lock acquisition increments [I]lock_version[/I], producing a monotonic fencing token.
-[*][B]Stale Write Prevention:[/B] Saves, heartbeats, and lock releases evaluate [I]WHERE uuid = ? AND locking_server = ? AND lock_version = ?[/I]. Delayed servers or un-fenced post-GC pause writes are automatically rejected, protecting database state from stale session overwrites.
-[/LIST]
-
-[SIZE=4][B]🛡️ Normalized Data Integrity Checksums (#42, AUDIT §3)[/B][/SIZE]
-[LIST]
-[*][B]Normalized SHA-256 Checksum Verification:[/B] Added [I]snapshot_checksum[/I] ([I]VARCHAR(64)[/I]) to [I]player_data[/I].
-[*][B]Snapshot Integrity Verification:[/B] Computes canonical SHA-256 hashes across health, food, XP, NBT blobs (inventory, armor, ender chest, PDC), and game mode salted with [I]security.seed[/I]. Protects against database tampering across normalized component tables.
-[/LIST]
-
-[SIZE=4][B]⚡ Atomic Single-Transaction Persistence & Migration (#44, #45, AUDIT §5, §6)[/B][/SIZE]
-[LIST]
-[*][B]Single-Transaction Component Saves & Releases (#44):[/B] [I]saveAndReleaseLockComponents[/I] now executes all component writes ([I]databridge_inventories[/I], [I]statistics[/I], [I]metadata[/I], [I]companions[/I], [I]maps[/I]) and lock releases within a single database connection and transaction ([I]setAutoCommit(false)[/I] ... [I]commit()[/I]).
-[*][B]Transactional Legacy Migration (#45):[/B] [I]loadLegacyData[/I] executes component migration and legacy [I]data = NULL[/I] clearing inside a unified transaction with automatic rollback ([I]rollback()[/I]) on failure to eliminate dual-source-of-truth conditions.
-[/LIST]
-
-[SIZE=4][B]⚡ Event-Driven Lock Release Messaging — 🚀 Up to 10X Faster Server Switching (#46, AUDIT §9)[/B][/SIZE]
-[LIST]
-[*][B]⚡ Up to 10X Faster Cross-Server Transfers:[/B] Dispatches an instant [I]LockReleased[/I] plugin message upon source server save completion. Destination servers wake up waiting pre-login threads immediately, slashing server-switch lock wait latency from [B]~500ms down to a near-instant ~50ms[/B]!
-[*][B]Resilient Fallback:[/B] Retains 500ms database polling loops as a zero-downtime fallback mechanism if network messages are dropped.
-[/LIST]
-
-[SIZE=4][B]🔐 Keyed HMAC-SHA256 Identity Verification (#47, AUDIT §12)[/B][/SIZE]
-[LIST]
-[*][B]Standard HMAC-SHA256:[/B] Upgraded identity hashing in [I]HashUtils[/I] to use standard [I]HmacSHA256[/I] key derivation with [I]security.seed[/I].
-[*][B]Seamless Dual Verification:[/B] Automatically verifies existing records against both HMAC-SHA256 and legacy salted SHA-256 digests for 100% backward compatibility without table migrations.
-[/LIST]
-
-[SIZE=4][B]🧪 Automated CI Unit Testing & Concurrency Suite (#43, AUDIT §16)[/B][/SIZE]
-[LIST]
-[*][B]CI Test Automation:[/B] Re-enabled automated unit testing in GitHub Actions ([I].github/workflows/maven.yml[/I]) on pull requests and merges.
-[*][B]Concurrency & HMAC Unit Tests:[/B] Added [I]LockFencingTest[/I] and [I]HashUtilsTest[/I] verifying lock token increments, stale write rejections, HMAC generation, legacy fallback, and null safety.
-[/LIST]
-
-[SIZE=4][B]📚 Documentation & Onboarding Overhaul[/B][/SIZE]
-[LIST]
-[*][B]Streamlined Platform Descriptions:[/B] Overhauled [I]README.md[/I], [I]DESCRIPTION.md[/I], and Spigot/Modrinth listings with cleaner layouts and fast-start guides to improve reader onboarding.
-[*][B]Dedicated Technical Guides:[/B] Separated complex architectural concepts and database setup instructions into dedicated [I]ARCHITECTURE.md[/I] and [I]DATABASE_SETUP.md[/I] files for cleaner readability.
+[*][B]Dependency Upgrades:[/B] Upgraded [I]de.tr7zw:item-nbt-api[/I] to [I]2.16.1[/I] (including PR #360 item stack mirror resolution), [I]io.papermc.paper:paper-api[/I] to [I]26.3-pre-2.build.0-alpha[/I], and [I]net.kyori[/I] Adventure libraries to [I]5.2.0[/I].
+[*][B]Full 26.3 Item & Component Support:[/B] Tested and verified full cross-server item synchronization for Minecraft 26.3 (including new Poplar wood items, cushions, beds, and wool/concrete stairs and slabs).
 [/LIST]
 
 [CENTER]----------------------------------------------------------------[/CENTER]
