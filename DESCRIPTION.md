@@ -4,7 +4,7 @@ MC Data Bridge is a high-performance hybrid plugin for **PaperMC** (and forks li
 
 ## Compatibility
 
-- **Minecraft Version:** `1.21.x` and `26.2.x`
+- **Minecraft Version:** `1.21.x` and `26.3.x`
 - **Server Platforms:** PaperMC, Purpur, Spigot, Bukkit, **Folia**
 - **Proxy Platforms:** BungeeCord, Waterfall, Velocity
 - **Java Version:** 25+
