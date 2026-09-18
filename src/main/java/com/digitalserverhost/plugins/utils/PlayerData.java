@@ -712,9 +712,9 @@ public class PlayerData {
         canonical.append("xp:").append(totalExperience).append(",")
                  .append(String.format(Locale.ROOT, "%.4f", exp)).append(",")
                  .append(level).append(";");
-        canonical.append("inv:").append(inventoryContentsNBT != null ? inventoryContentsNBT.hashCode() : 0).append(";");
-        canonical.append("arm:").append(armorContentsNBT != null ? armorContentsNBT.hashCode() : 0).append(";");
-        canonical.append("ec:").append(enderChestContentsNBT != null ? enderChestContentsNBT.hashCode() : 0).append(";");
+        canonical.append("inv:").append(inventoryContentsNBT != null ? String.join(",", inventoryContentsNBT) : "").append(";");
+        canonical.append("arm:").append(armorContentsNBT != null ? String.join(",", armorContentsNBT) : "").append(";");
+        canonical.append("ec:").append(enderChestContentsNBT != null ? String.join(",", enderChestContentsNBT) : "").append(";");
         canonical.append("pdc:").append(pdcNBT != null ? pdcNBT : "").append(";");
         canonical.append("gm:").append(gameMode != null ? gameMode : "").append(";");
         return calculateChecksum(canonical.toString(), seed);

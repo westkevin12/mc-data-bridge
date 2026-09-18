@@ -1,6 +1,8 @@
 # MC Data Bridge
 
-MC Data Bridge is a high-performance hybrid plugin for **PaperMC** (and forks like **Purpur**), **Folia**, **Spigot**, **Bukkit**, **BungeeCord** (and forks like **Waterfall**), and **Velocity**. It seamlessly synchronizes player data across linked Minecraft servers with enterprise-grade distributed locks, single-transaction atomic persistence, and instant event-driven messaging.
+MC Data Bridge is an enterprise-grade **distributed state synchronization engine** for game servers running **PaperMC** (and forks like **Purpur**), **Folia**, **Spigot**, **Bukkit**, **BungeeCord** (and forks like **Waterfall**), and **Velocity**.
+
+Unlike conventional synchronization plugins that execute simplistic SQL `SELECT` / `UPDATE` queries, MC Data Bridge treats player data as a formal distributed systems problem. It is designed to prevent data loss caused by stale writers, partial saves, and concurrent session races through **distributed lock fencing tokens (`lock_version`)**, **single-transaction atomic persistence (`BEGIN...COMMIT`)**, **event-driven low-latency handoffs (~50ms)** with automatic database polling fallbacks, and **fail-closed security invariants**.
 
 ## Compatibility
 
@@ -44,17 +46,18 @@ This plugin is a hybrid single-JAR build that operates across all supported serv
 
 ## Commands & Permissions
 
-| Command | Description | Required Permission |
-| :--- | :--- | :--- |
-| `/databridge inspect <player> [inv\|ender] [--edit]` | Open GUI to view or edit saved player data | `databridge.inspect` (`.edit` for `--edit`) |
-| `/databridge invsee <player> [--edit]` | Directly open player inventory view or edit GUI | `databridge.inspect` (`.edit` for `--edit`) |
-| `/databridge endersee <player> [--edit]` | Directly open player ender chest view or edit GUI | `databridge.inspect` (`.edit` for `--edit`) |
-| `/databridge unlock <player>` | Release a stuck data lock (Works on Spigot, Folia, Bungee, Velocity) | `databridge.admin` |
-| `/databridge forceunlock <player>` | Proxy command: force immediate lock drop signal | `databridge.admin` |
-| `/databridge migrate <source> <target>` | Move player data between UUIDs or names | `databridge.admin` |
-| `/databridge reload` | Reload configuration and reconnect DB pool | `databridge.admin` |
+| Command                                              | Description                                                          | Required Permission                         |
+| :--------------------------------------------------- | :------------------------------------------------------------------- | :------------------------------------------ |
+| `/databridge inspect <player> [inv\|ender] [--edit]` | Open GUI to view or edit saved player data                           | `databridge.inspect` (`.edit` for `--edit`) |
+| `/databridge invsee <player> [--edit]`               | Directly open player inventory view or edit GUI                      | `databridge.inspect` (`.edit` for `--edit`) |
+| `/databridge endersee <player> [--edit]`             | Directly open player ender chest view or edit GUI                    | `databridge.inspect` (`.edit` for `--edit`) |
+| `/databridge unlock <player>`                        | Release a stuck data lock (Works on Spigot, Folia, Bungee, Velocity) | `databridge.admin`                          |
+| `/databridge forceunlock <player>`                   | Proxy command: force immediate lock drop signal                      | `databridge.admin`                          |
+| `/databridge migrate <source> <target>`              | Move player data between UUIDs or names                              | `databridge.admin`                          |
+| `/databridge reload`                                 | Reload configuration and reconnect DB pool                           | `databridge.admin`                          |
 
 **Permission Nodes:**
+
 - `databridge.inspect`: Permission to view player data, inventories, and ender chests in safe read-only mode.
 - `databridge.inspect.edit`: Elevated permission required to interactively edit inventories and ender chests via `--edit` or Right-Click.
 - `databridge.admin`: Full administrative access for all commands and functions.
@@ -63,7 +66,10 @@ This plugin is a hybrid single-JAR build that operates across all supported serv
 
 ## Documentation References
 
-For full technical diagrams, relational database schemas, and SpigotMC wiki pages:
+For full technical diagrams, relational database schemas, security specs, and architectural proposals:
+
+- [**docs/security-model.md**](docs/security-model.md) — Formal Security Invariants, Threat Model & System Security Specification.
+- [**docs/rfc-state-provenance.md**](docs/rfc-state-provenance.md) — Architectural Proposal for State Provenance, Forensic Audit Trails & Git-Style Diffs.
 - [**DATABASE_SETUP.md**](DATABASE_SETUP.md) — MySQL & MariaDB Installation Guide (Docker, Linux Host, Firewall & Security Best Practices).
-- [**ARCHITECTURE.md**](ARCHITECTURE.md) — Architectural Deep Dive, Complete Sequence Diagrams, and Database Schemas.
+- [**ARCHITECTURE.md**](ARCHITECTURE.md) — Architectural Deep Dive, Sequence Diagrams, and Database Schemas.
 - [**DOCUMENTATION.bbcode**](DOCUMENTATION.bbcode) — BBCode Wiki Documentation.

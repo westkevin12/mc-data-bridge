@@ -26,7 +26,7 @@ public class HashUtils {
             return null;
         }
 
-        String normalizedName = name.toLowerCase();
+        String normalizedName = name.toLowerCase(java.util.Locale.ROOT);
 
         if (seed != null && !seed.isEmpty()) {
             try {
@@ -37,7 +37,7 @@ public class HashUtils {
                 byte[] rawHmac = mac.doFinal(message.getBytes(StandardCharsets.UTF_8));
                 return bytesToHex(rawHmac);
             } catch (NoSuchAlgorithmException | InvalidKeyException e) {
-                // Fallback to SHA-256 on unexpected HMAC initialization failure
+                throw new IllegalStateException("Cryptographic provider failure during HMAC-SHA256 identity hash generation", e);
             }
         }
 
@@ -55,7 +55,7 @@ public class HashUtils {
         if (normalizedName == null || uuid == null) {
             return null;
         }
-        String input = normalizedName.toLowerCase() + ":" + uuid.toString() + (seed != null ? ":" + seed : "");
+        String input = normalizedName.toLowerCase(java.util.Locale.ROOT) + ":" + uuid.toString() + (seed != null ? ":" + seed : "");
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] encodedHash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
@@ -76,7 +76,7 @@ public class HashUtils {
         if (storedHash.equalsIgnoreCase(currentHmac)) {
             return true;
         }
-        String legacyHash = generateLegacyIdentityHash(name.toLowerCase(), uuid, seed);
+        String legacyHash = generateLegacyIdentityHash(name.toLowerCase(java.util.Locale.ROOT), uuid, seed);
         return storedHash.equalsIgnoreCase(legacyHash);
     }
 
